@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "amsa"
+version = "0.1.0"
+description = "High-performance Clifford algebra primitives for robotics, engineering, and science."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+  { name = "Surya" },
+]
+dependencies = [
+  "numpy>=1.26",
+  "typing-extensions>=4.12",
+]
+
+[project.optional-dependencies]
+dev = [
+  "mypy>=1.10",
+  "pytest>=8.3",
+  "pytest-cov>=5.0",
+  "ruff>=0.5",
+]
+accel = [
+  "triton>=3.0",
+]
+jax = [
+  "jax>=0.4.30",
+]
+torch = [
+  "torch>=2.4",
+]
+bench = [
+  "pytest-benchmark>=4.0",
+]
+
+[tool.uv]
+default-groups = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/amsa"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["amsa"]
+strict = true
+mypy_path = ["src"]
