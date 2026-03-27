@@ -5,7 +5,6 @@ from typing import Literal
 
 from amsa.specs import AlgebraSpec, grade_of_blade
 
-
 LayoutKind = Literal["dense", "grade", "sparse"]
 
 

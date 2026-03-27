@@ -7,7 +7,7 @@ AMSA is currently in a prerelease stage.
 The project now has:
 
 - a portable algebra core based on bit-pattern blade identifiers
-- dense, grade-packed, and sparse(false) layout descriptors
+- dense, grade-packed, and sparse layout descriptors
 - a reference multivector array type
 - cached operator plans for binary products
 - a first reference backend split between planning and execution
@@ -139,7 +139,7 @@ Layout metadata currently available:
 - constructors:
   - `zeros(...)`
   - `blade(key, value=1.0)`
-  - `multivector(data, layout=None)`
+  - `multivector(data, layout=None)` for mappings, arrays, and existing `MVArray` values
   - `scalar(value=0.0)`
   - `kvector(grade, values)`
   - `vector(values)`
@@ -268,6 +268,91 @@ The following are not implemented yet:
 - symbolic backends
 - JAX, Triton, or PyTorch execution paths
 - backend auto-selection beyond the reference backend
+
+The following API edge is important right now:
+
+- `alg.multivector(1.0)` is not supported yet
+- use `alg.scalar(1.0)` for scalar construction
+
+## Getting Started
+
+The safest way to use AMSA today is:
+
+1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
+2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
+3. Use `*`, `^`, `|`, `+`, and `-` for the currently implemented operators.
+4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
+
+### Example: 2D VGA vectors
+
+```python
+from amsa import Algebra
+
+alg = Algebra.vga2d()
+u = alg.vector([1.0, 2.0])
+v = alg.vector([3.0, -4.0])
+
+gp = u * v
+ip = u | v
+op = u ^ v
+
+print(gp.as_dense().values)  # [-5.0, 0.0, 0.0, -10.0]
+print(ip.values)             # [-5.0]
+print(op.values)             # [-10.0]
+```
+
+### Example: sparse construction and scalar arithmetic
+
+```python
+from amsa import Algebra
+
+alg = Algebra.vga2d()
+x = alg.multivector({"e1": 1.0, "e12": -3.0})
+
+print(x.layout.blades)         # (1, 3)
+print((x + 2.0).as_dense().values)
+print((3.0 - x).as_dense().values)
+```
+
+### Example: grade-aware construction in 3D VGA
+
+```python
+from amsa import Algebra
+
+alg = Algebra.vga3d()
+rotor_like = alg.even([1.0, 0.0, 0.5, -0.25])
+mixed = alg.multivector({"e1": 1.0, "e12": 2.0, "e123": 3.0})
+
+print(rotor_like.grades)           # (0, 2)
+print(mixed.grade(1, 3).values)    # [1.0, 3.0]
+print(mixed.grade(1, 3).layout.blades)  # (1, 7)
+```
+
+### Example: degenerate PGA behavior
+
+```python
+from amsa import Algebra
+
+alg = Algebra.pga2d()
+e0 = alg.blade("e0")
+e1 = alg.blade("e1")
+
+print((e0 * e0).layout.size)       # 0
+print((e0 ^ e1).component("e01"))  # 1.0
+```
+
+### Example: batched coefficients
+
+```python
+import numpy as np
+from amsa import Algebra
+
+alg = Algebra.pga2d()
+mv = alg.multivector({"e0": np.array([1.0, 2.0]), "e1": 3.0})
+
+print(mv.batch_shape)  # (2,)
+print(mv.values)       # [[1.0, 3.0], [2.0, 3.0]]
+```
 
 ## Examples Folder
 

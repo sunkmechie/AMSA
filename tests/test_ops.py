@@ -1,9 +1,19 @@
 import numpy as np
 import pytest
 
-from amsa import Algebra, MVLayout, geometric_product, inner_product, outer_product, pga2d, vga2d, vga3d
+from amsa import (
+    Algebra,
+    MVLayout,
+    geometric_product,
+    inner_product,
+    outer_product,
+    pga2d,
+    vga2d,
+    vga3d,
+)
 from amsa.plans import plan_binary_product
 from amsa.specs import grade_of_blade
+
 from ._utils import assert_mv_allclose
 
 
@@ -13,7 +23,9 @@ def _keep_term(kind: str, lhs_blade: int, rhs_blade: int, out_blade: int) -> boo
     if kind == "outer":
         return grade_of_blade(out_blade) == grade_of_blade(lhs_blade) + grade_of_blade(rhs_blade)
     if kind == "inner":
-        return grade_of_blade(out_blade) == abs(grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade))
+        return grade_of_blade(out_blade) == abs(
+            grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade)
+        )
     raise ValueError(f"Unsupported operator kind: {kind}")
 
 
@@ -44,7 +56,10 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
                 accumulators[out_blade] = zero + contribution
 
     blades = tuple(sorted(support))
-    layout = MVLayout.dense(lhs.algebra) if len(blades) == lhs.algebra.blade_count else MVLayout.sparse_pattern(lhs.algebra, blades, name=kind)
+    if len(blades) == lhs.algebra.blade_count:
+        layout = MVLayout.dense(lhs.algebra)
+    else:
+        layout = MVLayout.sparse_pattern(lhs.algebra, blades, name=kind)
     result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
     for index, blade in enumerate(layout.blades):
         result[..., index] = accumulators[blade]

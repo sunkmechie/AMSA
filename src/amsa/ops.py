@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any
 
 import numpy as np
 
@@ -23,8 +22,10 @@ def _coerce_operand(reference: MVArray, operand: MVArray | Number) -> MVArray:
         ensure_compatible(reference, operand)
         return operand
     if isinstance(operand, Number):
+        operand_array = np.asarray(operand)
         scalar_layout = MVLayout.grade(reference.algebra, 0)
-        values = np.asarray([operand], dtype=np.result_type(reference.dtype, operand))
+        dtype = np.result_type(reference.dtype, operand_array.dtype)
+        values = np.asarray([operand], dtype=dtype)
         return MVArray(algebra=reference.algebra, layout=scalar_layout, values=values)
     raise TypeError(f"Unsupported operand type: {type(operand)!r}")
 
@@ -48,19 +49,24 @@ def add(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_projected.values + rhs_projected.values)
+    values = lhs_projected.values + rhs_projected.values
+    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
 
 
 def sub(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_projected.values - rhs_projected.values)
+    values = lhs_projected.values - rhs_projected.values
+    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
 
 
 def reverse(mv: MVArray) -> MVArray:
     signs = np.asarray(
-        [(-1) ** ((blade.bit_count() * (blade.bit_count() - 1)) // 2) for blade in mv.layout.blades],
+        [
+            (-1) ** ((blade.bit_count() * (blade.bit_count() - 1)) // 2)
+            for blade in mv.layout.blades
+        ],
         dtype=mv.dtype,
     )
     return MVArray(algebra=mv.algebra, layout=mv.layout, values=mv.values * signs)

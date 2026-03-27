@@ -1,7 +1,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cache
+from functools import lru_cache
+
+
+@lru_cache(maxsize=4096)
+def _blade_product_cached(
+    signature: tuple[int, ...],
+    lhs: int,
+    rhs: int,
+) -> tuple[int, int]:
+    blade_count = 1 << len(signature)
+    if lhs < 0 or lhs >= blade_count or rhs < 0 or rhs >= blade_count:
+        raise ValueError("Blade is outside the algebra basis.")
+
+    coefficient = 1
+    remaining = lhs
+    while remaining:
+        bit = remaining & -remaining
+        if (rhs & (bit - 1)).bit_count() % 2:
+            coefficient = -coefficient
+        remaining ^= bit
+
+    overlap = lhs & rhs
+    while overlap:
+        bit = overlap & -overlap
+        axis = bit.bit_length() - 1
+        metric = signature[axis]
+        if metric == 0:
+            return 0, 0
+        coefficient *= metric
+        overlap ^= bit
+
+    return coefficient, lhs ^ rhs
 
 
 def grade_of_blade(blade: int) -> int:
@@ -107,33 +138,20 @@ class AlgebraSpec:
     def pseudoscalar_blade(self) -> int:
         return self.blade_count - 1
 
-    @cache
     def blade_product(self, lhs: int, rhs: int) -> tuple[int, int]:
         lhs = self.validate_blade(lhs)
         rhs = self.validate_blade(rhs)
-
-        coefficient = 1
-        remaining = lhs
-        while remaining:
-            bit = remaining & -remaining
-            if (rhs & (bit - 1)).bit_count() % 2:
-                coefficient = -coefficient
-            remaining ^= bit
-
-        overlap = lhs & rhs
-        while overlap:
-            bit = overlap & -overlap
-            axis = bit.bit_length() - 1
-            metric = self.signature[axis]
-            if metric == 0:
-                return 0, 0
-            coefficient *= metric
-            overlap ^= bit
-
-        return coefficient, lhs ^ rhs
+        return _blade_product_cached(self.signature, lhs, rhs)
 
     @classmethod
-    def from_pqr(cls, p: int, q: int = 0, r: int = 0, *, start_index: int | None = None) -> AlgebraSpec:
+    def from_pqr(
+        cls,
+        p: int,
+        q: int = 0,
+        r: int = 0,
+        *,
+        start_index: int | None = None,
+    ) -> AlgebraSpec:
         if min(p, q, r) < 0:
             raise ValueError("p, q, and r must be non-negative.")
 

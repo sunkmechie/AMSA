@@ -7,7 +7,6 @@ from typing import Literal
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec, grade_of_blade
 
-
 OpKind = Literal["geometric", "outer", "inner"]
 
 _LAYOUT_NAMES: dict[OpKind, str] = {

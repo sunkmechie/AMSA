@@ -160,11 +160,12 @@ class MVArray:
         from amsa.ops import sub
 
         if isinstance(other, Number):
+            other_array = np.asarray(other)
             scalar_layout = MVLayout.grade(self.algebra, 0)
             scalar = MVArray(
                 algebra=self.algebra,
                 layout=scalar_layout,
-                values=np.asarray([other], dtype=np.result_type(self.dtype, other)),
+                values=np.asarray([other], dtype=np.result_type(self.dtype, other_array.dtype)),
             )
             return sub(scalar, self)
         return NotImplemented
