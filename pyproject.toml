@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "High-performance Clifford algebra primitives for robotics, engineering, and science."
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = { text = "Apache 2.0" }
 authors = [
   { name = "Surya" },
 ]

@@ -20,14 +20,14 @@ class MVLayout:
 
     def __post_init__(self) -> None:
         max_blade = self.algebra.blade_count
-        if not self.blades:
-            raise ValueError("A layout must contain at least one blade.")
         if len(set(self.blades)) != len(self.blades):
             raise ValueError("Layout blades must be unique.")
         if any(blade < 0 or blade >= max_blade for blade in self.blades):
             raise ValueError("Layout blades must belong to the algebra.")
         if self.kind not in ("dense", "grade", "sparse"):
             raise ValueError("Unsupported layout kind.")
+        if not self.blades and self.kind != "sparse":
+            raise ValueError("Only sparse layouts may be empty.")
 
     @property
     def size(self) -> int:
@@ -39,6 +39,12 @@ class MVLayout:
 
     def blade_names(self) -> tuple[str, ...]:
         return tuple(self.algebra.blade_name(blade) for blade in self.blades)
+
+    def index_of(self, blade: int) -> int:
+        return self.blades.index(blade)
+
+    def contains(self, blade: int) -> bool:
+        return blade in self.blades
 
     @classmethod
     def dense(cls, algebra: AlgebraSpec) -> MVLayout:

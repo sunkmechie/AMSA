@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 
 
 def grade_of_blade(blade: int) -> int:
@@ -67,7 +68,13 @@ class AlgebraSpec:
     def grades(self) -> tuple[int, ...]:
         return tuple(range(self.dimension + 1))
 
+    def validate_blade(self, blade: int) -> int:
+        if blade < 0 or blade >= self.blade_count:
+            raise ValueError(f"Blade {blade} is outside the algebra basis.")
+        return blade
+
     def blade_name(self, blade: int) -> str:
+        self.validate_blade(blade)
         return canonical_blade_name(
             blade,
             dimension=self.dimension,
@@ -77,6 +84,17 @@ class AlgebraSpec:
     def blade_names(self) -> tuple[str, ...]:
         return tuple(self.blade_name(blade) for blade in range(self.blade_count))
 
+    def blade_from_key(self, key: int | str) -> int:
+        if isinstance(key, int):
+            return self.validate_blade(key)
+        if not isinstance(key, str):
+            raise TypeError(f"Unsupported blade key type: {type(key)!r}")
+
+        for blade in range(self.blade_count):
+            if self.blade_name(blade) == key:
+                return blade
+        raise KeyError(f"Unknown basis blade: {key}")
+
     def blades_of_grade(self, grade: int) -> tuple[int, ...]:
         if grade < 0 or grade > self.dimension:
             raise ValueError(f"Grade must be between 0 and {self.dimension}.")
@@ -84,6 +102,35 @@ class AlgebraSpec:
 
     def grades_of_blades(self) -> tuple[int, ...]:
         return tuple(grade_of_blade(blade) for blade in range(self.blade_count))
+
+    @property
+    def pseudoscalar_blade(self) -> int:
+        return self.blade_count - 1
+
+    @cache
+    def blade_product(self, lhs: int, rhs: int) -> tuple[int, int]:
+        lhs = self.validate_blade(lhs)
+        rhs = self.validate_blade(rhs)
+
+        coefficient = 1
+        remaining = lhs
+        while remaining:
+            bit = remaining & -remaining
+            if (rhs & (bit - 1)).bit_count() % 2:
+                coefficient = -coefficient
+            remaining ^= bit
+
+        overlap = lhs & rhs
+        while overlap:
+            bit = overlap & -overlap
+            axis = bit.bit_length() - 1
+            metric = self.signature[axis]
+            if metric == 0:
+                return 0, 0
+            coefficient *= metric
+            overlap ^= bit
+
+        return coefficient, lhs ^ rhs
 
     @classmethod
     def from_pqr(cls, p: int, q: int = 0, r: int = 0, *, start_index: int | None = None) -> AlgebraSpec:

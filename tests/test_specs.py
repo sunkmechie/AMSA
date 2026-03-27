@@ -46,3 +46,12 @@ def test_algebra_wrapper_exposes_layout_constructors() -> None:
     algebra = Algebra(vga(2))
     assert algebra.signature == (1, 1)
     assert algebra.dense_layout().size == 4
+
+
+def test_blade_product_respects_metric_and_sign() -> None:
+    spec = vga(3)
+    assert spec.blade_product(spec.blade_from_key("e1"), spec.blade_from_key("e1")) == (1, 0)
+    assert spec.blade_product(spec.blade_from_key("e2"), spec.blade_from_key("e1")) == (-1, 0b11)
+
+    pga = pga2d()
+    assert pga.blade_product(pga.blade_from_key("e0"), pga.blade_from_key("e0")) == (0, 0)
