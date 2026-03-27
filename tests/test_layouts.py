@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 from amsa import Algebra, MVArray, MVLayout, pga2d, vga
+from amsa.storage import DenseStorage
 
 from ._utils import assert_allclose
 
@@ -42,6 +43,30 @@ def test_mvarray_validates_shape_against_layout() -> None:
 
     with pytest.raises(ValueError):
         MVArray(algebra=spec, layout=layout, values=np.zeros((layout.size + 1,)))
+
+
+def test_mvarray_accepts_dense_storage_object() -> None:
+    spec = vga(2)
+    layout = MVLayout.grade(spec, 1)
+    storage = DenseStorage.from_array(np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+    mv = MVArray(algebra=spec, layout=layout, storage=storage)
+
+    assert mv.storage_kind == "dense"
+    assert mv.batch_shape == (2,)
+    np.testing.assert_array_equal(mv.values, np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+
+def test_mvarray_requires_exactly_one_storage_source() -> None:
+    spec = vga(2)
+    layout = MVLayout.grade(spec, 1)
+    storage = DenseStorage.from_array(np.array([1.0, 2.0]))
+
+    with pytest.raises(ValueError):
+        MVArray(algebra=spec, layout=layout)
+
+    with pytest.raises(ValueError):
+        MVArray(algebra=spec, layout=layout, values=np.array([1.0, 2.0]), storage=storage)
 
 
 def test_multivector_mapping_constructor_builds_sparse_layout() -> None:

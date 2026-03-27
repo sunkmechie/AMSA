@@ -9,39 +9,61 @@ from numpy.typing import ArrayLike, NDArray
 
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec
+from amsa.storage import DenseStorage, MVStorage
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class MVArray:
-    """Array-backed multivector values paired with an algebra and layout."""
+    """Storage-backed multivector values paired with an algebra and layout."""
 
     algebra: AlgebraSpec
     layout: MVLayout
-    values: NDArray[Any]
+    storage: MVStorage
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        algebra: AlgebraSpec,
+        layout: MVLayout,
+        values: ArrayLike | None = None,
+        *,
+        storage: MVStorage | None = None,
+    ) -> None:
+        object.__setattr__(self, "algebra", algebra)
+        object.__setattr__(self, "layout", layout)
         if self.layout.algebra != self.algebra:
             raise ValueError("layout.algebra must match algebra.")
 
-        values = np.asarray(self.values)
-        object.__setattr__(self, "values", values)
+        if (values is None) == (storage is None):
+            raise ValueError("Provide exactly one of values or storage.")
 
-        if values.ndim == 0:
-            raise ValueError("values must have at least one dimension.")
+        if storage is None:
+            assert values is not None
+            active_storage: MVStorage = DenseStorage.from_array(values)
+        else:
+            active_storage = storage
 
+        object.__setattr__(self, "storage", active_storage)
         expected = self.layout.size
-        if values.shape[-1] != expected:
+        if self.storage.width != expected:
             raise ValueError(
-                f"Last axis of values must match layout size {expected}, got {values.shape[-1]}."
+                f"Last axis of values must match layout size {expected}, got {self.storage.width}."
             )
 
     @property
     def batch_shape(self) -> tuple[int, ...]:
-        return self.values.shape[:-1]
+        return self.storage.batch_shape
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return self.values.dtype
+        return self.storage.dtype
+
+    @property
+    def values(self) -> NDArray[Any]:
+        return self.storage.as_dense()
+
+    @property
+    def storage_kind(self) -> str:
+        return self.storage.kind
 
     @property
     def grades(self) -> tuple[int, ...]:
@@ -56,8 +78,11 @@ class MVArray:
         batch_shape: tuple[int, ...] = (),
         dtype: np.dtype[Any] | type[np.float64] = np.float64,
     ) -> MVArray:
-        values = np.zeros(batch_shape + (layout.size,), dtype=dtype)
-        return cls(algebra=algebra, layout=layout, values=values)
+        return cls(
+            algebra=algebra,
+            layout=layout,
+            storage=DenseStorage.zeros(layout.size, batch_shape=batch_shape, dtype=dtype),
+        )
 
     @classmethod
     def from_array(
@@ -66,10 +91,10 @@ class MVArray:
         layout: MVLayout,
         values: ArrayLike,
     ) -> MVArray:
-        return cls(algebra=algebra, layout=layout, values=np.asarray(values))
+        return cls(algebra=algebra, layout=layout, storage=DenseStorage.from_array(values))
 
     def copy(self) -> MVArray:
-        return MVArray(algebra=self.algebra, layout=self.layout, values=self.values.copy())
+        return MVArray(algebra=self.algebra, layout=self.layout, storage=self.storage.copy())
 
     def to_layout(self, layout: MVLayout) -> MVArray:
         if layout.algebra != self.algebra:
