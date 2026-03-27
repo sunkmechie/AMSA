@@ -153,6 +153,14 @@ def vga(dimension: int) -> AlgebraSpec:
     return AlgebraSpec.from_pqr(dimension, 0, 0)
 
 
+def vga2d() -> AlgebraSpec:
+    return vga(2)
+
+
+def vga3d() -> AlgebraSpec:
+    return vga(3)
+
+
 def pga2d() -> AlgebraSpec:
     return AlgebraSpec(signature=(0, 1, 1), start_index=0)
 

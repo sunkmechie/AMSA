@@ -43,6 +43,10 @@ class MVArray:
     def dtype(self) -> np.dtype[Any]:
         return self.values.dtype
 
+    @property
+    def grades(self) -> tuple[int, ...]:
+        return self.layout.grades
+
     @classmethod
     def zeros(
         cls,
@@ -94,13 +98,9 @@ class MVArray:
         return self.values.dtype.type(0)
 
     def grade(self, *grades: int) -> MVArray:
-        if len(grades) == 1 and isinstance(grades[0], tuple):
-            grades = grades[0]
-        selected = tuple(
-            blade for blade in self.layout.blades if blade.bit_count() in set(grades)
-        )
-        layout = MVLayout.sparse_pattern(self.algebra, selected, name="grade-select")
-        return self.to_layout(layout)
+        from amsa.ops import project_grades
+
+        return project_grades(self, *grades)
 
     def reverse(self) -> MVArray:
         from amsa.ops import reverse
@@ -117,24 +117,57 @@ class MVArray:
 
         return conjugate(self)
 
+    def outer(self, other: MVArray) -> MVArray:
+        from amsa.ops import outer_product
+
+        return outer_product(self, other)
+
+    def inner(self, other: MVArray) -> MVArray:
+        from amsa.ops import inner_product
+
+        return inner_product(self, other)
+
     def __neg__(self) -> MVArray:
         from amsa.ops import neg
 
         return neg(self)
 
     def __add__(self, other: MVArray) -> MVArray:
-        if not isinstance(other, MVArray):
-            return NotImplemented
         from amsa.ops import add
 
-        return add(self, other)
+        try:
+            return add(self, other)
+        except TypeError:
+            return NotImplemented
+
+    def __radd__(self, other: Number) -> MVArray:
+        from amsa.ops import add
+
+        try:
+            return add(self, other)
+        except TypeError:
+            return NotImplemented
 
     def __sub__(self, other: MVArray) -> MVArray:
-        if not isinstance(other, MVArray):
-            return NotImplemented
         from amsa.ops import sub
 
-        return sub(self, other)
+        try:
+            return sub(self, other)
+        except TypeError:
+            return NotImplemented
+
+    def __rsub__(self, other: Number) -> MVArray:
+        from amsa.ops import sub
+
+        if isinstance(other, Number):
+            scalar_layout = MVLayout.grade(self.algebra, 0)
+            scalar = MVArray(
+                algebra=self.algebra,
+                layout=scalar_layout,
+                values=np.asarray([other], dtype=np.result_type(self.dtype, other)),
+            )
+            return sub(scalar, self)
+        return NotImplemented
 
     def __mul__(self, other: MVArray | Number) -> MVArray:
         if isinstance(other, MVArray):
@@ -149,3 +182,19 @@ class MVArray:
         if isinstance(other, Number):
             return MVArray(algebra=self.algebra, layout=self.layout, values=other * self.values)
         return NotImplemented
+
+    def __xor__(self, other: MVArray) -> MVArray:
+        from amsa.ops import outer_product
+
+        try:
+            return outer_product(self, other)
+        except TypeError:
+            return NotImplemented
+
+    def __or__(self, other: MVArray) -> MVArray:
+        from amsa.ops import inner_product
+
+        try:
+            return inner_product(self, other)
+        except TypeError:
+            return NotImplemented
