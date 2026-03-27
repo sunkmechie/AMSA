@@ -1,0 +1,274 @@
+# AMSA Prerelease Snapshot
+
+## Status
+
+AMSA is currently in a prerelease stage.
+
+The project now has:
+
+- a portable algebra core based on bit-pattern blade identifiers
+- dense, grade-packed, and sparse(false) layout descriptors
+- a reference multivector array type
+- cached operator plans for binary products
+- a first reference backend split between planning and execution
+- a tested public API for the current reference semantics
+
+Current verification status:
+
+- `uv run pytest` passes
+- the test suite currently covers layout behavior, algebra presets, product planning, geometric product equivalence, outer product, inner product, and the current convenience constructors
+
+## Project Intent
+
+AMSA is meant to become a high-performance geometric algebra library for robotics, engineering, and scientific computation.
+
+The immediate direction is:
+
+- keep algebra semantics separate from storage and execution
+- treat layout-sensitive specialization as a core design choice
+- make sparse support-pattern reasoning a first-class concept
+- keep the Python/NumPy path as the reference backend
+- prepare for future optimized backends without changing algebra semantics
+
+
+## Current Architecture
+
+The codebase is currently organized around these roles:
+
+- `amsa.specs`: algebra signatures, blade naming, grade helpers, preset specs
+- `amsa.layouts`: layout descriptors for coefficient ordering and support
+- `amsa.mv`: array-backed multivectors tied to an algebra and layout
+- `amsa.plans`: immutable cached product plans for binary operators
+- `amsa.reference`: reference execution of precomputed plans
+- `amsa.ops`: public operator layer for arithmetic and involutions
+- `amsa.algebra`: user-facing constructors and convenience helpers
+
+Binary products now use a two-phase reference path:
+
+1. Build or fetch a cached `OpPlan` keyed by algebra plus the exact blade tuples of the input layouts.
+2. Execute that plan against broadcasted coefficient arrays.
+
+This is the current boundary between the pure reference backend and future optimized backend work.
+
+## Public API
+
+The top-level package currently exports:
+
+- `Algebra`
+- `AlgebraSpec`
+- `MVArray`
+- `MVLayout`
+- `add`
+- `sub`
+- `neg`
+- `geometric_product`
+- `outer_product`
+- `inner_product`
+- `reverse`
+- `involute`
+- `conjugate`
+- `project_grades`
+- `grade_of_blade`
+- `vga`
+- `vga2d`
+- `vga3d`
+- `pga2d`
+- `pga3d`
+
+## Algebra Specs
+
+`AlgebraSpec` currently provides:
+
+- signature validation
+- `dimension`
+- `blade_count`
+- `p`, `q`, `r`
+- `grades()`
+- `blade_name(blade)`
+- `blade_names()`
+- `blade_from_key(key)`
+- `blades_of_grade(grade)`
+- `grades_of_blades()`
+- `pseudoscalar_blade`
+- `blade_product(lhs, rhs)`
+- `from_pqr(...)`
+
+Preset spec constructors currently available:
+
+- `vga(dimension)`
+- `vga2d()`
+- `vga3d()`
+- `pga2d()`
+- `pga3d()`
+
+## Layouts
+
+`MVLayout` currently supports:
+
+- `MVLayout.dense(algebra)`
+- `MVLayout.grade(algebra, *grades)`
+- `MVLayout.sparse_pattern(algebra, blades, name=...)`
+
+Layout metadata currently available:
+
+- `blades`
+- `kind`
+- `name`
+- `size`
+- `grades`
+- `blade_names()`
+- `index_of(blade)`
+- `contains(blade)`
+
+## Algebra Handle
+
+`Algebra` is the main user-facing entry point and currently provides:
+
+- preset constructors:
+  - `Algebra.vga2d()`
+  - `Algebra.vga3d()`
+  - `Algebra.pga2d()`
+  - `Algebra.pga3d()`
+  - `Algebra.from_name(name)`
+- layout helpers:
+  - `dense_layout()`
+  - `grade_layout(*grades)`
+  - `even_layout()`
+  - `odd_layout()`
+  - `sparse_layout(blades, name=...)`
+- constructors:
+  - `zeros(...)`
+  - `blade(key, value=1.0)`
+  - `multivector(data, layout=None)`
+  - `scalar(value=0.0)`
+  - `kvector(grade, values)`
+  - `vector(values)`
+  - `bivector(values)`
+  - `trivector(values)`
+  - `even(values)`
+  - `odd(values)`
+  - `pseudoscalar(value=0.0)`
+- operator helpers:
+  - `gp(lhs, rhs)`
+  - `outer(lhs, rhs)`
+  - `inner(lhs, rhs)`
+  - `add(lhs, rhs)`
+  - `sub(lhs, rhs)`
+
+`Algebra.from_name(...)` currently recognizes:
+
+- `vga2d`
+- `vga3d`
+- `pga2d`
+- `2dpga`
+- `pga3d`
+- `3dpga`
+
+## Multivectors
+
+`MVArray` currently provides:
+
+- storage metadata:
+  - `algebra`
+  - `layout`
+  - `values`
+  - `batch_shape`
+  - `dtype`
+  - `grades`
+- constructors:
+  - `MVArray.zeros(...)`
+  - `MVArray.from_array(...)`
+- layout and inspection helpers:
+  - `copy()`
+  - `to_layout(layout)`
+  - `as_dense()`
+  - `component(key)`
+  - `grade(*grades)`
+- unary operations:
+  - `reverse()`
+  - `involute()`
+  - `conjugate()`
+  - unary negation via `-mv`
+- binary operations:
+  - `mv + other`
+  - `mv - other`
+  - `mv * other`
+  - `mv ^ other`
+  - `mv | other`
+  - scalar multiplication via `scalar * mv` and `mv * scalar`
+- named methods:
+  - `outer(other)`
+  - `inner(other)`
+
+## Exact Operations Available Today
+
+These are the exact algebraic operations currently implemented in the reference backend:
+
+### Binary multivector operations
+
+- addition
+- subtraction
+- geometric product
+- outer product
+- inner product
+
+### Unary multivector operations
+
+- negation
+- reverse
+- involute
+- conjugate
+
+### Scalar interactions
+
+- multivector-scalar addition
+- scalar-multivector addition
+- multivector-scalar subtraction
+- scalar-multivector subtraction
+- left scalar multiplication
+- right scalar multiplication
+
+### Projection and storage operations
+
+- projection into a target layout via `to_layout(...)`
+- dense conversion via `as_dense()`
+- grade selection via `grade(...)` and `project_grades(...)`
+- component lookup by blade id or blade name
+
+## Operator Semantics
+
+The current binary product semantics are:
+
+- geometric product:
+  - includes every nonzero blade-pair contribution produced by `blade_product`
+- outer product:
+  - includes only terms whose output grade equals the sum of the input grades
+- inner product:
+  - includes only terms whose output grade equals the absolute difference of the input grades
+
+All three products:
+
+- respect the algebra metric, including degenerate signatures
+- preserve sparse support when possible
+- return dense output only when the implied support spans the full algebra basis
+- broadcast over batch dimensions using NumPy broadcasting rules
+
+## Current Limitations
+
+The following are not implemented yet:
+
+- left contraction
+- right contraction
+- scalar product as a separate operator
+- regressive product
+- dual / undual helpers
+- inverse / division
+- sandwich operators
+- normalization helpers
+- symbolic backends
+- JAX, Triton, or PyTorch execution paths
+- backend auto-selection beyond the reference backend
+
+## Examples Folder
+
+The `/examples` directory exists but is left empty for now.

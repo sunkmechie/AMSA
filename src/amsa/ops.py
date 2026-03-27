@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from numbers import Number
 from typing import Any
 
 import numpy as np
 
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
+from amsa.plans import OpKind, plan_binary_product
+from amsa.reference import execute_binary_plan
+from amsa.specs import grade_of_blade
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -14,32 +18,43 @@ def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
         raise ValueError("Multivectors belong to different algebras.")
 
 
+def _coerce_operand(reference: MVArray, operand: MVArray | Number) -> MVArray:
+    if isinstance(operand, MVArray):
+        ensure_compatible(reference, operand)
+        return operand
+    if isinstance(operand, Number):
+        scalar_layout = MVLayout.grade(reference.algebra, 0)
+        values = np.asarray([operand], dtype=np.result_type(reference.dtype, operand))
+        return MVArray(algebra=reference.algebra, layout=scalar_layout, values=values)
+    raise TypeError(f"Unsupported operand type: {type(operand)!r}")
+
+
 def neg(mv: MVArray) -> MVArray:
     return MVArray(algebra=mv.algebra, layout=mv.layout, values=-mv.values)
 
 
-def _union_layout(lhs: MVArray, rhs: MVArray) -> MVLayout:
-    ensure_compatible(lhs, rhs)
-    if lhs.layout == rhs.layout:
-        return lhs.layout
+def _union_layout(lhs: MVArray, rhs: MVArray | Number) -> tuple[MVArray, MVLayout]:
+    rhs_mv = _coerce_operand(lhs, rhs)
+    if lhs.layout == rhs_mv.layout:
+        return rhs_mv, lhs.layout
 
-    blades = tuple(sorted(set(lhs.layout.blades) | set(rhs.layout.blades)))
+    blades = tuple(sorted(set(lhs.layout.blades) | set(rhs_mv.layout.blades)))
     if len(blades) == lhs.algebra.blade_count:
-        return MVLayout.dense(lhs.algebra)
-    return MVLayout.sparse_pattern(lhs.algebra, blades, name="union")
+        return rhs_mv, MVLayout.dense(lhs.algebra)
+    return rhs_mv, MVLayout.sparse_pattern(lhs.algebra, blades, name="union")
 
 
-def add(lhs: MVArray, rhs: MVArray) -> MVArray:
-    layout = _union_layout(lhs, rhs)
+def add(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
+    rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
-    rhs_projected = rhs.to_layout(layout)
+    rhs_projected = rhs_mv.to_layout(layout)
     return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_projected.values + rhs_projected.values)
 
 
-def sub(lhs: MVArray, rhs: MVArray) -> MVArray:
-    layout = _union_layout(lhs, rhs)
+def sub(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
+    rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
-    rhs_projected = rhs.to_layout(layout)
+    rhs_projected = rhs_mv.to_layout(layout)
     return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_projected.values - rhs_projected.values)
 
 
@@ -60,37 +75,38 @@ def conjugate(mv: MVArray) -> MVArray:
     return reverse(involute(mv))
 
 
-def geometric_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:
     ensure_compatible(lhs, rhs)
-    batch_shape = np.broadcast_shapes(lhs.batch_shape, rhs.batch_shape)
-    lhs_values = np.broadcast_to(lhs.values, batch_shape + (lhs.layout.size,))
-    rhs_values = np.broadcast_to(rhs.values, batch_shape + (rhs.layout.size,))
+    plan = plan_binary_product(lhs.layout, rhs.layout, kind)
+    return execute_binary_plan(lhs, rhs, plan)
 
-    support: set[int] = set()
-    accumulators: dict[int, np.ndarray[Any, Any]] = {}
-    dtype = np.result_type(lhs.values.dtype, rhs.values.dtype)
-    zero = np.zeros(batch_shape, dtype=dtype)
 
-    for lhs_index, lhs_blade in enumerate(lhs.layout.blades):
-        lhs_component = lhs_values[..., lhs_index]
-        for rhs_index, rhs_blade in enumerate(rhs.layout.blades):
-            coefficient, out_blade = lhs.algebra.blade_product(lhs_blade, rhs_blade)
-            if coefficient == 0:
-                continue
-            support.add(out_blade)
-            contribution = coefficient * lhs_component * rhs_values[..., rhs_index]
-            if out_blade in accumulators:
-                accumulators[out_blade] = accumulators[out_blade] + contribution
-            else:
-                accumulators[out_blade] = zero + contribution
+def geometric_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "geometric")
 
-    blades = tuple(sorted(support))
-    if len(blades) == lhs.algebra.blade_count:
-        layout = MVLayout.dense(lhs.algebra)
+
+def outer_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "outer")
+
+
+def inner_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "inner")
+
+
+def project_grades(mv: MVArray, *grades: int) -> MVArray:
+    normalized = grades[0] if len(grades) == 1 and isinstance(grades[0], tuple) else grades
+    if not normalized:
+        raise ValueError("At least one grade must be selected.")
+
+    grade_set = set(normalized)
+    for grade in grade_set:
+        if grade < 0 or grade > mv.algebra.dimension:
+            raise ValueError(f"Grade must be between 0 and {mv.algebra.dimension}.")
+
+    blades = tuple(blade for blade in mv.layout.blades if grade_of_blade(blade) in grade_set)
+    if blades == tuple(range(mv.algebra.blade_count)):
+        layout = MVLayout.dense(mv.algebra)
     else:
-        layout = MVLayout.sparse_pattern(lhs.algebra, blades, name="gp")
-
-    result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
-    for out_index, blade in enumerate(layout.blades):
-        result[..., out_index] = accumulators[blade]
-    return MVArray(algebra=lhs.algebra, layout=layout, values=result)
+        name = "grade[" + ",".join(str(grade) for grade in sorted(grade_set)) + "]"
+        layout = MVLayout.sparse_pattern(mv.algebra, blades, name=name)
+    return mv.to_layout(layout)

@@ -8,7 +8,11 @@ import numpy as np
 
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
-from amsa.specs import AlgebraSpec
+from amsa.ops import add as add_op
+from amsa.ops import inner_product as inner_op
+from amsa.ops import outer_product as outer_op
+from amsa.ops import sub as sub_op
+from amsa.specs import AlgebraSpec, pga2d as pga2d_spec, pga3d as pga3d_spec, vga2d as vga2d_spec, vga3d as vga3d_spec
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +20,39 @@ class Algebra:
     """User-facing algebra handle for the initial scaffold."""
 
     spec: AlgebraSpec
+
+    @classmethod
+    def vga2d(cls) -> Algebra:
+        return cls(vga2d_spec())
+
+    @classmethod
+    def vga3d(cls) -> Algebra:
+        return cls(vga3d_spec())
+
+    @classmethod
+    def pga2d(cls) -> Algebra:
+        return cls(pga2d_spec())
+
+    @classmethod
+    def pga3d(cls) -> Algebra:
+        return cls(pga3d_spec())
+
+    @classmethod
+    def from_name(cls, name: str) -> Algebra:
+        normalized = "".join(char for char in name.casefold() if char.isalnum())
+        presets = {
+            "vga2d": vga2d_spec,
+            "vga3d": vga3d_spec,
+            "pga2d": pga2d_spec,
+            "2dpga": pga2d_spec,
+            "pga3d": pga3d_spec,
+            "3dpga": pga3d_spec,
+        }
+        try:
+            return cls(presets[normalized]())
+        except KeyError as exc:
+            supported = ", ".join(sorted(presets))
+            raise ValueError(f"Unknown algebra preset {name!r}. Supported presets: {supported}.") from exc
 
     @property
     def dimension(self) -> int:
@@ -30,6 +67,12 @@ class Algebra:
 
     def grade_layout(self, *grades: int) -> MVLayout:
         return MVLayout.grade(self.spec, *grades)
+
+    def even_layout(self) -> MVLayout:
+        return self.grade_layout(*range(0, self.dimension + 1, 2))
+
+    def odd_layout(self) -> MVLayout:
+        return self.grade_layout(*range(1, self.dimension + 1, 2))
 
     def sparse_layout(self, blades: tuple[int, ...], *, name: str = "sparse") -> MVLayout:
         return MVLayout.sparse_pattern(self.spec, blades, name=name)
@@ -97,14 +140,40 @@ class Algebra:
     def scalar(self, value: Any = 0.0) -> MVArray:
         return self.multivector([value], layout=self.grade_layout(0))
 
+    def kvector(self, grade: int, values: Any) -> MVArray:
+        return self.multivector(values, layout=self.grade_layout(grade))
+
     def vector(self, values: Any) -> MVArray:
-        return self.multivector(values, layout=self.grade_layout(1))
+        return self.kvector(1, values)
 
     def bivector(self, values: Any) -> MVArray:
-        return self.multivector(values, layout=self.grade_layout(2))
+        return self.kvector(2, values)
+
+    def trivector(self, values: Any) -> MVArray:
+        return self.kvector(3, values)
+
+    def even(self, values: Any) -> MVArray:
+        return self.multivector(values, layout=self.even_layout())
+
+    def odd(self, values: Any) -> MVArray:
+        return self.multivector(values, layout=self.odd_layout())
 
     def pseudoscalar(self, value: Any = 0.0) -> MVArray:
         return self.multivector([value], layout=self.grade_layout(self.dimension))
 
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs
+
+    def outer(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return outer_op(lhs, rhs)
+
+    def inner(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return inner_op(lhs, rhs)
+
+    def add(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
+        left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
+        return add_op(left, rhs)
+
+    def sub(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
+        left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
+        return sub_op(left, rhs)

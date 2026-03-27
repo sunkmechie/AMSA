@@ -2,7 +2,8 @@ import numpy as np
 import pytest
 
 from amsa import Algebra, MVArray, MVLayout, pga2d, vga
-from tests._utils import assert_allclose
+
+from ._utils import assert_allclose
 
 
 def test_dense_layout_covers_full_basis() -> None:
@@ -88,11 +89,44 @@ def test_addition_unions_sparse_support() -> None:
     assert z.component("e2") == 2.0
 
 
+def test_addition_and_subtraction_support_scalars() -> None:
+    algebra = Algebra(vga(2))
+    x = algebra.multivector({"e1": 1.0})
+
+    z = x + 2.0
+    assert z.component("e") == 2.0
+    assert z.component("e1") == 1.0
+
+    z = 3.0 + x
+    assert z.component("e") == 3.0
+    assert z.component("e1") == 1.0
+
+    z = x - 2.0
+    assert z.component("e") == -2.0
+    assert z.component("e1") == 1.0
+
+    z = 2.0 - x
+    assert z.component("e") == 2.0
+    assert z.component("e1") == -1.0
+
+
 def test_batch_mapping_values_are_broadcast() -> None:
     algebra = Algebra(vga(2))
     mv = algebra.multivector({"e1": np.array([1.0, 2.0]), "e2": 3.0})
     assert mv.batch_shape == (2,)
     assert_allclose(mv.component("e2"), np.array([3.0, 3.0]))
+
+
+def test_algebra_add_and_sub_helpers_delegate_to_operator_layer() -> None:
+    algebra = Algebra(vga(2))
+    lhs = algebra.multivector({"e1": 1.0})
+    rhs = algebra.multivector({"e2": 2.0})
+    added = algebra.add(lhs, rhs)
+    subtracted = algebra.sub(lhs, rhs)
+    assert added.component("e1") == 1.0
+    assert added.component("e2") == 2.0
+    assert subtracted.component("e1") == 1.0
+    assert subtracted.component("e2") == -2.0
 
 
 def test_reverse_and_involute_sign_rules() -> None:
