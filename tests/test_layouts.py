@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from amsa import Algebra, MVArray, MVLayout, pga2d, vga
-from amsa.storage import CSRStorage, DenseStorage
+from amsa.storage import CSRStorage, DenseStorage, to_csr_storage, to_dense_storage
 
 from ._utils import assert_allclose
 
@@ -111,6 +111,24 @@ def test_csr_storage_copy_detaches_underlying_arrays() -> None:
     assert not np.shares_memory(copied.indptr, storage.indptr)
 
 
+def test_dense_and_csr_storage_round_trip_preserves_coefficients() -> None:
+    dense = DenseStorage.from_array(
+        np.array(
+            [
+                [[1.0, 0.0, -2.0], [0.0, 0.0, 0.0]],
+                [[3.5, 0.0, 0.0], [0.0, 4.0, 5.0]],
+            ]
+        )
+    )
+
+    csr = to_csr_storage(dense)
+    restored = to_dense_storage(csr)
+
+    assert csr.kind == "csr"
+    assert csr.batch_shape == (2, 2)
+    np.testing.assert_array_equal(restored.array, dense.array)
+
+
 def test_csr_storage_validates_flattened_row_count() -> None:
     with pytest.raises(ValueError, match="row_count"):
         CSRStorage(
@@ -148,6 +166,103 @@ def test_mvarray_accepts_csr_storage_object() -> None:
 
     assert mv.storage_kind == "csr"
     np.testing.assert_array_equal(mv.values, np.array([2.0, -3.0]))
+
+
+def test_csr_to_layout_preserves_csr_backend() -> None:
+    spec = vga(2)
+    source_layout = MVLayout.sparse_pattern(spec, (1, 3), name="support")
+    storage = CSRStorage(
+        np.array([2.0, -3.0, 4.0]),
+        np.array([0, 1, 0]),
+        np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=source_layout.size,
+    )
+    mv = MVArray(algebra=spec, layout=source_layout, storage=storage)
+
+    projected = mv.to_layout(MVLayout.dense(spec))
+
+    assert projected.storage_kind == "csr"
+    np.testing.assert_array_equal(
+        projected.values,
+        np.array([[0.0, 2.0, 0.0, -3.0], [0.0, 4.0, 0.0, 0.0]]),
+    )
+
+
+def test_as_dense_converts_dense_layout_csr_storage_to_dense_storage() -> None:
+    spec = vga(2)
+    dense_layout = MVLayout.dense(spec)
+    storage = CSRStorage(
+        np.array([1.5, -2.0]),
+        np.array([1, 3]),
+        np.array([0, 2]),
+        batch_shape=(),
+        width=dense_layout.size,
+    )
+    mv = MVArray(algebra=spec, layout=dense_layout, storage=storage)
+
+    dense = mv.as_dense()
+
+    assert dense.storage_kind == "dense"
+    np.testing.assert_array_equal(dense.values, np.array([0.0, 1.5, 0.0, -2.0]))
+
+
+def test_csr_component_and_grade_selection_work_without_breakage() -> None:
+    spec = vga(2)
+    layout = MVLayout.sparse_pattern(spec, (1, 3), name="support")
+    storage = CSRStorage(
+        np.array([2.0, -3.0, 4.0]),
+        np.array([0, 1, 0]),
+        np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=layout.size,
+    )
+    mv = MVArray(algebra=spec, layout=layout, storage=storage)
+
+    graded = mv.grade(2)
+
+    assert_allclose(mv.component("e1"), np.array([2.0, 4.0]))
+    assert_allclose(mv.component("e2"), np.array([0.0, 0.0]))
+    assert graded.storage_kind == "csr"
+    assert graded.layout.blades == (3,)
+    assert_allclose(graded.values, np.array([[-3.0], [0.0]]))
+
+
+def test_scalar_multiplication_preserves_csr_storage_and_canonical_zero() -> None:
+    spec = vga(2)
+    layout = MVLayout.sparse_pattern(spec, (1, 3), name="support")
+    storage = CSRStorage(
+        np.array([2.0, -3.0]),
+        np.array([0, 1]),
+        np.array([0, 2]),
+        batch_shape=(),
+        width=layout.size,
+    )
+    mv = MVArray(algebra=spec, layout=layout, storage=storage)
+
+    scaled = -2 * mv
+    zeroed = mv * 0
+
+    assert scaled.storage_kind == "csr"
+    np.testing.assert_array_equal(scaled.values, np.array([-4.0, 6.0]))
+    assert zeroed.storage_kind == "csr"
+    assert isinstance(zeroed.storage, CSRStorage)
+    assert zeroed.storage.data.size == 0
+    np.testing.assert_array_equal(zeroed.values, np.array([0.0, 0.0]))
+
+
+def test_exact_zero_csr_multivector_handles_empty_sparse_layout() -> None:
+    spec = vga(2)
+    layout = MVLayout.sparse_pattern(spec, ())
+    mv = MVArray(algebra=spec, layout=layout, storage=CSRStorage.zeros(width=0, batch_shape=(2,)))
+
+    projected = mv.to_layout(MVLayout.dense(spec))
+    dense = mv.as_dense()
+
+    assert projected.storage_kind == "csr"
+    np.testing.assert_array_equal(projected.values, np.zeros((2, 4)))
+    assert dense.storage_kind == "dense"
+    np.testing.assert_array_equal(dense.values, np.zeros((2, 4)))
 
 
 def test_mvarray_requires_exactly_one_storage_source() -> None:

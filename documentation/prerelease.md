@@ -8,6 +8,7 @@ The project now has:
 
 - a portable algebra core based on bit-pattern blade identifiers
 - dense, grade-packed, and sparse layout descriptors
+- dense and CSR storage backends behind a shared storage contract
 - a reference multivector array type
 - cached operator plans for binary products
 - a first reference backend split between planning and execution
@@ -37,7 +38,8 @@ The codebase is currently organized around these roles:
 
 - `amsa.specs`: algebra signatures, blade naming, grade helpers, preset specs
 - `amsa.layouts`: layout descriptors for coefficient ordering and support
-- `amsa.mv`: array-backed multivectors tied to an algebra and layout
+- `amsa.storage`: storage protocol plus dense and CSR coefficient backends
+- `amsa.mv`: storage-backed multivectors tied to an algebra and layout
 - `amsa.plans`: immutable cached product plans for binary operators
 - `amsa.reference`: reference execution of precomputed plans
 - `amsa.ops`: public operator layer for arithmetic and involutions
@@ -120,6 +122,24 @@ Layout metadata currently available:
 - `index_of(blade)`
 - `contains(blade)`
 
+## Storage
+
+`amsa.storage` separates coefficient storage from layouts.
+
+`MVStorage` is a typing `Protocol`, not a partially implemented base class. The `...` method bodies in
+that protocol are interface signatures only; the concrete behavior lives in storage backends such as
+`DenseStorage` and `CSRStorage`.
+
+Storage backends currently available:
+
+- `DenseStorage`
+- `CSRStorage`
+
+Storage conversion helpers currently available:
+
+- `to_dense_storage(storage)`
+- `to_csr_storage(storage)`
+
 ## Algebra Handle
 
 `Algebra` is the main user-facing entry point and currently provides:
@@ -164,6 +184,17 @@ Layout metadata currently available:
 - `pga3d`
 - `3dpga`
 
+## Naming Notes
+
+AMSA currently uses three related names on purpose:
+
+- `multivector`: the full mathematical and user-facing term
+- `mv`: local shorthand used in code for an `MVArray` value or parameter
+- `kvector`: a multivector restricted to a single grade
+
+So `Algebra.multivector(...)` is the general constructor, while `kvector(...)`, `vector(...)`,
+`bivector(...)`, and `trivector(...)` are more specific helpers layered on top of it.
+
 ## Multivectors
 
 `MVArray` currently provides:
@@ -171,6 +202,7 @@ Layout metadata currently available:
 - storage metadata:
   - `algebra`
   - `layout`
+  - `storage_kind`
   - `values`
   - `batch_shape`
   - `dtype`
@@ -232,6 +264,7 @@ These are the exact algebraic operations currently implemented in the reference 
 
 - projection into a target layout via `to_layout(...)`
 - dense conversion via `as_dense()`
+- dense/CSR storage conversion via `amsa.storage.to_dense_storage(...)` and `amsa.storage.to_csr_storage(...)`
 - grade selection via `grade(...)` and `project_grades(...)`
 - component lookup by blade id or blade name
 

@@ -9,7 +9,14 @@ from numpy.typing import ArrayLike, NDArray
 
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec
-from amsa.storage import DenseStorage, MVStorage
+from amsa.storage import (
+    DenseStorage,
+    MVStorage,
+    project_storage,
+    scale_storage,
+    storage_component,
+    to_dense_storage,
+)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -102,25 +109,34 @@ class MVArray:
         if layout == self.layout:
             return self.copy()
 
-        result = np.zeros(self.batch_shape + (layout.size,), dtype=self.dtype)
         source_index = {blade: idx for idx, blade in enumerate(self.layout.blades)}
-        for out_idx, blade in enumerate(layout.blades):
-            in_idx = source_index.get(blade)
-            if in_idx is not None:
-                result[..., out_idx] = self.values[..., in_idx]
-        return MVArray(algebra=self.algebra, layout=layout, values=result)
+        columns = tuple(source_index.get(blade) for blade in layout.blades)
+        return MVArray(
+            algebra=self.algebra,
+            layout=layout,
+            storage=project_storage(self.storage, columns),
+        )
 
     def as_dense(self) -> MVArray:
-        return self.to_layout(MVLayout.dense(self.algebra))
+        dense_layout = MVLayout.dense(self.algebra)
+        projected = self if self.layout == dense_layout else self.to_layout(dense_layout)
+        return MVArray(
+            algebra=self.algebra,
+            layout=dense_layout,
+            storage=to_dense_storage(projected.storage),
+        )
 
     def component(self, key: int | str) -> Any:
         blade = self.algebra.blade_from_key(key)
         for index, candidate in enumerate(self.layout.blades):
             if candidate == blade:
-                return self.values[..., index]
+                component = storage_component(self.storage, index)
+                if self.batch_shape:
+                    return component
+                return component[()]
         if self.batch_shape:
             return np.zeros(self.batch_shape, dtype=self.dtype)
-        return self.values.dtype.type(0)
+        return self.dtype.type(0)
 
     def grade(self, *grades: int) -> MVArray:
         from amsa.ops import project_grades
@@ -201,12 +217,20 @@ class MVArray:
 
             return geometric_product(self, other)
         if isinstance(other, Number):
-            return MVArray(algebra=self.algebra, layout=self.layout, values=self.values * other)
+            return MVArray(
+                algebra=self.algebra,
+                layout=self.layout,
+                storage=scale_storage(self.storage, other),
+            )
         return NotImplemented
 
     def __rmul__(self, other: Number) -> MVArray:
         if isinstance(other, Number):
-            return MVArray(algebra=self.algebra, layout=self.layout, values=other * self.values)
+            return MVArray(
+                algebra=self.algebra,
+                layout=self.layout,
+                storage=scale_storage(self.storage, other),
+            )
         return NotImplemented
 
     def __xor__(self, other: MVArray) -> MVArray:
