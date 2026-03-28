@@ -2,7 +2,7 @@
 
 AMSA is a Clifford algebra library focused on high-performance numerical computation for robotics, engineering, and science.
 
-AMSA is inspired by Kingdon and Look-Ma-No-Matrices, it is still under active development and doesn't have stable implementation yet.
+AMSA is inspired by Kingdon and Look-Ma-No-Matrices, it is still under active development and doesn't have a stable implementation yet.
 
 ## Package Layout
 
