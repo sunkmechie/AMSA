@@ -11,3 +11,4 @@ dist/
 benchmarks/.results/
 benchmarks/results/
 plan.md
+.codex

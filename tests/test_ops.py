@@ -1,9 +1,21 @@
 import numpy as np
 import pytest
 
-from amsa import Algebra, MVLayout, geometric_product, inner_product, outer_product, pga2d, vga2d, vga3d
+from amsa import (
+    Algebra,
+    MVLayout,
+    geometric_product,
+    inner_product,
+    outer_product,
+    pga2d,
+    vga2d,
+    vga3d,
+)
+from amsa.mv import MVArray
 from amsa.plans import plan_binary_product
 from amsa.specs import grade_of_blade
+from amsa.storage import CSRStorage
+
 from ._utils import assert_mv_allclose
 
 
@@ -13,7 +25,9 @@ def _keep_term(kind: str, lhs_blade: int, rhs_blade: int, out_blade: int) -> boo
     if kind == "outer":
         return grade_of_blade(out_blade) == grade_of_blade(lhs_blade) + grade_of_blade(rhs_blade)
     if kind == "inner":
-        return grade_of_blade(out_blade) == abs(grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade))
+        return grade_of_blade(out_blade) == abs(
+            grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade)
+        )
     raise ValueError(f"Unsupported operator kind: {kind}")
 
 
@@ -44,7 +58,10 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
                 accumulators[out_blade] = zero + contribution
 
     blades = tuple(sorted(support))
-    layout = MVLayout.dense(lhs.algebra) if len(blades) == lhs.algebra.blade_count else MVLayout.sparse_pattern(lhs.algebra, blades, name=kind)
+    if len(blades) == lhs.algebra.blade_count:
+        layout = MVLayout.dense(lhs.algebra)
+    else:
+        layout = MVLayout.sparse_pattern(lhs.algebra, blades, name=kind)
     result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
     for index, blade in enumerate(layout.blades):
         result[..., index] = accumulators[blade]
@@ -135,3 +152,81 @@ def test_named_presets_and_grade_helpers_cover_common_robotics_shapes() -> None:
     assert rotor.layout.size == 4
     assert trivector.component("e123") == 2.0
     assert projected.layout.blades == (1, 7)
+
+
+def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    algebra = Algebra.vga2d()
+    layout = MVLayout.sparse_pattern(algebra.spec, (1, 2, 3), name="support")
+
+    lhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([1.0, 2.0, -3.0]),
+            np.array([0, 2, 1]),
+            np.array([0, 2, 3]),
+            batch_shape=(2,),
+            width=layout.size,
+        ),
+    )
+    rhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([4.0, -5.0, 6.0]),
+            np.array([1, 2, 0]),
+            np.array([0, 2, 3]),
+            batch_shape=(2,),
+            width=layout.size,
+        ),
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("binary execution should not densify CSR inputs via as_dense()")
+
+    expected = _naive_binary_product(lhs.copy(), rhs.copy(), kind="geometric")
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    actual = geometric_product(lhs, rhs)
+
+    assert actual.storage_kind == "dense"
+    assert_mv_allclose(actual, expected)
+
+
+@pytest.mark.parametrize(
+    ("kind", "operation"),
+    [
+        ("geometric", geometric_product),
+        ("outer", outer_product),
+        ("inner", inner_product),
+    ],
+)
+def test_mixed_dense_and_csr_products_match_dense_reference(kind, operation) -> None:
+    algebra = Algebra.vga3d()
+    lhs = algebra.multivector({"e1": np.array([1.0, -2.0]), "e23": 3.0}, backend="dense")
+    rhs = algebra.multivector({"e": 2.0, "e2": np.array([0.5, 1.5]), "e123": -4.0}, backend="csr")
+
+    actual = operation(lhs, rhs)
+    expected = _naive_binary_product(
+        lhs.with_storage("dense"),
+        rhs.with_storage("dense"),
+        kind=kind,
+    )
+
+    assert_mv_allclose(actual, expected)
+
+
+def test_mixed_dense_and_csr_add_sub_match_dense_reference() -> None:
+    algebra = Algebra.vga2d()
+    lhs = algebra.multivector({"e1": np.array([1.0, 2.0]), "e12": -3.0}, backend="csr")
+    rhs = algebra.multivector({"e": 2.0, "e2": 4.0}, backend="dense")
+
+    added = lhs + rhs
+    subtracted = lhs - rhs
+    lhs_dense = lhs.with_storage("dense")
+    rhs_dense = rhs.with_storage("dense")
+
+    assert_mv_allclose(added, lhs_dense + rhs_dense)
+    assert_mv_allclose(subtracted, lhs_dense - rhs_dense)
