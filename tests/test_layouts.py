@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from amsa import Algebra, MVArray, MVLayout, pga2d, vga
-from amsa.storage import DenseStorage
+from amsa.storage import CSRStorage, DenseStorage
 
 from ._utils import assert_allclose
 
@@ -55,6 +55,99 @@ def test_mvarray_accepts_dense_storage_object() -> None:
     assert mv.storage_kind == "dense"
     assert mv.batch_shape == (2,)
     np.testing.assert_array_equal(mv.values, np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+
+def test_csr_storage_preserves_flattened_batch_shape() -> None:
+    storage = CSRStorage(
+        np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+        np.array([0, 2, 1, 0, 2]),
+        np.array([0, 2, 2, 3, 5]),
+        batch_shape=(2, 2),
+        width=3,
+    )
+
+    assert storage.kind == "csr"
+    assert storage.batch_shape == (2, 2)
+    assert storage.row_count == 4
+    assert storage.width == 3
+    assert storage.dtype == np.dtype(np.float64)
+    np.testing.assert_array_equal(
+        storage.as_dense(),
+        np.array(
+            [
+                [[1.0, 0.0, 2.0], [0.0, 0.0, 0.0]],
+                [[0.0, 3.0, 0.0], [4.0, 0.0, 5.0]],
+            ]
+        ),
+    )
+
+
+def test_csr_storage_zeros_supports_empty_sparse_layouts() -> None:
+    storage = CSRStorage.zeros(width=0, batch_shape=(2, 3))
+
+    assert storage.batch_shape == (2, 3)
+    assert storage.row_count == 6
+    assert storage.width == 0
+    assert storage.data.size == 0
+    assert storage.indices.size == 0
+    np.testing.assert_array_equal(storage.indptr, np.zeros(7, dtype=np.intp))
+    np.testing.assert_array_equal(storage.as_dense(), np.zeros((2, 3, 0)))
+
+
+def test_csr_storage_copy_detaches_underlying_arrays() -> None:
+    storage = CSRStorage(
+        np.array([1.0, 2.0]),
+        np.array([0, 2]),
+        np.array([0, 1, 2]),
+        batch_shape=(2,),
+        width=3,
+    )
+
+    copied = storage.copy()
+
+    np.testing.assert_array_equal(copied.as_dense(), storage.as_dense())
+    assert not np.shares_memory(copied.data, storage.data)
+    assert not np.shares_memory(copied.indices, storage.indices)
+    assert not np.shares_memory(copied.indptr, storage.indptr)
+
+
+def test_csr_storage_validates_flattened_row_count() -> None:
+    with pytest.raises(ValueError, match="row_count"):
+        CSRStorage(
+            np.array([1.0, 2.0]),
+            np.array([0, 1]),
+            np.array([0, 2, 2]),
+            batch_shape=(2, 2),
+            width=3,
+        )
+
+
+def test_csr_storage_requires_strictly_increasing_row_indices() -> None:
+    with pytest.raises(ValueError, match="strictly increasing"):
+        CSRStorage(
+            np.array([1.0, 2.0]),
+            np.array([1, 1]),
+            np.array([0, 2]),
+            batch_shape=(),
+            width=3,
+        )
+
+
+def test_mvarray_accepts_csr_storage_object() -> None:
+    spec = vga(2)
+    layout = MVLayout.sparse_pattern(spec, (1, 3), name="support")
+    storage = CSRStorage(
+        np.array([2.0, -3.0]),
+        np.array([0, 1]),
+        np.array([0, 2]),
+        batch_shape=(),
+        width=layout.size,
+    )
+
+    mv = MVArray(algebra=spec, layout=layout, storage=storage)
+
+    assert mv.storage_kind == "csr"
+    np.testing.assert_array_equal(mv.values, np.array([2.0, -3.0]))
 
 
 def test_mvarray_requires_exactly_one_storage_source() -> None:
