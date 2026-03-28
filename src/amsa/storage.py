@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import prod
-from numbers import Number
 from operator import index
 from typing import Any, Literal, Protocol, Self
 
@@ -10,6 +9,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 StorageKind = Literal["dense", "csr"]
+StorageRequest = Literal["auto", "dense", "csr"]
 
 
 def _normalize_batch_shape(batch_shape: tuple[int, ...]) -> tuple[int, ...]:
@@ -46,6 +46,18 @@ class MVStorage(Protocol):
 
     def copy(self) -> Self:
         ...
+
+
+def resolve_storage_kind(
+    kind: StorageRequest,
+    *,
+    auto_kind: StorageKind = "dense",
+) -> StorageKind:
+    if kind == "auto":
+        return auto_kind
+    if kind in ("dense", "csr"):
+        return kind
+    raise ValueError(f"Unsupported storage kind request: {kind!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +266,35 @@ def to_csr_storage(storage: MVStorage) -> CSRStorage:
     )
 
 
+def build_storage_from_array(values: ArrayLike, *, kind: StorageRequest = "dense") -> MVStorage:
+    dense = DenseStorage.from_array(values)
+    resolved_kind = resolve_storage_kind(kind)
+    if resolved_kind == "dense":
+        return dense
+    return to_csr_storage(dense)
+
+
+def build_zero_storage(
+    width: int,
+    *,
+    batch_shape: tuple[int, ...] = (),
+    dtype: np.dtype[Any] | type[np.float64] = np.float64,
+    kind: StorageRequest = "dense",
+) -> MVStorage:
+    resolved_kind = resolve_storage_kind(kind)
+    if resolved_kind == "dense":
+        return DenseStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
+    return CSRStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
+
+
+def convert_storage_kind(storage: MVStorage, kind: StorageKind) -> MVStorage:
+    if kind == "dense":
+        return to_dense_storage(storage)
+    if kind == "csr":
+        return to_csr_storage(storage)
+    raise ValueError(f"Unsupported storage kind: {kind!r}")
+
+
 def storage_component(storage: MVStorage, column: int) -> NDArray[Any]:
     if column < 0 or column >= storage.width:
         raise IndexError(f"Storage column {column} is out of bounds for width {storage.width}.")
@@ -272,6 +313,48 @@ def storage_component(storage: MVStorage, column: int) -> NDArray[Any]:
         if match < row_indices.size and int(row_indices[match]) == column:
             flat[row] = storage.data[start + match]
     return flat.reshape(storage.batch_shape)
+
+
+def gather_storage_columns(
+    storage: MVStorage,
+    columns: tuple[int, ...],
+    *,
+    batch_shape: tuple[int, ...] | None = None,
+) -> NDArray[Any]:
+    for column in columns:
+        if column < 0 or column >= storage.width:
+            raise IndexError(f"Storage column {column} is out of bounds for width {storage.width}.")
+
+    target_batch_shape = storage.batch_shape if batch_shape is None else batch_shape
+
+    if not columns:
+        empty = np.zeros(storage.batch_shape + (0,), dtype=storage.dtype)
+        return np.broadcast_to(empty, target_batch_shape + (0,))
+
+    if isinstance(storage, DenseStorage):
+        gathered = np.asarray(storage.array[..., list(columns)], dtype=storage.dtype)
+        return np.broadcast_to(gathered, target_batch_shape + (len(columns),))
+    if not isinstance(storage, CSRStorage):
+        raise TypeError(f"Unsupported storage type: {type(storage)!r}")
+
+    source_to_targets: dict[int, list[int]] = {}
+    for target_column, source_column in enumerate(columns):
+        source_to_targets.setdefault(source_column, []).append(target_column)
+
+    flat = np.zeros((storage.row_count, len(columns)), dtype=storage.dtype)
+    for row in range(storage.row_count):
+        start = int(storage.indptr[row])
+        stop = int(storage.indptr[row + 1])
+        for offset in range(start, stop):
+            source_column = int(storage.indices[offset])
+            targets = source_to_targets.get(source_column)
+            if targets is None:
+                continue
+            for target_column in targets:
+                flat[row, target_column] = storage.data[offset]
+
+    dense = flat.reshape(storage.batch_shape + (len(columns),))
+    return np.broadcast_to(dense, target_batch_shape + (len(columns),))
 
 
 def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVStorage:
@@ -325,7 +408,7 @@ def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVSt
     )
 
 
-def scale_storage(storage: MVStorage, scalar: Number) -> MVStorage:
+def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
     scalar_array = np.asarray(scalar)
     result_dtype = np.dtype(np.result_type(storage.dtype, scalar_array.dtype))
     is_zero = bool(np.equal(scalar_array, 0).item())
@@ -340,6 +423,32 @@ def scale_storage(storage: MVStorage, scalar: Number) -> MVStorage:
 
     return CSRStorage(
         np.asarray(storage.data, dtype=result_dtype) * scalar,
+        storage.indices.copy(),
+        storage.indptr.copy(),
+        batch_shape=storage.batch_shape,
+        width=storage.width,
+        dtype=result_dtype,
+    )
+
+
+def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
+    weight_array = np.asarray(weights)
+    if weight_array.ndim != 1:
+        raise ValueError("weights must be a one-dimensional array.")
+    if weight_array.shape[0] != storage.width:
+        raise ValueError(f"weights must have length {storage.width}.")
+
+    result_dtype = np.dtype(np.result_type(storage.dtype, weight_array.dtype))
+    resolved_weights = np.asarray(weight_array, dtype=result_dtype)
+
+    if isinstance(storage, DenseStorage):
+        values = np.asarray(storage.array, dtype=result_dtype) * resolved_weights
+        return DenseStorage(values)
+    if not isinstance(storage, CSRStorage):
+        raise TypeError(f"Unsupported storage type: {type(storage)!r}")
+
+    return CSRStorage(
+        np.asarray(storage.data, dtype=result_dtype) * resolved_weights[storage.indices],
         storage.indices.copy(),
         storage.indptr.copy(),
         batch_shape=storage.batch_shape,

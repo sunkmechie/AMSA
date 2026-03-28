@@ -12,11 +12,15 @@ The project now has:
 - a reference multivector array type
 - cached operator plans for binary products
 - a first reference backend split between planning and execution
+- storage-aware binary execution that can consume dense or CSR inputs
+- explicit constructor-level backend selection for dense and CSR storage
 - a tested public API for the current reference semantics
 
 Current verification status:
 
-- `uv run pytest` passes
+- `uv run pytest -q` passes
+- `uv run ruff check .` passes
+- `uv run mypy` passes
 - the test suite currently covers layout behavior, algebra presets, product planning, geometric product equivalence, outer product, inner product, and the current convenience constructors
 
 ## Project Intent
@@ -30,6 +34,7 @@ The immediate direction is:
 - make sparse support-pattern reasoning a first-class concept
 - keep the Python/NumPy path as the reference backend
 - prepare for future optimized backends without changing algebra semantics
+- keep dense as the default fresh-construction backend until benchmarks justify anything more aggressive
 
 
 ## Current Architecture
@@ -48,7 +53,7 @@ The codebase is currently organized around these roles:
 Binary products now use a two-phase reference path:
 
 1. Build or fetch a cached `OpPlan` keyed by algebra plus the exact blade tuples of the input layouts.
-2. Execute that plan against broadcasted coefficient arrays.
+2. Gather the coefficient slots referenced by that plan from dense or CSR storage, then execute into a dense result buffer for the output layout.
 
 This is the current boundary between the pure reference backend and future optimized backend work.
 
@@ -140,6 +145,11 @@ Storage conversion helpers currently available:
 - `to_dense_storage(storage)`
 - `to_csr_storage(storage)`
 
+Internal storage execution helpers currently available:
+
+- `storage_component(storage, column)`
+- `gather_storage_columns(storage, columns, batch_shape=...)`
+
 ## Algebra Handle
 
 `Algebra` is the main user-facing entry point and currently provides:
@@ -157,17 +167,17 @@ Storage conversion helpers currently available:
   - `odd_layout()`
   - `sparse_layout(blades, name=...)`
 - constructors:
-  - `zeros(...)`
-  - `blade(key, value=1.0)`
-  - `multivector(data, layout=None)` for mappings, arrays, and existing `MVArray` values
-  - `scalar(value=0.0)`
-  - `kvector(grade, values)`
-  - `vector(values)`
-  - `bivector(values)`
-  - `trivector(values)`
-  - `even(values)`
-  - `odd(values)`
-  - `pseudoscalar(value=0.0)`
+  - `zeros(..., backend="auto")`
+  - `blade(key, value=1.0, backend="auto")`
+  - `multivector(data, layout=None, backend="auto")` for mappings, arrays, and existing `MVArray` values
+  - `scalar(value=0.0, backend="auto")`
+  - `kvector(grade, values, backend="auto")`
+  - `vector(values, backend="auto")`
+  - `bivector(values, backend="auto")`
+  - `trivector(values, backend="auto")`
+  - `even(values, backend="auto")`
+  - `odd(values, backend="auto")`
+  - `pseudoscalar(value=0.0, backend="auto")`
 - operator helpers:
   - `gp(lhs, rhs)`
   - `outer(lhs, rhs)`
@@ -195,6 +205,12 @@ AMSA currently uses three related names on purpose:
 So `Algebra.multivector(...)` is the general constructor, while `kvector(...)`, `vector(...)`,
 `bivector(...)`, and `trivector(...)` are more specific helpers layered on top of it.
 
+Current backend policy:
+
+- `backend="auto"` means dense for fresh construction today
+- `backend="csr"` opts into CSR storage explicitly
+- importing an existing `MVArray` preserves its current backend unless a different backend is requested
+
 ## Multivectors
 
 `MVArray` currently provides:
@@ -212,6 +228,7 @@ So `Algebra.multivector(...)` is the general constructor, while `kvector(...)`, 
   - `MVArray.from_array(...)`
 - layout and inspection helpers:
   - `copy()`
+  - `with_storage(kind)`
   - `to_layout(layout)`
   - `as_dense()`
   - `component(key)`
@@ -263,6 +280,7 @@ These are the exact algebraic operations currently implemented in the reference 
 ### Projection and storage operations
 
 - projection into a target layout via `to_layout(...)`
+- backend conversion over the current layout via `with_storage(...)`
 - dense conversion via `as_dense()`
 - dense/CSR storage conversion via `amsa.storage.to_dense_storage(...)` and `amsa.storage.to_csr_storage(...)`
 - grade selection via `grade(...)` and `project_grades(...)`
@@ -284,7 +302,9 @@ All three products:
 - respect the algebra metric, including degenerate signatures
 - preserve sparse support when possible
 - return dense output only when the implied support spans the full algebra basis
+- can consume dense or CSR-backed operands in the reference backend
 - broadcast over batch dimensions using NumPy broadcasting rules
+- currently materialize the result as dense storage over the chosen output layout
 
 ## Current Limitations
 
@@ -300,7 +320,8 @@ The following are not implemented yet:
 - normalization helpers
 - symbolic backends
 - JAX, Triton, or PyTorch execution paths
-- backend auto-selection beyond the reference backend
+- density-based backend auto-selection beyond the current explicit policy
+- CSR output emission for binary reference execution
 
 The following API edge is important right now:
 
@@ -387,6 +408,7 @@ print(mv.batch_shape)  # (2,)
 print(mv.values)       # [[1.0, 3.0], [2.0, 3.0]]
 ```
 
-## Examples Folder
+## Examples
 
-The `/examples` directory exists but is left empty for now.
+There is no dedicated examples directory yet.
+For now, use the snippets in this prerelease snapshot and the test suite as the most accurate usage references.

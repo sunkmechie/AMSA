@@ -10,8 +10,12 @@ from numpy.typing import ArrayLike, NDArray
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec
 from amsa.storage import (
-    DenseStorage,
     MVStorage,
+    StorageKind,
+    StorageRequest,
+    build_storage_from_array,
+    build_zero_storage,
+    convert_storage_kind,
     project_storage,
     scale_storage,
     storage_component,
@@ -45,7 +49,7 @@ class MVArray:
 
         if storage is None:
             assert values is not None
-            active_storage: MVStorage = DenseStorage.from_array(values)
+            active_storage = build_storage_from_array(values, kind="dense")
         else:
             active_storage = storage
 
@@ -69,7 +73,7 @@ class MVArray:
         return self.storage.as_dense()
 
     @property
-    def storage_kind(self) -> str:
+    def storage_kind(self) -> StorageKind:
         return self.storage.kind
 
     @property
@@ -84,11 +88,17 @@ class MVArray:
         *,
         batch_shape: tuple[int, ...] = (),
         dtype: np.dtype[Any] | type[np.float64] = np.float64,
+        backend: StorageRequest = "dense",
     ) -> MVArray:
         return cls(
             algebra=algebra,
             layout=layout,
-            storage=DenseStorage.zeros(layout.size, batch_shape=batch_shape, dtype=dtype),
+            storage=build_zero_storage(
+                layout.size,
+                batch_shape=batch_shape,
+                dtype=dtype,
+                kind=backend,
+            ),
         )
 
     @classmethod
@@ -97,11 +107,24 @@ class MVArray:
         algebra: AlgebraSpec,
         layout: MVLayout,
         values: ArrayLike,
+        *,
+        backend: StorageRequest = "dense",
     ) -> MVArray:
-        return cls(algebra=algebra, layout=layout, storage=DenseStorage.from_array(values))
+        return cls(
+            algebra=algebra,
+            layout=layout,
+            storage=build_storage_from_array(values, kind=backend),
+        )
 
     def copy(self) -> MVArray:
         return MVArray(algebra=self.algebra, layout=self.layout, storage=self.storage.copy())
+
+    def with_storage(self, kind: StorageKind) -> MVArray:
+        return MVArray(
+            algebra=self.algebra,
+            layout=self.layout,
+            storage=convert_storage_kind(self.storage, kind),
+        )
 
     def to_layout(self, layout: MVLayout) -> MVArray:
         if layout.algebra != self.algebra:

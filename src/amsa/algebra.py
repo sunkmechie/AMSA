@@ -17,6 +17,7 @@ from amsa.specs import pga2d as pga2d_spec
 from amsa.specs import pga3d as pga3d_spec
 from amsa.specs import vga2d as vga2d_spec
 from amsa.specs import vga3d as vga3d_spec
+from amsa.storage import StorageRequest, resolve_storage_kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,27 +89,42 @@ class Algebra:
         *,
         batch_shape: tuple[int, ...] = (),
         dtype: np.dtype[Any] | type[np.float64] = np.float64,
+        backend: StorageRequest = "auto",
     ) -> MVArray:
         active_layout = layout if layout is not None else self.dense_layout()
-        return MVArray.zeros(self.spec, active_layout, batch_shape=batch_shape, dtype=dtype)
+        return MVArray.zeros(
+            self.spec,
+            active_layout,
+            batch_shape=batch_shape,
+            dtype=dtype,
+            backend=backend,
+        )
 
-    def blade(self, key: int | str, value: Any = 1.0) -> MVArray:
+    def blade(
+        self,
+        key: int | str,
+        value: Any = 1.0,
+        *,
+        backend: StorageRequest = "auto",
+    ) -> MVArray:
         blade = self.spec.blade_from_key(key)
         layout = self.sparse_layout((blade,), name=self.spec.blade_name(blade))
-        return self.multivector({blade: value}, layout=layout)
+        return self.multivector({blade: value}, layout=layout, backend=backend)
 
     def multivector(
         self,
         data: MVArray | Mapping[int | str, Any] | Any,
         *,
         layout: MVLayout | None = None,
+        backend: StorageRequest = "auto",
     ) -> MVArray:
         if isinstance(data, MVArray):
             if data.algebra != self.spec:
                 raise ValueError("Cannot import a multivector from a different algebra.")
+            requested_kind = resolve_storage_kind(backend, auto_kind=data.storage_kind)
             if layout is None:
-                return data.copy()
-            return data.to_layout(layout)
+                return data.with_storage(requested_kind)
+            return data.to_layout(layout).with_storage(requested_kind)
 
         if isinstance(data, Mapping):
             normalized = {
@@ -142,36 +158,36 @@ class Algebra:
                     )
                     raise ValueError(message) from exc
                 result[..., index] = np.broadcast_to(value, batch_shape)
-            return MVArray(algebra=self.spec, layout=layout, values=result)
+            return MVArray.from_array(self.spec, layout, result, backend=backend)
 
         array = np.asarray(data)
         if layout is None:
             layout = self.dense_layout()
-        return MVArray.from_array(self.spec, layout, array)
+        return MVArray.from_array(self.spec, layout, array, backend=backend)
 
-    def scalar(self, value: Any = 0.0) -> MVArray:
-        return self.multivector([value], layout=self.grade_layout(0))
+    def scalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.multivector([value], layout=self.grade_layout(0), backend=backend)
 
-    def kvector(self, grade: int, values: Any) -> MVArray:
-        return self.multivector(values, layout=self.grade_layout(grade))
+    def kvector(self, grade: int, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.multivector(values, layout=self.grade_layout(grade), backend=backend)
 
-    def vector(self, values: Any) -> MVArray:
-        return self.kvector(1, values)
+    def vector(self, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.kvector(1, values, backend=backend)
 
-    def bivector(self, values: Any) -> MVArray:
-        return self.kvector(2, values)
+    def bivector(self, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.kvector(2, values, backend=backend)
 
-    def trivector(self, values: Any) -> MVArray:
-        return self.kvector(3, values)
+    def trivector(self, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.kvector(3, values, backend=backend)
 
-    def even(self, values: Any) -> MVArray:
-        return self.multivector(values, layout=self.even_layout())
+    def even(self, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.multivector(values, layout=self.even_layout(), backend=backend)
 
-    def odd(self, values: Any) -> MVArray:
-        return self.multivector(values, layout=self.odd_layout())
+    def odd(self, values: Any, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.multivector(values, layout=self.odd_layout(), backend=backend)
 
-    def pseudoscalar(self, value: Any = 0.0) -> MVArray:
-        return self.multivector([value], layout=self.grade_layout(self.dimension))
+    def pseudoscalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:
+        return self.multivector([value], layout=self.grade_layout(self.dimension), backend=backend)
 
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs

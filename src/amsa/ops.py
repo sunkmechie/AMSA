@@ -9,6 +9,7 @@ from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
+from amsa.storage import reweight_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -31,7 +32,7 @@ def _coerce_operand(reference: MVArray, operand: MVArray | Number) -> MVArray:
 
 
 def neg(mv: MVArray) -> MVArray:
-    return MVArray(algebra=mv.algebra, layout=mv.layout, values=-mv.values)
+    return MVArray(algebra=mv.algebra, layout=mv.layout, storage=scale_storage(mv.storage, -1))
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray | Number) -> tuple[MVArray, MVLayout]:
@@ -69,12 +70,20 @@ def reverse(mv: MVArray) -> MVArray:
         ],
         dtype=mv.dtype,
     )
-    return MVArray(algebra=mv.algebra, layout=mv.layout, values=mv.values * signs)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=reweight_storage(mv.storage, signs),
+    )
 
 
 def involute(mv: MVArray) -> MVArray:
     signs = np.asarray([(-1) ** blade.bit_count() for blade in mv.layout.blades], dtype=mv.dtype)
-    return MVArray(algebra=mv.algebra, layout=mv.layout, values=mv.values * signs)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=reweight_storage(mv.storage, signs),
+    )
 
 
 def conjugate(mv: MVArray) -> MVArray:

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from amsa import Algebra, MVArray, MVLayout, pga2d, vga
+from amsa import Algebra, MVArray, MVLayout, involute, neg, pga2d, reverse, vga
 from amsa.storage import CSRStorage, DenseStorage, to_csr_storage, to_dense_storage
 
 from ._utils import assert_allclose
@@ -360,6 +360,92 @@ def test_algebra_add_and_sub_helpers_delegate_to_operator_layer() -> None:
     assert added.component("e2") == 2.0
     assert subtracted.component("e1") == 1.0
     assert subtracted.component("e2") == -2.0
+
+
+def test_algebra_multivector_rejects_scalar_input() -> None:
+    algebra = Algebra(vga(2))
+
+    with pytest.raises(ValueError, match="at least one dimension"):
+        algebra.multivector(2.5, layout=algebra.grade_layout(0))
+
+
+def test_step5_policy_keeps_dense_as_default_constructor_backend() -> None:
+    algebra = Algebra(vga(2))
+
+    mv = algebra.multivector({"e1": 2.0, "e12": -3.0})
+    zeros = algebra.zeros(layout=algebra.sparse_layout((1, 3)))
+
+    assert mv.storage_kind == "dense"
+    assert zeros.storage_kind == "dense"
+
+
+def test_explicit_csr_backend_is_available_on_constructors() -> None:
+    algebra = Algebra(vga(3))
+
+    mv = algebra.multivector({"e1": np.array([0.0, 2.0]), "e23": 3.0}, backend="csr")
+    scalar = algebra.scalar(2.0, backend="csr")
+    zeros = algebra.zeros(layout=algebra.grade_layout(2), batch_shape=(2,), backend="csr")
+
+    assert mv.storage_kind == "csr"
+    assert scalar.storage_kind == "csr"
+    assert zeros.storage_kind == "csr"
+    assert_allclose(mv.values, np.array([[0.0, 3.0], [2.0, 3.0]]))
+    assert_allclose(scalar.values, np.array([2.0]))
+    assert_allclose(zeros.values, np.zeros((2, 3)))
+
+
+def test_imported_multivector_can_be_rewrapped_with_requested_backend() -> None:
+    algebra = Algebra(vga(2))
+    dense = algebra.multivector({"e1": 2.0, "e12": -3.0})
+
+    csr = algebra.multivector(dense, backend="csr")
+    dense_again = algebra.multivector(csr, backend="dense")
+
+    assert dense.storage_kind == "dense"
+    assert csr.storage_kind == "csr"
+    assert dense_again.storage_kind == "dense"
+    assert csr.layout == dense.layout
+    assert_allclose(csr.values, dense.values)
+    assert_allclose(dense_again.values, dense.values)
+
+
+def test_mvarray_with_storage_round_trip_preserves_layout_and_values() -> None:
+    algebra = Algebra(vga(3))
+    mv = algebra.multivector({"e1": 1.0, "e23": -2.0})
+
+    csr = mv.with_storage("csr")
+    dense = csr.with_storage("dense")
+
+    assert csr.storage_kind == "csr"
+    assert dense.storage_kind == "dense"
+    assert csr.layout == mv.layout
+    assert dense.layout == mv.layout
+    assert_allclose(csr.values, mv.values)
+    assert_allclose(dense.values, mv.values)
+
+
+def test_unary_ops_preserve_csr_storage() -> None:
+    spec = vga(3)
+    layout = MVLayout.sparse_pattern(spec, (1, 3, 7), name="support")
+    storage = CSRStorage(
+        np.array([2.0, -3.0, 4.0, -5.0]),
+        np.array([0, 2, 1, 2]),
+        np.array([0, 2, 4]),
+        batch_shape=(2,),
+        width=layout.size,
+    )
+    mv = MVArray(algebra=spec, layout=layout, storage=storage)
+
+    negated = neg(mv)
+    reversed_mv = reverse(mv)
+    involuted = involute(mv)
+
+    assert negated.storage_kind == "csr"
+    assert reversed_mv.storage_kind == "csr"
+    assert involuted.storage_kind == "csr"
+    assert_allclose(negated.values, np.array([[-2.0, 0.0, 3.0], [0.0, -4.0, 5.0]]))
+    assert_allclose(reversed_mv.values, np.array([[2.0, 0.0, 3.0], [0.0, -4.0, 5.0]]))
+    assert_allclose(involuted.values, np.array([[-2.0, 0.0, 3.0], [0.0, 4.0, 5.0]]))
 
 
 def test_reverse_and_involute_sign_rules() -> None:
