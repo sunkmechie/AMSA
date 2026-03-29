@@ -410,5 +410,21 @@ print(mv.values)       # [[1.0, 3.0], [2.0, 3.0]]
 
 ## Examples
 
-There is no dedicated examples directory yet.
-For now, use the snippets in this prerelease snapshot and the test suite as the most accurate usage references.
+There is still no finalized long-term examples or notebooks layout yet.
+
+What exists today:
+
+- inline snippets in this prerelease snapshot
+- the main test suite as the most reliable correctness reference
+- a temporary `tempo/` folder containing exploratory challenge scripts and probes
+
+Run tempo scripts from the repo root like:
+
+- `uv run tempo/challenge1_triangle_area.py`
+- `uv run tempo/challenge2_orientation_batch.py`
+- `uv run tempo/challenge10_geometry_kernel.py`
+
+Important boundary:
+
+- `tempo/` is currently an incubation area
+- those scripts are useful and verified, but they are not yet the project’s final examples, notebook, or benchmark structure
