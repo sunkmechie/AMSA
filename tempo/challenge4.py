@@ -1,45 +1,16 @@
-"""
-Challenge 4 — Vector product decomposition.
+import _bootstrap
 
-Verifies:
-
-uv = u·v + u∧v
-"""
-import sys
-from pathlib import Path
-
-# add project root to Python path BEFORE imports
-sys.path.append(str(Path(__file__).resolve().parents[2]))
 from amsa import Algebra
-import numpy as np
 from tests._utils import assert_mv_allclose
+import numpy as np
+import random
+
+print("\n=== Challenge 4: Vector Product Decomposition ===")
 
 alg = Algebra.vga3d()
 
-print("\n=== Deterministic Example ===")
-
-u = alg.vector([1,2,3])
-v = alg.vector([-1,4,2])
-
-gp = u * v
-ip = u | v
-op = u ^ v
-
-print("u:",u.values)
-print("v:",v.values)
-
-print("gp:",gp.values)
-print("ip:",ip.values)
-print("op:",op.values)
-
-assert_mv_allclose(gp, ip + op)
-
-print("Decomposition verified.")
-
-print("\n=== Random Torture Test ===")
-
-for i in range(10000):
-
+pairs = 20000
+for _ in range(pairs):
     u = alg.vector(np.random.randn(3))
     v = alg.vector(np.random.randn(3))
 
@@ -47,6 +18,57 @@ for i in range(10000):
     ip = u | v
     op = u ^ v
 
-    assert_mv_allclose(gp, ip + op)
+    assert_mv_allclose(gp, ip+op)
 
-print("Random vector tests passed.")
+print(f"Vector identity holds for {pairs} random pairs.")
+
+
+# -----------------------------------------------------
+# Test 2: Show identity does NOT hold for multivectors
+# -----------------------------------------------------
+
+print("\n--- Demonstrating non-generalizability ---")
+
+def random_mv():
+    choice = random.choice(["scalar", "vector", "bivector", "even"])
+
+    if choice == "scalar":
+        return alg.scalar(np.random.randn())
+
+    if choice == "vector":
+        return alg.vector(np.random.randn(3))
+
+    if choice == "bivector":
+        return alg.bivector(np.random.randn(3))
+
+    if choice == "even":
+        return alg.even(np.random.randn(4))
+
+
+for _ in range(1000):
+
+    A = random_mv()
+    B = random_mv()
+
+    gp = A * B
+    ip = A | B
+    op = A ^ B
+
+    try:
+        assert_mv_allclose(gp, ip + op, tol=1e-10)
+
+    except AssertionError:
+
+        print("\nIdentity fails for general multivectors (expected):")
+        print("A grades:", A.grades)
+        print("B grades:", B.grades)
+
+        print("gp:", gp.as_dense().values)
+        print("ip+op:", (ip + op).as_dense().values)
+
+        break
+
+
+print("\nConclusion:")
+print("u*v = u|v + u^v holds for vectors,")
+print("but does not generalize to arbitrary multivectors.")
