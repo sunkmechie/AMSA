@@ -13,10 +13,47 @@
 # limitations under the License.
 
 """
-AMSA: EXAMPLES
+AMSA Example
 
 Topic: Signed area of a triangle using the wedge product
 Algebra: 2D Vector Geometric Algebra (VGA)
+
+Given three points p, q, r in the plane we construct edge vectors:
+
+    u = q - p
+    v = r - p
+
+The wedge product of two vectors produces an oriented area bivector:
+
+    B = u ∧ v
+
+In 2D vector geometric algebra the bivector basis is e12, so the result
+can be written as:
+
+    B = (u ∧ v) = A * e12
+
+where A is the signed parallelogram area coefficient.
+
+The signed triangle area is therefore:
+
+    Area = (u ∧ v)_{e12} / 2
+
+Interpretation of the sign:
+
+    Area > 0  → counter-clockwise orientation
+    Area < 0  → clockwise orientation
+    Area = 0  → degenerate triangle (collinear points)
+
+This example demonstrates three cases:
+
+    1. A right triangle at the origin
+    2. The same triangle with reversed orientation
+    3. A skew triangle translated away from the origin
+
+This illustrates two key properties of the wedge product:
+
+    • antisymmetry:  u ∧ v = - (v ∧ u)
+    • translation invariance: area depends only on edge vectors
 """
 
 from amsa import Algebra
