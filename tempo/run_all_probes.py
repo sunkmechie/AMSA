@@ -11,6 +11,10 @@ scripts = [
     "challenge4_product_decomposition.py",
     "challenge5_sparse_support.py",
     "challenge6_even_odd_decomposition.py",
+    "challenge7_rotor_inspector.py",
+    "challenge8_pga_null_blade.py",
+    "challenge9_backend_comparision.py",
+    "challenge10_geometry_kernel.py"
 ]
 
 for s in scripts:
