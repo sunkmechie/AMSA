@@ -47,8 +47,9 @@ This example demonstrates batched orientation testing for many triangles
 using AMSA's vectorized multivector operations.
 """
 
-from amsa import Algebra
 import numpy as np
+
+from amsa import Algebra
 
 print("\n=== Batched Triangle Orientation ===")
 

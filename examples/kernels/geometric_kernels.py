@@ -39,8 +39,9 @@ Orthogonality:
     u ⨼ v = 0
 """
 
-from amsa import Algebra
 import numpy as np
+
+from amsa import Algebra
 
 alg2 = Algebra.vga2d()
 alg3 = Algebra.vga3d()

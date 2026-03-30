@@ -35,6 +35,14 @@ def _blade_product_cached(
     return coefficient, lhs ^ rhs
 
 
+@lru_cache(maxsize=256)
+def _blade_name_lookup(dimension: int, start_index: int) -> dict[str, int]:
+    return {
+        canonical_blade_name(blade, dimension=dimension, start_index=start_index): blade
+        for blade in range(1 << dimension)
+    }
+
+
 def grade_of_blade(blade: int) -> int:
     """Return the grade of a blade encoded as a bit pattern."""
     if blade < 0:
@@ -121,10 +129,10 @@ class AlgebraSpec:
         if not isinstance(key, str):
             raise TypeError(f"Unsupported blade key type: {type(key)!r}")
 
-        for blade in range(self.blade_count):
-            if self.blade_name(blade) == key:
-                return blade
-        raise KeyError(f"Unknown basis blade: {key}")
+        try:
+            return _blade_name_lookup(self.dimension, self.start_index)[key]
+        except KeyError as exc:
+            raise KeyError(f"Unknown basis blade: {key}") from exc
 
     def blades_of_grade(self, grade: int) -> tuple[int, ...]:
         if grade < 0 or grade > self.dimension:

@@ -43,7 +43,6 @@ and the classical determinant.
 """
 
 from amsa import Algebra
-import numpy as np
 
 print("\n=== Signed Volume Example ===")
 
@@ -63,4 +62,3 @@ print("w:", w.values)
 
 print("\nTrivector:", trivector.values)
 print(f"Signed volume: {volume}")
-

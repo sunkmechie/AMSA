@@ -9,7 +9,7 @@ from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
-from amsa.storage import reweight_storage, scale_storage
+from amsa.storage import project_storage, reweight_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -90,6 +90,62 @@ def conjugate(mv: MVArray) -> MVArray:
     return reverse(involute(mv))
 
 
+def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
+    pseudoscalar = mv.algebra.pseudoscalar_blade
+    coefficient, _ = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
+    if coefficient == 0:
+        raise ValueError(
+            "dual/undual require an invertible pseudoscalar; this algebra is degenerate."
+        )
+    return 1.0 / float(coefficient)
+
+
+def _complement_layout(blades: tuple[int, ...], *, pseudoscalar: int) -> tuple[int, ...]:
+    return tuple(sorted(blade ^ pseudoscalar for blade in blades))
+
+
+def _pseudoscalar_transform(
+    mv: MVArray,
+    *,
+    inverse: bool,
+) -> MVArray:
+    pseudoscalar = mv.algebra.pseudoscalar_blade
+    inverse_scale = _pseudoscalar_inverse_scale(mv) if inverse else 1.0
+
+    target_blades = _complement_layout(mv.layout.blades, pseudoscalar=pseudoscalar)
+    if len(target_blades) == mv.algebra.blade_count:
+        layout = MVLayout.dense(mv.algebra)
+    else:
+        name = "dual" if inverse else "undual"
+        layout = MVLayout.sparse_pattern(mv.algebra, target_blades, name=name)
+
+    source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
+    projection_columns: list[int] = []
+    weights: list[float] = []
+    for target_blade in layout.blades:
+        source_blade = target_blade ^ pseudoscalar
+        source_column = source_index[source_blade]
+        coefficient, _ = mv.algebra.blade_product(source_blade, pseudoscalar)
+        projection_columns.append(source_column)
+        weights.append(inverse_scale * coefficient)
+
+    projected = project_storage(mv.storage, tuple(projection_columns))
+    transformed = reweight_storage(projected, np.asarray(weights, dtype=mv.dtype))
+    return MVArray(
+        algebra=mv.algebra,
+        layout=layout,
+        storage=transformed,
+    )
+
+
+def dual(mv: MVArray) -> MVArray:
+    return _pseudoscalar_transform(mv, inverse=True)
+
+
+def undual(mv: MVArray) -> MVArray:
+    return _pseudoscalar_transform(mv, inverse=False)
+
+
 def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:
     ensure_compatible(lhs, rhs)
     plan = plan_binary_product(lhs.layout, rhs.layout, kind)
@@ -109,11 +165,10 @@ def inner_product(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 
 def project_grades(mv: MVArray, *grades: int) -> MVArray:
-    normalized = grades[0] if len(grades) == 1 and isinstance(grades[0], tuple) else grades
-    if not normalized:
+    if not grades:
         raise ValueError("At least one grade must be selected.")
 
-    grade_set = set(normalized)
+    grade_set = set(grades)
     for grade in grade_set:
         if grade < 0 or grade > mv.algebra.dimension:
             raise ValueError(f"Grade must be between 0 and {mv.algebra.dimension}.")

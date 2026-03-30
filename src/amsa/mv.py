@@ -48,7 +48,8 @@ class MVArray:
             raise ValueError("Provide exactly one of values or storage.")
 
         if storage is None:
-            assert values is not None
+            if values is None:
+                raise ValueError("values must be provided when storage is omitted.")
             active_storage = build_storage_from_array(values, kind="dense")
         else:
             active_storage = storage
@@ -180,6 +181,16 @@ class MVArray:
         from amsa.ops import conjugate
 
         return conjugate(self)
+
+    def dual(self) -> MVArray:
+        from amsa.ops import dual
+
+        return dual(self)
+
+    def undual(self) -> MVArray:
+        from amsa.ops import undual
+
+        return undual(self)
 
     def outer(self, other: MVArray) -> MVArray:
         from amsa.ops import outer_product

@@ -59,14 +59,15 @@ class MVLayout:
         if not grades:
             raise ValueError("At least one grade must be selected.")
 
+        normalized_grades = tuple(sorted(set(grades)))
         blades: list[int] = []
-        for grade in sorted(set(grades)):
+        for grade in normalized_grades:
             blades.extend(algebra.blades_of_grade(grade))
         return cls(
             algebra=algebra,
             blades=tuple(blades),
             kind="grade",
-            name="grade[" + ",".join(str(grade) for grade in sorted(set(grades))) + "]",
+            name="grade[" + ",".join(str(grade) for grade in normalized_grades) + "]",
         )
 
     @classmethod
