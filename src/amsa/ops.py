@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from numbers import Number
-from typing import Any
 
 import numpy as np
 
@@ -93,9 +92,7 @@ def conjugate(mv: MVArray) -> MVArray:
 
 def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
     pseudoscalar = mv.algebra.pseudoscalar_blade
-    coefficient, out_blade = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
-    if out_blade != 0:
-        raise ValueError("Pseudoscalar square must collapse to a scalar blade.")
+    coefficient, _ = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
     if coefficient == 0:
         raise ValueError(
             "dual/undual require an invertible pseudoscalar; this algebra is degenerate."
@@ -124,13 +121,11 @@ def _pseudoscalar_transform(
 
     source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
     projection_columns: list[int] = []
-    weights: list[Any] = []
+    weights: list[float] = []
     for target_blade in layout.blades:
         source_blade = target_blade ^ pseudoscalar
         source_column = source_index[source_blade]
-        coefficient, out_blade = mv.algebra.blade_product(source_blade, pseudoscalar)
-        if out_blade != target_blade:
-            raise ValueError("Pseudoscalar complement mapping produced an unexpected blade.")
+        coefficient, _ = mv.algebra.blade_product(source_blade, pseudoscalar)
         projection_columns.append(source_column)
         weights.append(inverse_scale * coefficient)
 
@@ -170,11 +165,10 @@ def inner_product(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 
 def project_grades(mv: MVArray, *grades: int) -> MVArray:
-    normalized = grades[0] if len(grades) == 1 and isinstance(grades[0], tuple) else grades
-    if not normalized:
+    if not grades:
         raise ValueError("At least one grade must be selected.")
 
-    grade_set = set(normalized)
+    grade_set = set(grades)
     for grade in grade_set:
         if grade < 0 or grade > mv.algebra.dimension:
             raise ValueError(f"Grade must be between 0 and {mv.algebra.dimension}.")
