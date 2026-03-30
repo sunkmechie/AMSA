@@ -63,7 +63,7 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - outer product
 - inner product
 - addition and subtraction
-- reverse, involute, and conjugate
+- reverse, involute, conjugate, dual, and undual
 - scalar arithmetic
 - grade projection and component lookup
 - dense/CSR conversion
@@ -107,7 +107,7 @@ uv run tempo/challenge10_geometry_kernel.py
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, multivector-scalar add/sub |
 | Geometric products | geometric product `*`, outer product `^`, inner product `\|` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, unary `-mv` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |

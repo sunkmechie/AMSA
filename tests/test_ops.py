@@ -4,10 +4,12 @@ import pytest
 from amsa import (
     Algebra,
     MVLayout,
+    dual,
     geometric_product,
     inner_product,
     outer_product,
     pga2d,
+    undual,
     vga2d,
     vga3d,
 )
@@ -136,6 +138,46 @@ def test_outer_and_inner_handle_degenerate_pga2d_cases() -> None:
     assert (e0 | e0).layout.size == 0
     assert (e0 ^ e0).layout.size == 0
     assert (e0 ^ e1).component("e01") == 1.0
+
+
+def test_dual_maps_vga3d_plane_bivector_to_normal_vector() -> None:
+    algebra = Algebra.vga3d()
+    e12 = algebra.blade("e12")
+
+    normal = dual(e12)
+
+    assert normal.layout.blades == (4,)
+    assert normal.component("e3") == 1.0
+    assert_mv_allclose(normal.undual(), e12)
+
+
+def test_dual_and_undual_round_trip_dense_vga2d_multivector() -> None:
+    algebra = Algebra.vga2d()
+    mv = algebra.multivector({"e": 2.0, "e1": -3.0, "e12": 4.0})
+
+    assert_mv_allclose(undual(dual(mv)), mv)
+    assert_mv_allclose(dual(undual(mv)), mv)
+
+
+def test_dual_preserves_csr_storage_for_sparse_support() -> None:
+    algebra = Algebra.vga3d()
+    mv = algebra.multivector({"e12": np.array([1.0, -2.0]), "e23": 3.0}, backend="csr")
+
+    dual_mv = mv.dual()
+    restored = dual_mv.undual()
+
+    assert dual_mv.storage_kind == "csr"
+    assert dual_mv.layout.blades == (1, 4)
+    assert_mv_allclose(dual_mv, algebra.multivector({"e1": 3.0, "e3": np.array([1.0, -2.0])}))
+    assert_mv_allclose(restored, mv)
+
+
+def test_dual_rejects_degenerate_algebras_with_noninvertible_pseudoscalar() -> None:
+    algebra = Algebra.pga2d()
+    line = algebra.blade("e12")
+
+    with pytest.raises(ValueError, match="invertible pseudoscalar"):
+        line.dual()
 
 
 def test_named_presets_and_grade_helpers_cover_common_robotics_shapes() -> None:

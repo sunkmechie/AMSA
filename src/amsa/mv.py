@@ -181,6 +181,16 @@ class MVArray:
 
         return conjugate(self)
 
+    def dual(self) -> MVArray:
+        from amsa.ops import dual
+
+        return dual(self)
+
+    def undual(self) -> MVArray:
+        from amsa.ops import undual
+
+        return undual(self)
+
     def outer(self, other: MVArray) -> MVArray:
         from amsa.ops import outer_product
 

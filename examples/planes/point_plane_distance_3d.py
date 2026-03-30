@@ -38,8 +38,9 @@ This example shows how geometric algebra represents planes and
 computes point-to-plane distance using multivector operations.
 """
 
-from amsa import Algebra
 import numpy as np
+
+from amsa import Algebra
 
 print("\n=== Point to Plane Distance ===")
 
@@ -55,10 +56,7 @@ v = alg.vector([0.0, 1.0, 0.0])
 # plane bivector
 B = u ^ v
 
-# TODO: replace with B.dual() once dual() is implemented
-n_vec = np.cross(u.values, v.values)
-n = alg.vector(n_vec)
-#n = B.dual()
+n = B.dual()
 
 # point above the plane
 p = alg.vector([0.5, 0.5, 2.0])

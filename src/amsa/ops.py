@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from numbers import Number
+from typing import Any
 
 import numpy as np
 
@@ -9,7 +10,7 @@ from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
-from amsa.storage import reweight_storage, scale_storage
+from amsa.storage import project_storage, reweight_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -88,6 +89,66 @@ def involute(mv: MVArray) -> MVArray:
 
 def conjugate(mv: MVArray) -> MVArray:
     return reverse(involute(mv))
+
+
+def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
+    pseudoscalar = mv.algebra.pseudoscalar_blade
+    coefficient, out_blade = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
+    if out_blade != 0:
+        raise ValueError("Pseudoscalar square must collapse to a scalar blade.")
+    if coefficient == 0:
+        raise ValueError(
+            "dual/undual require an invertible pseudoscalar; this algebra is degenerate."
+        )
+    return 1.0 / float(coefficient)
+
+
+def _complement_layout(blades: tuple[int, ...], *, pseudoscalar: int) -> tuple[int, ...]:
+    return tuple(sorted(blade ^ pseudoscalar for blade in blades))
+
+
+def _pseudoscalar_transform(
+    mv: MVArray,
+    *,
+    inverse: bool,
+) -> MVArray:
+    pseudoscalar = mv.algebra.pseudoscalar_blade
+    inverse_scale = _pseudoscalar_inverse_scale(mv) if inverse else 1.0
+
+    target_blades = _complement_layout(mv.layout.blades, pseudoscalar=pseudoscalar)
+    if len(target_blades) == mv.algebra.blade_count:
+        layout = MVLayout.dense(mv.algebra)
+    else:
+        name = "dual" if inverse else "undual"
+        layout = MVLayout.sparse_pattern(mv.algebra, target_blades, name=name)
+
+    source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
+    projection_columns: list[int] = []
+    weights: list[Any] = []
+    for target_blade in layout.blades:
+        source_blade = target_blade ^ pseudoscalar
+        source_column = source_index[source_blade]
+        coefficient, out_blade = mv.algebra.blade_product(source_blade, pseudoscalar)
+        if out_blade != target_blade:
+            raise ValueError("Pseudoscalar complement mapping produced an unexpected blade.")
+        projection_columns.append(source_column)
+        weights.append(inverse_scale * coefficient)
+
+    projected = project_storage(mv.storage, tuple(projection_columns))
+    transformed = reweight_storage(projected, np.asarray(weights, dtype=mv.dtype))
+    return MVArray(
+        algebra=mv.algebra,
+        layout=layout,
+        storage=transformed,
+    )
+
+
+def dual(mv: MVArray) -> MVArray:
+    return _pseudoscalar_transform(mv, inverse=True)
+
+
+def undual(mv: MVArray) -> MVArray:
+    return _pseudoscalar_transform(mv, inverse=False)
 
 
 def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:

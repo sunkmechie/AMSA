@@ -267,6 +267,8 @@ These are the exact algebraic operations currently implemented in the reference 
 - reverse
 - involute
 - conjugate
+- dual
+- undual
 
 ### Scalar interactions
 
@@ -314,7 +316,6 @@ The following are not implemented yet:
 - right contraction
 - scalar product as a separate operator
 - regressive product
-- dual / undual helpers
 - inverse / division
 - sandwich operators
 - normalization helpers
@@ -334,8 +335,13 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `^`, `|`, `+`, and `-` for the currently implemented operators.
+3. Use `*`, `^`, `|`, `+`, `-`, `dual()`, and `undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
+
+Duality note:
+
+- `dual()` and `undual()` are implemented via the algebra pseudoscalar complement.
+- They require an invertible pseudoscalar, so they currently raise on degenerate algebras such as the PGA presets.
 
 ### Example: 2D VGA vectors
 
