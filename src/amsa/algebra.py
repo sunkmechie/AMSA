@@ -10,7 +10,9 @@ from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.ops import add as add_op
 from amsa.ops import inner_product as inner_op
+from amsa.ops import left_contraction as left_contraction_op
 from amsa.ops import outer_product as outer_op
+from amsa.ops import right_contraction as right_contraction_op
 from amsa.ops import sub as sub_op
 from amsa.specs import AlgebraSpec
 from amsa.specs import pga2d as pga2d_spec
@@ -197,6 +199,12 @@ class Algebra:
 
     def inner(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return inner_op(lhs, rhs)
+
+    def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return left_contraction_op(lhs, rhs)
+
+    def right_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return right_contraction_op(lhs, rhs)
 
     def add(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)

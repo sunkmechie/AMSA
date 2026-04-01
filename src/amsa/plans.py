@@ -7,12 +7,14 @@ from typing import Literal
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec, grade_of_blade
 
-OpKind = Literal["geometric", "outer", "inner"]
+OpKind = Literal["geometric", "outer", "inner", "left_contraction", "right_contraction"]
 
 _LAYOUT_NAMES: dict[OpKind, str] = {
     "geometric": "gp",
     "outer": "op",
     "inner": "ip",
+    "left_contraction": "lc",
+    "right_contraction": "rc",
 }
 
 
@@ -55,6 +57,10 @@ def _include_term(kind: OpKind, lhs_blade: int, rhs_blade: int, out_blade: int) 
         return out_grade == lhs_grade + rhs_grade
     if kind == "inner":
         return out_grade == abs(lhs_grade - rhs_grade)
+    if kind == "left_contraction":
+        return lhs_grade <= rhs_grade and out_grade == rhs_grade - lhs_grade
+    if kind == "right_contraction":
+        return lhs_grade >= rhs_grade and out_grade == lhs_grade - rhs_grade
     raise ValueError(f"Unsupported operator kind: {kind}")
 
 

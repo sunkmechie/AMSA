@@ -212,6 +212,16 @@ class MVArray:
 
         return inner_product(self, other)
 
+    def left_contract(self, other: MVArray) -> MVArray:
+        from amsa.ops import left_contraction
+
+        return left_contraction(self, other)
+
+    def right_contract(self, other: MVArray) -> MVArray:
+        from amsa.ops import right_contraction
+
+        return right_contraction(self, other)
+
     def __neg__(self) -> MVArray:
         from amsa.ops import neg
 

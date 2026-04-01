@@ -7,9 +7,11 @@ from amsa import (
     dual,
     geometric_product,
     inner_product,
+    left_contraction,
     outer_product,
     pga2d,
     poincare_dual,
+    right_contraction,
     undual,
     vga2d,
     vga3d,
@@ -31,6 +33,14 @@ def _keep_term(kind: str, lhs_blade: int, rhs_blade: int, out_blade: int) -> boo
         return grade_of_blade(out_blade) == abs(
             grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade)
         )
+    if kind == "left_contraction":
+        return grade_of_blade(lhs_blade) <= grade_of_blade(rhs_blade) and grade_of_blade(
+            out_blade
+        ) == (grade_of_blade(rhs_blade) - grade_of_blade(lhs_blade))
+    if kind == "right_contraction":
+        return grade_of_blade(lhs_blade) >= grade_of_blade(rhs_blade) and grade_of_blade(
+            out_blade
+        ) == (grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade))
     raise ValueError(f"Unsupported operator kind: {kind}")
 
 
@@ -77,12 +87,18 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
         (vga2d, "geometric", geometric_product),
         (vga2d, "outer", outer_product),
         (vga2d, "inner", inner_product),
+        (vga2d, "left_contraction", left_contraction),
+        (vga2d, "right_contraction", right_contraction),
         (vga3d, "geometric", geometric_product),
         (vga3d, "outer", outer_product),
         (vga3d, "inner", inner_product),
+        (vga3d, "left_contraction", left_contraction),
+        (vga3d, "right_contraction", right_contraction),
         (pga2d, "geometric", geometric_product),
         (pga2d, "outer", outer_product),
         (pga2d, "inner", inner_product),
+        (pga2d, "left_contraction", left_contraction),
+        (pga2d, "right_contraction", right_contraction),
     ],
 )
 def test_planned_products_match_naive_reference(factory, kind, operation) -> None:
@@ -131,6 +147,18 @@ def test_outer_and_inner_handle_basis_cases_in_vga3d() -> None:
     assert (e12 ^ e23).layout.size == 0
 
 
+def test_left_and_right_contraction_handle_basis_cases_in_vga3d() -> None:
+    algebra = Algebra.vga3d()
+    e2 = algebra.blade("e2")
+    e12 = algebra.blade("e12")
+    e23 = algebra.blade("e23")
+
+    assert e2.left_contract(e12).component("e1") == -1.0
+    assert e12.right_contract(e2).component("e1") == 1.0
+    assert e23.left_contract(e2).layout.size == 0
+    assert e2.right_contract(e23).layout.size == 0
+
+
 def test_outer_and_inner_handle_degenerate_pga2d_cases() -> None:
     algebra = Algebra.pga2d()
     e0 = algebra.blade("e0")
@@ -139,6 +167,15 @@ def test_outer_and_inner_handle_degenerate_pga2d_cases() -> None:
     assert (e0 | e0).layout.size == 0
     assert (e0 ^ e0).layout.size == 0
     assert (e0 ^ e1).component("e01") == 1.0
+
+
+def test_contractions_reduce_to_scalar_multiplication_for_grade_zero() -> None:
+    algebra = Algebra.vga3d()
+    scalar = algebra.scalar(2.5)
+    mv = algebra.multivector({"e1": np.array([1.0, -2.0]), "e23": 3.0})
+
+    assert_mv_allclose(left_contraction(scalar, mv), scalar * mv)
+    assert_mv_allclose(right_contraction(mv, scalar), mv * scalar)
 
 
 def test_dual_maps_vga3d_plane_bivector_to_normal_vector() -> None:
@@ -287,6 +324,8 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
         ("geometric", geometric_product),
         ("outer", outer_product),
         ("inner", inner_product),
+        ("left_contraction", left_contraction),
+        ("right_contraction", right_contraction),
     ],
 )
 def test_mixed_dense_and_csr_products_match_dense_reference(kind, operation) -> None:

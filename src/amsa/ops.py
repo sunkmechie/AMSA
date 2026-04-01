@@ -207,6 +207,14 @@ def inner_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "inner")
 
 
+def left_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "left_contraction")
+
+
+def right_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "right_contraction")
+
+
 def project_grades(mv: MVArray, *grades: int) -> MVArray:
     if not grades:
         raise ValueError("At least one grade must be selected.")
