@@ -74,6 +74,10 @@ The top-level package currently exports:
 - `reverse`
 - `involute`
 - `conjugate`
+- `dual`
+- `undual`
+- `poincare_dual`
+- `poincare_undual`
 - `project_grades`
 - `grade_of_blade`
 - `vga`
@@ -237,6 +241,10 @@ Current backend policy:
   - `reverse()`
   - `involute()`
   - `conjugate()`
+  - `dual()`
+  - `undual()`
+  - `poincare_dual()`
+  - `poincare_undual()`
   - unary negation via `-mv`
 - binary operations:
   - `mv + other`
@@ -269,6 +277,8 @@ These are the exact algebraic operations currently implemented in the reference 
 - conjugate
 - dual
 - undual
+- poincare dual
+- poincare undual
 
 ### Scalar interactions
 
@@ -335,13 +345,15 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `^`, `|`, `+`, `-`, `dual()`, and `undual()` for the currently implemented operators.
+3. Use `*`, `^`, `|`, `+`, `-`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
 
 Duality note:
 
-- `dual()` and `undual()` are implemented via the algebra pseudoscalar complement.
-- They require an invertible pseudoscalar, so they currently raise on degenerate algebras such as the PGA presets.
+- `dual()` and `undual()` are metric pseudoscalar duals.
+- They require an invertible pseudoscalar, so they raise on degenerate algebras such as the PGA presets.
+- `poincare_dual()` and `poincare_undual()` are metric-free complement duals.
+- The Poincare pair works on degenerate algebras, so it is the current duality path for PGA-style use cases.
 
 ### Example: 2D VGA vectors
 
@@ -416,21 +428,4 @@ print(mv.values)       # [[1.0, 3.0], [2.0, 3.0]]
 
 ## Examples
 
-There is still no finalized long-term examples or notebooks layout yet.
-
-What exists today:
-
-- inline snippets in this prerelease snapshot
-- the main test suite as the most reliable correctness reference
-- a temporary `tempo/` folder containing exploratory challenge scripts and probes
-
-Run tempo scripts from the repo root like:
-
-- `uv run tempo/challenge1_triangle_area.py`
-- `uv run tempo/challenge2_orientation_batch.py`
-- `uv run tempo/challenge10_geometry_kernel.py`
-
-Important boundary:
-
-- `tempo/` is currently an incubation area
-- those scripts are useful and verified, but they are not yet the project’s final examples, notebook, or benchmark structure
+`/examples` contains a few examples

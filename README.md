@@ -63,7 +63,7 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - outer product
 - inner product
 - addition and subtraction
-- reverse, involute, conjugate, dual, and undual
+- reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
 - grade projection and component lookup
 - dense/CSR conversion
@@ -81,23 +81,6 @@ uv run ruff check .
 uv run mypy
 ```
 
-## Exploratory Probes
-
-The repo currently also contains a temporary `tempo/` folder with exploratory challenge scripts and probes.
-
-These are useful for:
-
-- validating the current API on small real tasks
-- stress-testing batch workflows
-- comparing dense and CSR behavior
-- collecting ideas for future examples, notebooks, and benchmarks
-
-Run them from the repo root with:
-
-```bash
-uv run tempo/challenge1_triangle_area.py
-uv run tempo/challenge2_orientation_batch.py
-uv run tempo/challenge10_geometry_kernel.py
 ```
 
 ## Current Operations
@@ -107,8 +90,12 @@ uv run tempo/challenge10_geometry_kernel.py
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, multivector-scalar add/sub |
 | Geometric products | geometric product `*`, outer product `^`, inner product `\|` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, unary `-mv` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
 | Presets | `vga`, `vga2d`, `vga3d`, `pga2d`, `pga3d`, `Algebra.from_name(...)` |
+
+`dual()` / `undual()` currently use the metric pseudoscalar transform, while
+`poincare_dual()` / `poincare_undual()` use the metric-free basis complement.
+That makes the Poincare pair available on degenerate algebras such as the PGA presets.
