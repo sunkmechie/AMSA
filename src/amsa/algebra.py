@@ -12,6 +12,7 @@ from amsa.ops import add as add_op
 from amsa.ops import inner_product as inner_op
 from amsa.ops import left_contraction as left_contraction_op
 from amsa.ops import outer_product as outer_op
+from amsa.ops import regressive_product as regressive_product_op
 from amsa.ops import right_contraction as right_contraction_op
 from amsa.ops import sub as sub_op
 from amsa.specs import AlgebraSpec
@@ -205,6 +206,9 @@ class Algebra:
 
     def right_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return right_contraction_op(lhs, rhs)
+
+    def regress(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return regressive_product_op(lhs, rhs)
 
     def add(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)

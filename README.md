@@ -64,6 +64,7 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - inner product
 - left contraction
 - right contraction
+- regressive product
 - addition and subtraction
 - reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
@@ -91,7 +92,7 @@ uv run mypy
 | --- | --- |
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, multivector-scalar add/sub |
-| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `left_contraction`, `right_contraction` |
+| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `left_contraction`, `right_contraction`, `regressive_product` |
 | Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |

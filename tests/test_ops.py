@@ -11,6 +11,7 @@ from amsa import (
     outer_product,
     pga2d,
     poincare_dual,
+    regressive_product,
     right_contraction,
     undual,
     vga2d,
@@ -81,6 +82,10 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
     return type(lhs)(algebra=lhs.algebra, layout=layout, values=result)
 
 
+def _naive_regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return (lhs.poincare_dual() ^ rhs.poincare_dual()).poincare_undual()
+
+
 @pytest.mark.parametrize(
     ("factory", "kind", "operation"),
     [
@@ -89,16 +94,19 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
         (vga2d, "inner", inner_product),
         (vga2d, "left_contraction", left_contraction),
         (vga2d, "right_contraction", right_contraction),
+        (vga2d, "regressive", regressive_product),
         (vga3d, "geometric", geometric_product),
         (vga3d, "outer", outer_product),
         (vga3d, "inner", inner_product),
         (vga3d, "left_contraction", left_contraction),
         (vga3d, "right_contraction", right_contraction),
+        (vga3d, "regressive", regressive_product),
         (pga2d, "geometric", geometric_product),
         (pga2d, "outer", outer_product),
         (pga2d, "inner", inner_product),
         (pga2d, "left_contraction", left_contraction),
         (pga2d, "right_contraction", right_contraction),
+        (pga2d, "regressive", regressive_product),
     ],
 )
 def test_planned_products_match_naive_reference(factory, kind, operation) -> None:
@@ -107,7 +115,10 @@ def test_planned_products_match_naive_reference(factory, kind, operation) -> Non
     rhs = algebra.multivector({0: 2.0, 1: np.array([0.5, 1.5]), 3: 4.0})
 
     actual = operation(lhs, rhs)
-    expected = _naive_binary_product(lhs, rhs, kind=kind)
+    if kind == "regressive":
+        expected = _naive_regressive_product(lhs, rhs)
+    else:
+        expected = _naive_binary_product(lhs, rhs, kind=kind)
     assert_mv_allclose(actual, expected)
 
 
@@ -176,6 +187,28 @@ def test_contractions_reduce_to_scalar_multiplication_for_grade_zero() -> None:
 
     assert_mv_allclose(left_contraction(scalar, mv), scalar * mv)
     assert_mv_allclose(right_contraction(mv, scalar), mv * scalar)
+
+
+def test_regressive_product_matches_poincare_dual_outer_identity() -> None:
+    algebra = Algebra.vga3d()
+    lhs = algebra.multivector({"e1": 1.0, "e23": -2.0})
+    rhs = algebra.multivector({"e2": 3.0, "e12": 4.0})
+
+    actual = regressive_product(lhs, rhs)
+    expected = _naive_regressive_product(lhs, rhs)
+
+    assert_mv_allclose(actual, expected)
+
+
+def test_regressive_product_meets_lines_to_points_in_pga2d() -> None:
+    algebra = Algebra.pga2d()
+    e01 = algebra.blade("e01")
+    e02 = algebra.blade("e02")
+    e12 = algebra.blade("e12")
+
+    assert e01.regress(e12).component("e1") == 1.0
+    assert e02.regress(e12).component("e2") == 1.0
+    assert e01.regress(e02).component("e0") == 1.0
 
 
 def test_dual_maps_vga3d_plane_bivector_to_normal_vector() -> None:
@@ -326,6 +359,7 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
         ("inner", inner_product),
         ("left_contraction", left_contraction),
         ("right_contraction", right_contraction),
+        ("regressive", regressive_product),
     ],
 )
 def test_mixed_dense_and_csr_products_match_dense_reference(kind, operation) -> None:
@@ -334,11 +368,16 @@ def test_mixed_dense_and_csr_products_match_dense_reference(kind, operation) -> 
     rhs = algebra.multivector({"e": 2.0, "e2": np.array([0.5, 1.5]), "e123": -4.0}, backend="csr")
 
     actual = operation(lhs, rhs)
-    expected = _naive_binary_product(
-        lhs.with_storage("dense"),
-        rhs.with_storage("dense"),
-        kind=kind,
-    )
+    lhs_dense = lhs.with_storage("dense")
+    rhs_dense = rhs.with_storage("dense")
+    if kind == "regressive":
+        expected = _naive_regressive_product(lhs_dense, rhs_dense)
+    else:
+        expected = _naive_binary_product(
+            lhs_dense,
+            rhs_dense,
+            kind=kind,
+        )
 
     assert_mv_allclose(actual, expected)
 
