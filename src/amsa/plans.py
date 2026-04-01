@@ -7,7 +7,14 @@ from typing import Literal
 from amsa.layouts import MVLayout
 from amsa.specs import AlgebraSpec, grade_of_blade
 
-OpKind = Literal["geometric", "outer", "inner", "left_contraction", "right_contraction"]
+OpKind = Literal[
+    "geometric",
+    "outer",
+    "inner",
+    "left_contraction",
+    "right_contraction",
+    "regressive",
+]
 
 _LAYOUT_NAMES: dict[OpKind, str] = {
     "geometric": "gp",
@@ -15,6 +22,7 @@ _LAYOUT_NAMES: dict[OpKind, str] = {
     "inner": "ip",
     "left_contraction": "lc",
     "right_contraction": "rc",
+    "regressive": "rp",
 }
 
 
@@ -64,6 +72,65 @@ def _include_term(kind: OpKind, lhs_blade: int, rhs_blade: int, out_blade: int) 
     raise ValueError(f"Unsupported operator kind: {kind}")
 
 
+def _build_regressive_plan(
+    algebra: AlgebraSpec,
+    lhs_blades: tuple[int, ...],
+    rhs_blades: tuple[int, ...],
+) -> OpPlan:
+    pseudoscalar = algebra.pseudoscalar_blade
+    support: set[int] = set()
+    terms: list[ProductTerm] = []
+
+    for lhs_index, lhs_blade in enumerate(lhs_blades):
+        lhs_dual_blade = lhs_blade ^ pseudoscalar
+        lhs_dual_coefficient, _ = algebra.blade_product(lhs_blade, lhs_dual_blade)
+
+        for rhs_index, rhs_blade in enumerate(rhs_blades):
+            rhs_dual_blade = rhs_blade ^ pseudoscalar
+            rhs_dual_coefficient, _ = algebra.blade_product(rhs_blade, rhs_dual_blade)
+
+            dual_outer_coefficient, dual_output_blade = algebra.blade_product(
+                lhs_dual_blade,
+                rhs_dual_blade,
+            )
+            if dual_outer_coefficient == 0:
+                continue
+            if grade_of_blade(dual_output_blade) != (
+                grade_of_blade(lhs_dual_blade) + grade_of_blade(rhs_dual_blade)
+            ):
+                continue
+
+            out_blade = dual_output_blade ^ pseudoscalar
+            undual_coefficient, _ = algebra.blade_product(out_blade, dual_output_blade)
+            coefficient = (
+                lhs_dual_coefficient
+                * rhs_dual_coefficient
+                * dual_outer_coefficient
+                * undual_coefficient
+            )
+            if coefficient == 0:
+                continue
+
+            support.add(out_blade)
+            terms.append(
+                ProductTerm(
+                    lhs_index=lhs_index,
+                    rhs_index=rhs_index,
+                    out_blade=out_blade,
+                    coefficient=coefficient,
+                )
+            )
+
+    return OpPlan(
+        kind="regressive",
+        algebra=algebra,
+        lhs_blades=lhs_blades,
+        rhs_blades=rhs_blades,
+        output_blades=tuple(sorted(support)),
+        terms=tuple(terms),
+    )
+
+
 @cache
 def build_op_plan(
     algebra: AlgebraSpec,
@@ -71,6 +138,9 @@ def build_op_plan(
     rhs_blades: tuple[int, ...],
     kind: OpKind,
 ) -> OpPlan:
+    if kind == "regressive":
+        return _build_regressive_plan(algebra, lhs_blades, rhs_blades)
+
     support: set[int] = set()
     terms: list[ProductTerm] = []
 

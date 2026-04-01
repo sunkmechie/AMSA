@@ -222,6 +222,11 @@ class MVArray:
 
         return right_contraction(self, other)
 
+    def regress(self, other: MVArray) -> MVArray:
+        from amsa.ops import regressive_product
+
+        return regressive_product(self, other)
+
     def __neg__(self) -> MVArray:
         from amsa.ops import neg
 
