@@ -146,6 +146,49 @@ def undual(mv: MVArray) -> MVArray:
     return _pseudoscalar_transform(mv, inverse=False)
 
 
+def _poincare_transform(
+    mv: MVArray,
+    *,
+    inverse: bool,
+) -> MVArray:
+    pseudoscalar = mv.algebra.pseudoscalar_blade
+    target_blades = _complement_layout(mv.layout.blades, pseudoscalar=pseudoscalar)
+    if len(target_blades) == mv.algebra.blade_count:
+        layout = MVLayout.dense(mv.algebra)
+    else:
+        name = "poincare_undual" if inverse else "poincare_dual"
+        layout = MVLayout.sparse_pattern(mv.algebra, target_blades, name=name)
+
+    source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
+    projection_columns: list[int] = []
+    weights: list[int] = []
+    for target_blade in layout.blades:
+        source_blade = target_blade ^ pseudoscalar
+        source_column = source_index[source_blade]
+        lhs_blade, rhs_blade = (
+            (target_blade, source_blade) if inverse else (source_blade, target_blade)
+        )
+        coefficient, _ = mv.algebra.blade_product(lhs_blade, rhs_blade)
+        projection_columns.append(source_column)
+        weights.append(coefficient)
+
+    projected = project_storage(mv.storage, tuple(projection_columns))
+    transformed = reweight_storage(projected, np.asarray(weights, dtype=mv.dtype))
+    return MVArray(
+        algebra=mv.algebra,
+        layout=layout,
+        storage=transformed,
+    )
+
+
+def poincare_dual(mv: MVArray) -> MVArray:
+    return _poincare_transform(mv, inverse=False)
+
+
+def poincare_undual(mv: MVArray) -> MVArray:
+    return _poincare_transform(mv, inverse=True)
+
+
 def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:
     ensure_compatible(lhs, rhs)
     plan = plan_binary_product(lhs.layout, rhs.layout, kind)

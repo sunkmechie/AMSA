@@ -9,6 +9,7 @@ from amsa import (
     inner_product,
     outer_product,
     pga2d,
+    poincare_dual,
     undual,
     vga2d,
     vga3d,
@@ -178,6 +179,49 @@ def test_dual_rejects_degenerate_algebras_with_noninvertible_pseudoscalar() -> N
 
     with pytest.raises(ValueError, match="invertible pseudoscalar"):
         line.dual()
+
+
+def test_poincare_dual_uses_right_complement_signs_in_vga2d() -> None:
+    algebra = Algebra.vga2d()
+
+    assert poincare_dual(algebra.scalar(1.0)).component("e12") == 1.0
+    assert poincare_dual(algebra.blade("e1")).component("e2") == 1.0
+    assert poincare_dual(algebra.blade("e2")).component("e1") == -1.0
+    assert poincare_dual(algebra.blade("e12")).component("e") == 1.0
+
+
+def test_poincare_dual_is_distinct_from_metric_dual_in_vga2d() -> None:
+    algebra = Algebra.vga2d()
+    e1 = algebra.blade("e1")
+
+    assert e1.dual().component("e2") == -1.0
+    assert e1.poincare_dual().component("e2") == 1.0
+
+
+def test_poincare_dual_satisfies_basis_complement_identity_in_pga3d() -> None:
+    algebra = Algebra.pga3d()
+    pseudoscalar = algebra.spec.blade_name(algebra.spec.pseudoscalar_blade)
+
+    for blade in range(algebra.spec.blade_count):
+        basis = algebra.blade(blade)
+        complement = basis.poincare_dual()
+        joined = basis ^ complement
+
+        assert joined.layout.blades == (algebra.spec.pseudoscalar_blade,)
+        assert joined.component(pseudoscalar) == 1.0
+
+
+def test_poincare_dual_round_trips_and_preserves_csr_storage_in_pga2d() -> None:
+    algebra = Algebra.pga2d()
+    mv = algebra.multivector({"e0": np.array([1.0, -2.0]), "e12": 3.0}, backend="csr")
+
+    dual_mv = mv.poincare_dual()
+    restored = dual_mv.poincare_undual()
+
+    assert dual_mv.storage_kind == "csr"
+    assert dual_mv.layout.blades == (1, 6)
+    assert_mv_allclose(dual_mv, algebra.multivector({"e0": 3.0, "e12": np.array([1.0, -2.0])}))
+    assert_mv_allclose(restored, mv)
 
 
 def test_named_presets_and_grade_helpers_cover_common_robotics_shapes() -> None:

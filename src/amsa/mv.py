@@ -192,6 +192,16 @@ class MVArray:
 
         return undual(self)
 
+    def poincare_dual(self) -> MVArray:
+        from amsa.ops import poincare_dual
+
+        return poincare_dual(self)
+
+    def poincare_undual(self) -> MVArray:
+        from amsa.ops import poincare_undual
+
+        return poincare_undual(self)
+
     def outer(self, other: MVArray) -> MVArray:
         from amsa.ops import outer_product
 
