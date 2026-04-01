@@ -71,6 +71,8 @@ The top-level package currently exports:
 - `geometric_product`
 - `outer_product`
 - `inner_product`
+- `left_contraction`
+- `right_contraction`
 - `reverse`
 - `involute`
 - `conjugate`
@@ -186,6 +188,8 @@ Internal storage execution helpers currently available:
   - `gp(lhs, rhs)`
   - `outer(lhs, rhs)`
   - `inner(lhs, rhs)`
+  - `left_contract(lhs, rhs)`
+  - `right_contract(lhs, rhs)`
   - `add(lhs, rhs)`
   - `sub(lhs, rhs)`
 
@@ -256,6 +260,8 @@ Current backend policy:
 - named methods:
   - `outer(other)`
   - `inner(other)`
+  - `left_contract(other)`
+  - `right_contract(other)`
 
 ## Exact Operations Available Today
 
@@ -268,6 +274,8 @@ These are the exact algebraic operations currently implemented in the reference 
 - geometric product
 - outer product
 - inner product
+- left contraction
+- right contraction
 
 ### Unary multivector operations
 
@@ -308,6 +316,10 @@ The current binary product semantics are:
   - includes only terms whose output grade equals the sum of the input grades
 - inner product:
   - includes only terms whose output grade equals the absolute difference of the input grades
+- left contraction:
+  - includes only terms whose output grade equals `grade(rhs) - grade(lhs)` with `grade(lhs) <= grade(rhs)`
+- right contraction:
+  - includes only terms whose output grade equals `grade(lhs) - grade(rhs)` with `grade(lhs) >= grade(rhs)`
 
 All three products:
 
@@ -322,8 +334,6 @@ All three products:
 
 The following are not implemented yet:
 
-- left contraction
-- right contraction
 - scalar product as a separate operator
 - regressive product
 - inverse / division
@@ -345,7 +355,7 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `^`, `|`, `+`, `-`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
+3. Use `*`, `^`, `|`, `left_contract(...)`, `right_contract(...)`, `+`, `-`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
 
 Duality note:
