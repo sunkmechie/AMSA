@@ -529,12 +529,12 @@ def render_report(report: TraceReport) -> str:
 <style>
 :root {{
   color-scheme: dark;
-  --bg: #111315;
+  --bg: #151515;
   --panel: rgba(22, 24, 27, 0.94);
   --panel-edge: rgba(255, 255, 255, 0.08);
   --text: #f1efe8;
   --muted: #aaa59a;
-  --accent: #d8c3a5;
+  --accent: #c8c8c8;
   --line: rgba(255, 255, 255, 0.12);
   --positive: #9fcf8f;
   --negative: #cf8f8f;
@@ -546,10 +546,8 @@ def render_report(report: TraceReport) -> str:
 }}
 body {{
   margin: 0;
-  font-family: "IBM Plex Mono", "Iosevka", "SFMono-Regular", "Consolas", monospace;
-  background:
-    radial-gradient(circle at top left, rgba(216, 195, 165, 0.10), transparent 30%),
-    linear-gradient(180deg, #17191c 0%, #101214 100%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  background: var(--bg);
   color: var(--text);
 }}
 main {{
@@ -686,7 +684,7 @@ h2 {{
   background:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, #17191b, #121416);
+    #17191b;
   background-size: 24px 24px, 24px 24px, auto;
 }}
 .graph-wires {{
