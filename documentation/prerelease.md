@@ -7,7 +7,7 @@ AMSA is currently in a prerelease stage.
 The project now has:
 
 - a portable algebra core based on bit-pattern blade identifiers
-- lazy numeric basis-product tables for small algebras
+- lazy numeric basis-product tables for small-basis algebras
 - dense, grade-packed, and sparse layout descriptors
 - dense and CSR storage backends behind a shared storage contract
 - a reference multivector array type
@@ -58,7 +58,7 @@ Binary products now use a two-phase reference path:
 
 This is the current boundary between the pure reference backend and future optimized backend work.
 
-For smaller algebras, plan construction can also reuse a lazy numeric basis-product table from `amsa.specs`
+For small-basis algebras, plan construction can also reuse a lazy numeric basis-product table from `amsa.specs`
 instead of recomputing basis-blade products term by term.
 
 ## Public API
