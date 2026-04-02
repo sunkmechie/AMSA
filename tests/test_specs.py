@@ -55,3 +55,35 @@ def test_blade_product_respects_metric_and_sign() -> None:
 
     pga = pga2d()
     assert pga.blade_product(pga.blade_from_key("e0"), pga.blade_from_key("e0")) == (0, 0)
+
+
+def test_basis_product_table_matches_pre_table_blade_products() -> None:
+    spec = vga(3)
+    expected = {
+        (lhs, rhs): spec.blade_product(lhs, rhs)
+        for lhs in range(spec.blade_count)
+        for rhs in range(spec.blade_count)
+    }
+
+    table = spec.basis_product_table
+
+    assert table is not None
+    assert table.blade_count == spec.blade_count
+    assert tuple(int(grade) for grade in table.grades) == spec.grades_of_blades()
+    for pair, product in expected.items():
+        assert table.blade_product(*pair) == product
+
+
+def test_cayley_table_uses_canonical_names_and_zero_entries() -> None:
+    spec = pga2d()
+    cayley = spec.cayley_table()
+
+    assert cayley[("e0", "e0")] == "0"
+    assert cayley[("e1", "e2")] == "e12"
+    assert cayley[("e2", "e1")] == "-e12"
+
+
+def test_large_algebra_skips_precomputed_basis_product_table() -> None:
+    spec = vga(10)
+
+    assert spec.basis_product_table is None
