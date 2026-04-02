@@ -69,6 +69,7 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
 - grade projection and component lookup
+- lazy basis-product tables and on-demand Cayley tables via `AlgebraSpec`
 - dense/CSR conversion
 - dense and CSR-backed input execution in the reference backend
 
@@ -82,8 +83,6 @@ uv sync --extra dev
 uv run pytest -q
 uv run ruff check .
 uv run mypy
-```
-
 ```
 
 ## Current Operations

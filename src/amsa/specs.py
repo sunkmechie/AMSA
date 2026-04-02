@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Any
+
+import numpy as np
+from numpy.typing import NDArray
+
+_PRECOMPUTE_BASIS_PRODUCT_MAX_BLADE_COUNT = 512
 
 
-@lru_cache(maxsize=4096)
-def _blade_product_cached(
+def _blade_product_raw(
     signature: tuple[int, ...],
     lhs: int,
     rhs: int,
@@ -33,6 +38,50 @@ def _blade_product_cached(
         overlap ^= bit
 
     return coefficient, lhs ^ rhs
+
+
+def _blade_index_dtype(
+    blade_count: int,
+) -> type[np.uint8] | type[np.uint16] | type[np.uint32]:
+    if blade_count <= np.iinfo(np.uint8).max + 1:
+        return np.uint8
+    if blade_count <= np.iinfo(np.uint16).max + 1:
+        return np.uint16
+    return np.uint32
+
+
+@dataclass(frozen=True, slots=True)
+class BasisProductTable:
+    """Compact numeric basis-blade multiplication table for one algebra signature."""
+
+    coefficients: NDArray[np.int8]
+    output_blades: NDArray[Any]
+    grades: NDArray[np.uint8]
+
+    def __post_init__(self) -> None:
+        blade_count = self.coefficients.shape[0]
+        if self.coefficients.shape != (blade_count, blade_count):
+            raise ValueError("coefficients must be a square blade_count x blade_count array.")
+        if self.output_blades.shape != (blade_count, blade_count):
+            raise ValueError("output_blades must match the coefficients shape.")
+        if self.grades.shape != (blade_count,):
+            raise ValueError("grades must have length blade_count.")
+
+    @property
+    def blade_count(self) -> int:
+        return int(self.coefficients.shape[0])
+
+    def blade_product(self, lhs: int, rhs: int) -> tuple[int, int]:
+        return int(self.coefficients[lhs, rhs]), int(self.output_blades[lhs, rhs])
+
+
+@lru_cache(maxsize=4096)
+def _blade_product_cached(
+    signature: tuple[int, ...],
+    lhs: int,
+    rhs: int,
+) -> tuple[int, int]:
+    return _blade_product_raw(signature, lhs, rhs)
 
 
 @lru_cache(maxsize=256)
@@ -64,6 +113,70 @@ def canonical_blade_name(blade: int, *, dimension: int, start_index: int = 1) ->
         if blade & (1 << axis):
             parts.append(str(axis + start_index))
     return "e" + "".join(parts)
+
+
+@lru_cache(maxsize=32)
+def _basis_product_table_cached(signature: tuple[int, ...]) -> BasisProductTable | None:
+    blade_count = 1 << len(signature)
+    if blade_count > _PRECOMPUTE_BASIS_PRODUCT_MAX_BLADE_COUNT:
+        return None
+
+    coefficients = np.zeros((blade_count, blade_count), dtype=np.int8)
+    output_dtype = _blade_index_dtype(blade_count)
+    output_blades = np.zeros((blade_count, blade_count), dtype=output_dtype)
+    grades = np.fromiter((grade_of_blade(blade) for blade in range(blade_count)), dtype=np.uint8)
+
+    for lhs in range(blade_count):
+        for rhs in range(blade_count):
+            coefficient, out_blade = _blade_product_raw(signature, lhs, rhs)
+            coefficients[lhs, rhs] = coefficient
+            output_blades[lhs, rhs] = out_blade
+
+    return BasisProductTable(
+        coefficients=coefficients,
+        output_blades=output_blades,
+        grades=grades,
+    )
+
+
+def _build_cayley_entries(
+    signature: tuple[int, ...],
+    start_index: int,
+) -> tuple[tuple[tuple[str, str], str], ...]:
+    dimension = len(signature)
+    blade_count = 1 << dimension
+    blade_names = tuple(
+        canonical_blade_name(blade, dimension=dimension, start_index=start_index)
+        for blade in range(blade_count)
+    )
+    table = _basis_product_table_cached(signature)
+
+    entries: list[tuple[tuple[str, str], str]] = []
+    for lhs in range(blade_count):
+        lhs_name = blade_names[lhs]
+        for rhs in range(blade_count):
+            rhs_name = blade_names[rhs]
+            if table is not None:
+                coefficient, out_blade = table.blade_product(lhs, rhs)
+            else:
+                coefficient, out_blade = _blade_product_raw(signature, lhs, rhs)
+
+            if coefficient == 0:
+                value = "0"
+            else:
+                sign = "-" if coefficient < 0 else ""
+                value = sign + blade_names[out_blade]
+            entries.append(((lhs_name, rhs_name), value))
+
+    return tuple(entries)
+
+
+@lru_cache(maxsize=16)
+def _cayley_entries_cached(
+    signature: tuple[int, ...],
+    start_index: int,
+) -> tuple[tuple[tuple[str, str], str], ...]:
+    return _build_cayley_entries(signature, start_index)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,10 +259,22 @@ class AlgebraSpec:
     def pseudoscalar_blade(self) -> int:
         return self.blade_count - 1
 
+    @property
+    def basis_product_table(self) -> BasisProductTable | None:
+        return _basis_product_table_cached(self.signature)
+
     def blade_product(self, lhs: int, rhs: int) -> tuple[int, int]:
         lhs = self.validate_blade(lhs)
         rhs = self.validate_blade(rhs)
+        table = self.basis_product_table
+        if table is not None:
+            return table.blade_product(lhs, rhs)
         return _blade_product_cached(self.signature, lhs, rhs)
+
+    def cayley_table(self) -> dict[tuple[str, str], str]:
+        if self.basis_product_table is not None:
+            return dict(_cayley_entries_cached(self.signature, self.start_index))
+        return dict(_build_cayley_entries(self.signature, self.start_index))
 
     @classmethod
     def from_pqr(

@@ -3,6 +3,7 @@ import pytest
 
 from amsa import (
     Algebra,
+    AlgebraSpec,
     MVLayout,
     dual,
     geometric_product,
@@ -18,7 +19,7 @@ from amsa import (
     vga3d,
 )
 from amsa.mv import MVArray
-from amsa.plans import plan_binary_product
+from amsa.plans import build_op_plan, plan_binary_product
 from amsa.specs import grade_of_blade
 from amsa.storage import CSRStorage
 
@@ -134,6 +135,31 @@ def test_product_plans_are_cached_by_operator_and_layout_support() -> None:
     assert first.kind == "geometric"
     assert first.lhs_blades == lhs.blades
     assert first.rhs_blades == rhs.blades
+
+
+@pytest.mark.parametrize("kind", ["outer", "regressive"])
+def test_plan_building_uses_basis_product_table_when_available(
+    kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = vga3d()
+    lhs = MVLayout.grade(spec, 1, 2)
+    rhs = MVLayout.sparse_pattern(spec, (0, 1, 3, 7), name=f"rhs-{kind}")
+
+    assert spec.basis_product_table is not None
+    build_op_plan.cache_clear()
+
+    def fail_blade_product(self: AlgebraSpec, lhs_blade: int, rhs_blade: int) -> tuple[int, int]:
+        raise AssertionError(
+            f"plan construction for {kind} should use the precomputed basis-product table"
+        )
+
+    monkeypatch.setattr(AlgebraSpec, "blade_product", fail_blade_product)
+
+    plan = plan_binary_product(lhs, rhs, kind)
+
+    assert plan.kind == kind
+    assert plan.terms
 
 
 def test_outer_and_inner_split_vector_product_in_vga2d() -> None:

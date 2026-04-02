@@ -56,11 +56,20 @@ class OpPlan:
 def _include_term(kind: OpKind, lhs_blade: int, rhs_blade: int, out_blade: int) -> bool:
     if kind == "geometric":
         return True
+    return _include_term_grades(
+        kind,
+        grade_of_blade(lhs_blade),
+        grade_of_blade(rhs_blade),
+        grade_of_blade(out_blade),
+    )
 
-    lhs_grade = grade_of_blade(lhs_blade)
-    rhs_grade = grade_of_blade(rhs_blade)
-    out_grade = grade_of_blade(out_blade)
 
+def _include_term_grades(
+    kind: OpKind,
+    lhs_grade: int,
+    rhs_grade: int,
+    out_grade: int,
+) -> bool:
     if kind == "outer":
         return out_grade == lhs_grade + rhs_grade
     if kind == "inner":
@@ -78,30 +87,47 @@ def _build_regressive_plan(
     rhs_blades: tuple[int, ...],
 ) -> OpPlan:
     pseudoscalar = algebra.pseudoscalar_blade
+    table = algebra.basis_product_table
     support: set[int] = set()
     terms: list[ProductTerm] = []
 
     for lhs_index, lhs_blade in enumerate(lhs_blades):
         lhs_dual_blade = lhs_blade ^ pseudoscalar
-        lhs_dual_coefficient, _ = algebra.blade_product(lhs_blade, lhs_dual_blade)
+        if table is not None:
+            lhs_dual_coefficient = int(table.coefficients[lhs_blade, lhs_dual_blade])
+        else:
+            lhs_dual_coefficient, _ = algebra.blade_product(lhs_blade, lhs_dual_blade)
 
         for rhs_index, rhs_blade in enumerate(rhs_blades):
             rhs_dual_blade = rhs_blade ^ pseudoscalar
-            rhs_dual_coefficient, _ = algebra.blade_product(rhs_blade, rhs_dual_blade)
-
-            dual_outer_coefficient, dual_output_blade = algebra.blade_product(
-                lhs_dual_blade,
-                rhs_dual_blade,
-            )
+            if table is not None:
+                rhs_dual_coefficient = int(table.coefficients[rhs_blade, rhs_dual_blade])
+                dual_outer_coefficient = int(table.coefficients[lhs_dual_blade, rhs_dual_blade])
+                dual_output_blade = int(table.output_blades[lhs_dual_blade, rhs_dual_blade])
+            else:
+                rhs_dual_coefficient, _ = algebra.blade_product(rhs_blade, rhs_dual_blade)
+                dual_outer_coefficient, dual_output_blade = algebra.blade_product(
+                    lhs_dual_blade,
+                    rhs_dual_blade,
+                )
             if dual_outer_coefficient == 0:
                 continue
-            if grade_of_blade(dual_output_blade) != (
-                grade_of_blade(lhs_dual_blade) + grade_of_blade(rhs_dual_blade)
-            ):
+            if table is not None:
+                dual_output_grade = int(table.grades[dual_output_blade])
+                lhs_dual_grade = int(table.grades[lhs_dual_blade])
+                rhs_dual_grade = int(table.grades[rhs_dual_blade])
+            else:
+                dual_output_grade = grade_of_blade(dual_output_blade)
+                lhs_dual_grade = grade_of_blade(lhs_dual_blade)
+                rhs_dual_grade = grade_of_blade(rhs_dual_blade)
+            if dual_output_grade != (lhs_dual_grade + rhs_dual_grade):
                 continue
 
             out_blade = dual_output_blade ^ pseudoscalar
-            undual_coefficient, _ = algebra.blade_product(out_blade, dual_output_blade)
+            if table is not None:
+                undual_coefficient = int(table.coefficients[out_blade, dual_output_blade])
+            else:
+                undual_coefficient, _ = algebra.blade_product(out_blade, dual_output_blade)
             coefficient = (
                 lhs_dual_coefficient
                 * rhs_dual_coefficient
@@ -141,25 +167,51 @@ def build_op_plan(
     if kind == "regressive":
         return _build_regressive_plan(algebra, lhs_blades, rhs_blades)
 
+    table = algebra.basis_product_table
     support: set[int] = set()
     terms: list[ProductTerm] = []
 
-    for lhs_index, lhs_blade in enumerate(lhs_blades):
-        for rhs_index, rhs_blade in enumerate(rhs_blades):
-            coefficient, out_blade = algebra.blade_product(lhs_blade, rhs_blade)
-            if coefficient == 0:
-                continue
-            if not _include_term(kind, lhs_blade, rhs_blade, out_blade):
-                continue
-            support.add(out_blade)
-            terms.append(
-                ProductTerm(
-                    lhs_index=lhs_index,
-                    rhs_index=rhs_index,
-                    out_blade=out_blade,
-                    coefficient=coefficient,
+    if table is not None:
+        for lhs_index, lhs_blade in enumerate(lhs_blades):
+            lhs_grade = int(table.grades[lhs_blade])
+            for rhs_index, rhs_blade in enumerate(rhs_blades):
+                coefficient = int(table.coefficients[lhs_blade, rhs_blade])
+                if coefficient == 0:
+                    continue
+
+                out_blade = int(table.output_blades[lhs_blade, rhs_blade])
+                if kind != "geometric":
+                    rhs_grade = int(table.grades[rhs_blade])
+                    out_grade = int(table.grades[out_blade])
+                    if not _include_term_grades(kind, lhs_grade, rhs_grade, out_grade):
+                        continue
+
+                support.add(out_blade)
+                terms.append(
+                    ProductTerm(
+                        lhs_index=lhs_index,
+                        rhs_index=rhs_index,
+                        out_blade=out_blade,
+                        coefficient=coefficient,
+                    )
                 )
-            )
+    else:
+        for lhs_index, lhs_blade in enumerate(lhs_blades):
+            for rhs_index, rhs_blade in enumerate(rhs_blades):
+                coefficient, out_blade = algebra.blade_product(lhs_blade, rhs_blade)
+                if coefficient == 0:
+                    continue
+                if not _include_term(kind, lhs_blade, rhs_blade, out_blade):
+                    continue
+                support.add(out_blade)
+                terms.append(
+                    ProductTerm(
+                        lhs_index=lhs_index,
+                        rhs_index=rhs_index,
+                        out_blade=out_blade,
+                        coefficient=coefficient,
+                    )
+                )
 
     return OpPlan(
         kind=kind,

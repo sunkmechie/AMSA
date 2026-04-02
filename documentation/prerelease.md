@@ -7,6 +7,7 @@ AMSA is currently in a prerelease stage.
 The project now has:
 
 - a portable algebra core based on bit-pattern blade identifiers
+- lazy numeric basis-product tables for small-basis algebras
 - dense, grade-packed, and sparse layout descriptors
 - dense and CSR storage backends behind a shared storage contract
 - a reference multivector array type
@@ -41,7 +42,7 @@ The immediate direction is:
 
 The codebase is currently organized around these roles:
 
-- `amsa.specs`: algebra signatures, blade naming, grade helpers, preset specs
+- `amsa.specs`: algebra signatures, blade naming, grade helpers, basis-blade products, preset specs
 - `amsa.layouts`: layout descriptors for coefficient ordering and support
 - `amsa.storage`: storage protocol plus dense and CSR coefficient backends
 - `amsa.mv`: storage-backed multivectors tied to an algebra and layout
@@ -56,6 +57,9 @@ Binary products now use a two-phase reference path:
 2. Gather the coefficient slots referenced by that plan from dense or CSR storage, then execute into a dense result buffer for the output layout.
 
 This is the current boundary between the pure reference backend and future optimized backend work.
+
+For small-basis algebras, plan construction can also reuse a lazy numeric basis-product table from `amsa.specs`
+instead of recomputing basis-blade products term by term.
 
 ## Public API
 
@@ -104,7 +108,9 @@ The top-level package currently exports:
 - `blades_of_grade(grade)`
 - `grades_of_blades()`
 - `pseudoscalar_blade`
+- `basis_product_table`
 - `blade_product(lhs, rhs)`
+- `cayley_table()`
 - `from_pqr(...)`
 
 Preset spec constructors currently available:
