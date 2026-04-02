@@ -5,15 +5,18 @@ from amsa import (
     Algebra,
     AlgebraSpec,
     MVLayout,
+    divide,
     dual,
     geometric_product,
     inner_product,
+    inverse,
     left_contraction,
     outer_product,
     pga2d,
     poincare_dual,
     regressive_product,
     right_contraction,
+    scalar_product,
     undual,
     vga2d,
     vga3d,
@@ -35,6 +38,8 @@ def _keep_term(kind: str, lhs_blade: int, rhs_blade: int, out_blade: int) -> boo
         return grade_of_blade(out_blade) == abs(
             grade_of_blade(lhs_blade) - grade_of_blade(rhs_blade)
         )
+    if kind == "scalar":
+        return grade_of_blade(out_blade) == 0
     if kind == "left_contraction":
         return grade_of_blade(lhs_blade) <= grade_of_blade(rhs_blade) and grade_of_blade(
             out_blade
@@ -93,18 +98,21 @@ def _naive_regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
         (vga2d, "geometric", geometric_product),
         (vga2d, "outer", outer_product),
         (vga2d, "inner", inner_product),
+        (vga2d, "scalar", scalar_product),
         (vga2d, "left_contraction", left_contraction),
         (vga2d, "right_contraction", right_contraction),
         (vga2d, "regressive", regressive_product),
         (vga3d, "geometric", geometric_product),
         (vga3d, "outer", outer_product),
         (vga3d, "inner", inner_product),
+        (vga3d, "scalar", scalar_product),
         (vga3d, "left_contraction", left_contraction),
         (vga3d, "right_contraction", right_contraction),
         (vga3d, "regressive", regressive_product),
         (pga2d, "geometric", geometric_product),
         (pga2d, "outer", outer_product),
         (pga2d, "inner", inner_product),
+        (pga2d, "scalar", scalar_product),
         (pga2d, "left_contraction", left_contraction),
         (pga2d, "right_contraction", right_contraction),
         (pga2d, "regressive", regressive_product),
@@ -137,7 +145,7 @@ def test_product_plans_are_cached_by_operator_and_layout_support() -> None:
     assert first.rhs_blades == rhs.blades
 
 
-@pytest.mark.parametrize("kind", ["outer", "regressive"])
+@pytest.mark.parametrize("kind", ["outer", "scalar", "regressive"])
 def test_plan_building_uses_basis_product_table_when_available(
     kind: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -172,6 +180,18 @@ def test_outer_and_inner_split_vector_product_in_vga2d() -> None:
     assert (u ^ v).component("e12") == -10.0
 
 
+def test_scalar_product_matches_scalar_part_of_geometric_product() -> None:
+    algebra = Algebra.vga3d()
+    lhs = algebra.multivector({"e": 2.0, "e1": 1.5, "e23": -4.0})
+    rhs = algebra.multivector({"e": -1.0, "e1": 3.0, "e23": 2.0, "e123": 5.0})
+
+    gp = lhs * rhs
+    sp = scalar_product(lhs, rhs)
+
+    assert sp.layout.blades == (0,)
+    assert sp.component("e") == gp.component("e")
+
+
 def test_outer_and_inner_handle_basis_cases_in_vga3d() -> None:
     algebra = Algebra.vga3d()
     e2 = algebra.blade("e2")
@@ -202,6 +222,7 @@ def test_outer_and_inner_handle_degenerate_pga2d_cases() -> None:
     e1 = algebra.blade("e1")
 
     assert (e0 | e0).layout.size == 0
+    assert scalar_product(e0, e0).layout.size == 0
     assert (e0 ^ e0).layout.size == 0
     assert (e0 ^ e1).component("e01") == 1.0
 
@@ -235,6 +256,63 @@ def test_regressive_product_meets_lines_to_points_in_pga2d() -> None:
     assert e01.regress(e12).component("e1") == 1.0
     assert e02.regress(e12).component("e2") == 1.0
     assert e01.regress(e02).component("e0") == 1.0
+
+
+def test_inverse_handles_scalars_blades_and_even_rotors() -> None:
+    algebra = Algebra.vga2d()
+
+    scalar = algebra.scalar(2.0)
+    assert inverse(scalar).component("e") == 0.5
+    assert_mv_allclose(scalar.inverse() * scalar, algebra.scalar(1.0))
+    assert_mv_allclose(scalar * scalar.inverse(), algebra.scalar(1.0))
+
+    e1 = algebra.blade("e1")
+    assert_mv_allclose(e1.inverse(), e1)
+    assert_mv_allclose(e1.inverse() * e1, algebra.scalar(1.0))
+
+    rotor_like = algebra.multivector({"e": 2.0, "e12": 1.0})
+    rotor_inverse = rotor_like.inverse()
+    expected = algebra.multivector({"e": 0.4, "e12": -0.2})
+    assert_mv_allclose(rotor_inverse, expected)
+    assert_mv_allclose(rotor_like * rotor_inverse, algebra.scalar(1.0))
+    assert_mv_allclose(rotor_inverse * rotor_like, algebra.scalar(1.0))
+
+
+def test_inverse_preserves_csr_storage_for_row_scaled_sparse_support() -> None:
+    algebra = Algebra.vga3d()
+    mv = algebra.multivector({"e1": np.array([2.0, -4.0])}, backend="csr")
+
+    actual = mv.inverse()
+
+    assert actual.storage_kind == "csr"
+    assert_mv_allclose(actual, algebra.multivector({"e1": np.array([0.5, -0.25])}))
+
+
+def test_inverse_rejects_null_and_non_scalar_reverse_norm_cases() -> None:
+    pga = Algebra.pga2d()
+    with pytest.raises(ValueError, match="non-invertible"):
+        pga.blade("e0").inverse()
+
+    vga = Algebra.vga3d()
+    mixed = vga.multivector({"e1": 1.0, "e12": 1.0})
+    with pytest.raises(ValueError, match="scalar-valued"):
+        mixed.inverse()
+
+
+def test_division_supports_scalar_and_multivector_operands() -> None:
+    algebra = Algebra.vga2d()
+    mv = algebra.multivector({"e1": np.array([2.0, -4.0]), "e12": 6.0}, backend="csr")
+
+    divided_by_scalar = mv / 2.0
+    assert divided_by_scalar.storage_kind == "csr"
+    assert_mv_allclose(
+        divided_by_scalar,
+        algebra.multivector({"e1": np.array([1.0, -2.0]), "e12": 3.0}),
+    )
+
+    e1 = algebra.blade("e1")
+    assert_mv_allclose(divide(e1, e1), algebra.scalar(1.0))
+    assert_mv_allclose(2.0 / e1, algebra.blade("e1", value=2.0))
 
 
 def test_dual_maps_vga3d_plane_bivector_to_normal_vector() -> None:
@@ -383,6 +461,7 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
         ("geometric", geometric_product),
         ("outer", outer_product),
         ("inner", inner_product),
+        ("scalar", scalar_product),
         ("left_contraction", left_contraction),
         ("right_contraction", right_contraction),
         ("regressive", regressive_product),

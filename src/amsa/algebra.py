@@ -2,19 +2,43 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from numbers import Number
 from typing import Any
 
 import numpy as np
 
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
-from amsa.ops import add as add_op
-from amsa.ops import inner_product as inner_op
-from amsa.ops import left_contraction as left_contraction_op
-from amsa.ops import outer_product as outer_op
-from amsa.ops import regressive_product as regressive_product_op
-from amsa.ops import right_contraction as right_contraction_op
-from amsa.ops import sub as sub_op
+from amsa.ops import (
+    add as add_op,
+)
+from amsa.ops import (
+    divide as divide_op,
+)
+from amsa.ops import (
+    inner_product as inner_op,
+)
+from amsa.ops import (
+    inverse as inverse_op,
+)
+from amsa.ops import (
+    left_contraction as left_contraction_op,
+)
+from amsa.ops import (
+    outer_product as outer_op,
+)
+from amsa.ops import (
+    regressive_product as regressive_product_op,
+)
+from amsa.ops import (
+    right_contraction as right_contraction_op,
+)
+from amsa.ops import (
+    scalar_product as scalar_product_op,
+)
+from amsa.ops import (
+    sub as sub_op,
+)
 from amsa.specs import AlgebraSpec
 from amsa.specs import pga2d as pga2d_spec
 from amsa.specs import pga3d as pga3d_spec
@@ -201,6 +225,9 @@ class Algebra:
     def inner(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return inner_op(lhs, rhs)
 
+    def scalar_product(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return scalar_product_op(lhs, rhs)
+
     def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return left_contraction_op(lhs, rhs)
 
@@ -210,6 +237,9 @@ class Algebra:
     def regress(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return regressive_product_op(lhs, rhs)
 
+    def inverse(self, mv: MVArray) -> MVArray:
+        return inverse_op(mv)
+
     def add(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
         return add_op(left, rhs)
@@ -217,3 +247,15 @@ class Algebra:
     def sub(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
         return sub_op(left, rhs)
+
+    def div(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
+        if np.isscalar(lhs):
+            lhs = self.scalar(lhs)
+        else:
+            lhs = self.multivector(lhs)
+
+        if isinstance(rhs, Number):
+            return divide_op(lhs, rhs)
+        if isinstance(rhs, MVArray):
+            return divide_op(lhs, rhs)
+        return divide_op(lhs, self.multivector(rhs))

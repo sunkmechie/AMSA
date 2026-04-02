@@ -11,6 +11,7 @@ OpKind = Literal[
     "geometric",
     "outer",
     "inner",
+    "scalar",
     "left_contraction",
     "right_contraction",
     "regressive",
@@ -20,6 +21,7 @@ _LAYOUT_NAMES: dict[OpKind, str] = {
     "geometric": "gp",
     "outer": "op",
     "inner": "ip",
+    "scalar": "sp",
     "left_contraction": "lc",
     "right_contraction": "rc",
     "regressive": "rp",
@@ -74,6 +76,8 @@ def _include_term_grades(
         return out_grade == lhs_grade + rhs_grade
     if kind == "inner":
         return out_grade == abs(lhs_grade - rhs_grade)
+    if kind == "scalar":
+        return out_grade == 0
     if kind == "left_contraction":
         return lhs_grade <= rhs_grade and out_grade == rhs_grade - lhs_grade
     if kind == "right_contraction":

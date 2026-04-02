@@ -212,6 +212,11 @@ class MVArray:
 
         return inner_product(self, other)
 
+    def scalar_product(self, other: MVArray) -> MVArray:
+        from amsa.ops import scalar_product
+
+        return scalar_product(self, other)
+
     def left_contract(self, other: MVArray) -> MVArray:
         from amsa.ops import left_contraction
 
@@ -226,6 +231,11 @@ class MVArray:
         from amsa.ops import regressive_product
 
         return regressive_product(self, other)
+
+    def inverse(self) -> MVArray:
+        from amsa.ops import inverse
+
+        return inverse(self)
 
     def __neg__(self) -> MVArray:
         from amsa.ops import neg
@@ -307,3 +317,18 @@ class MVArray:
             return inner_product(self, other)
         except TypeError:
             return NotImplemented
+
+    def __truediv__(self, other: MVArray | Number) -> MVArray:
+        from amsa.ops import divide
+
+        try:
+            return divide(self, other)
+        except TypeError:
+            return NotImplemented
+
+    def __rtruediv__(self, other: Number) -> MVArray:
+        from amsa.ops import divide
+
+        if isinstance(other, Number):
+            return divide(other, self)
+        return NotImplemented
