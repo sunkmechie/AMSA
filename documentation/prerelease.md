@@ -15,6 +15,7 @@ The project now has:
 - a first reference backend split between planning and execution
 - storage-aware binary execution that can consume dense or CSR inputs
 - explicit constructor-level backend selection for dense and CSR storage
+- an external visual debugger probe that traces binary product plans and renders HTML reports
 - a tested public API for the current reference semantics
 
 Current verification status:
@@ -60,6 +61,9 @@ This is the current boundary between the pure reference backend and future optim
 
 For small-basis algebras, plan construction can also reuse a lazy numeric basis-product table from `amsa.specs`
 instead of recomputing basis-blade products term by term.
+
+Exploratory probes that inspect or visualize this execution path intentionally live outside `src/amsa`.
+The current visual debugger prototype is `probes/amsa_lab.py`.
 
 ## Public API
 
@@ -450,4 +454,50 @@ print(mv.values)       # [[1.0, 3.0], [2.0, 3.0]]
 
 ## Examples
 
-`/examples` contains a few examples
+`/examples` currently contains:
+
+- `examples/algebra/even_odd_decomposition.py`
+- `examples/geometry/orientation_batch_2d.py`
+- `examples/geometry/signed_volume_3d.py`
+- `examples/geometry/triangle_area_2d.py`
+- `examples/kernels/geometric_kernels.py`
+- `examples/planes/point_plane_distance_3d.py`
+
+These are the scripts that should reflect the current public API most directly.
+
+## Probes
+
+`/probes` is the right place for exploratory tooling that depends on internal plan or tracing details without turning
+those details into stable package API.
+
+Current probe:
+
+- `probes/amsa_lab.py`
+
+What it does today:
+
+- runs a trusted local AMSA expression
+- captures binary product steps from the existing operator path
+- uses `OpPlan` terms as the structural blade-interaction graph
+- renders a self-contained HTML report
+
+What it does not claim yet:
+
+- a hardened expression parser
+- a stable tracing API inside `src/amsa`
+- full expression visualization for unary operations or addition/subtraction
+- a geometry overlay for PGA object semantics
+
+Minimal usage:
+
+```bash
+uv run python probes/amsa_lab.py \
+  --algebra vga2d \
+  --stmt "u = alg.vector([1.0, 2.0])" \
+  --stmt "v = alg.vector([3.0, 4.0])" \
+  --expr "u * v" \
+  --output /tmp/amsa_lab.html
+```
+
+That prototype is intentionally external to the core package so AMSA can explore debugger UX without blurring the
+boundaries between algebra semantics, execution, and visualization.
