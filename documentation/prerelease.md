@@ -496,7 +496,7 @@ uv run python probes/amsa_lab.py \
   --stmt "u = alg.vector([1.0, 2.0])" \
   --stmt "v = alg.vector([3.0, 4.0])" \
   --expr "u * v" \
-  --output /tmp/amsa_lab.html
+  --output tempo/amsa_lab.html
 ```
 
 That prototype is intentionally external to the core package so AMSA can explore debugger UX without blurring the

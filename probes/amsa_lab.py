@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,7 @@ DEFAULT_STATEMENTS = (
     "v = alg.vector([3.0, 4.0])",
 )
 DEFAULT_EXPRESSION = "u * v"
-DEFAULT_OUTPUT = Path("/tmp/amsa_lab.html")
+DEFAULT_OUTPUT = Path("tempo/amsa_lab.html")
 
 OPERATOR_SYMBOLS: dict[OpKind, str] = {
     "geometric": "*",
@@ -296,37 +297,42 @@ def trace_expression(
     )
 
 
-def _curve_path(x0: int, y0: float, x1: int, y1: float) -> str:
-    control_x = (x0 + x1) / 2
-    return f"M {x0} {y0:.1f} C {control_x:.1f} {y0:.1f}, {control_x:.1f} {y1:.1f}, {x1} {y1:.1f}"
+def _node_positions(items: tuple[str, ...], *, top: int, step: int) -> dict[str, int]:
+    return {item: top + index * step for index, item in enumerate(items)}
 
 
-def _node_positions(items: tuple[str, ...], *, top: int, step: int) -> dict[str, float]:
-    return {item: float(top + index * step) for index, item in enumerate(items)}
+def _trace_output_totals(trace: ProductTrace) -> list[tuple[str, str, str]]:
+    totals: list[tuple[str, str, str]] = []
+    for blade, value in zip(trace.plan.output_blades, trace.result_values):
+        name = trace.plan.algebra.blade_name(blade)
+        if _is_zero(value):
+            state = "cancelled" if any(
+                contribution.out_blade == blade and not _is_zero(contribution.value)
+                for contribution in trace.contributions
+            ) else "inactive"
+        else:
+            state = "active"
+        totals.append((name, _format_scalar(value), state))
+    return totals
 
 
-def _trace_svg(trace: ProductTrace, step_index: int) -> str:
+def _trace_board(trace: ProductTrace, step_index: int) -> str:
     lhs_names = tuple(trace.plan.algebra.blade_name(blade) for blade in trace.plan.lhs_blades)
     rhs_names = tuple(trace.plan.algebra.blade_name(blade) for blade in trace.plan.rhs_blades)
     out_names = tuple(trace.plan.algebra.blade_name(blade) for blade in trace.plan.output_blades)
-    term_step = 72
-    blade_step = 84
-    height = max(
-        300,
-        120 + term_step * max(len(trace.contributions), 1),
-        120 + blade_step * max(len(lhs_names), len(rhs_names), len(out_names), 1),
-    )
+    term_step = 92
+    blade_step = 88
+    height = max(360, 140 + term_step * max(len(trace.contributions), 1))
 
-    lhs_x = 110
-    rhs_x = 300
-    term_x = 555
-    out_x = 835
+    lhs_x = 48
+    rhs_x = 230
+    term_x = 470
+    out_x = 820
 
-    lhs_pos = _node_positions(lhs_names, top=90, step=blade_step)
-    rhs_pos = _node_positions(rhs_names, top=90, step=blade_step)
-    out_pos = _node_positions(out_names, top=90, step=blade_step)
+    lhs_pos = _node_positions(lhs_names, top=72, step=blade_step)
+    rhs_pos = _node_positions(rhs_names, top=72, step=blade_step)
+    out_pos = _node_positions(out_names, top=72, step=blade_step)
 
-    active_terms = [contribution for contribution in trace.contributions if not _is_zero(contribution.value)]
     active_lhs_names = {
         trace.plan.algebra.blade_name(blade)
         for blade, value in zip(trace.plan.lhs_blades, trace.lhs_values)
@@ -337,6 +343,7 @@ def _trace_svg(trace: ProductTrace, step_index: int) -> str:
         for blade, value in zip(trace.plan.rhs_blades, trace.rhs_values)
         if not _is_zero(value)
     }
+    active_terms = [contribution for contribution in trace.contributions if not _is_zero(contribution.value)]
     active_output_names = {
         trace.plan.algebra.blade_name(contribution.out_blade)
         for contribution in active_terms
@@ -346,73 +353,142 @@ def _trace_svg(trace: ProductTrace, step_index: int) -> str:
         for blade, value in zip(trace.plan.output_blades, trace.result_values)
         if not _is_zero(value)
     }
+    output_totals = {name: value for name, value, _ in _trace_output_totals(trace)}
 
-    svg_parts = [
-        f'<svg viewBox="0 0 960 {height}" role="img" aria-label="Blade flow graph for step {step_index + 1}">',
-        '<text class="column-title" x="110" y="46">lhs blades</text>',
-        '<text class="column-title" x="300" y="46">rhs blades</text>',
-        '<text class="column-title" x="555" y="46">plan terms</text>',
-        '<text class="column-title" x="835" y="46">output blades</text>',
-    ]
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+
+    for name, y in lhs_pos.items():
+        state = "active" if name in active_lhs_names else "inactive"
+        nodes.append(
+            {
+                "id": f"step{step_index}-lhs-{name}",
+                "x": lhs_x,
+                "y": y,
+                "kind": "blade",
+                "state": state,
+                "title": name,
+                "subtitle": "lhs",
+            }
+        )
+
+    for name, y in rhs_pos.items():
+        state = "active" if name in active_rhs_names else "inactive"
+        nodes.append(
+            {
+                "id": f"step{step_index}-rhs-{name}",
+                "x": rhs_x,
+                "y": y,
+                "kind": "blade",
+                "state": state,
+                "title": name,
+                "subtitle": "rhs",
+            }
+        )
 
     for index, contribution in enumerate(trace.contributions):
-        term_y = 90 + index * term_step
+        term_y = 72 + index * term_step
         lhs_name = trace.plan.algebra.blade_name(contribution.lhs_blade)
         rhs_name = trace.plan.algebra.blade_name(contribution.rhs_blade)
         out_name = trace.plan.algebra.blade_name(contribution.out_blade)
         active = not _is_zero(contribution.value)
-        polarity = "positive" if np.sign(np.real(np.asarray(contribution.value))).item() >= 0 else "negative"
-        classes = "flow active" if active else "flow inactive"
-        if active:
-            classes += f" {polarity}"
-
-        delay = f"{index * 0.18:.2f}s"
-        svg_parts.append(
-            f'<path class="{classes}" style="animation-delay:{delay}" d="{_curve_path(lhs_x + 58, lhs_pos[lhs_name], term_x - 72, term_y)}" />'
+        polarity = (
+            "positive"
+            if np.sign(np.real(np.asarray(contribution.value))).item() >= 0
+            else "negative"
         )
-        svg_parts.append(
-            f'<path class="{classes}" style="animation-delay:{delay}" d="{_curve_path(rhs_x + 58, rhs_pos[rhs_name], term_x - 72, term_y)}" />'
+        state = polarity if active else "inactive"
+        term_id = f"step{step_index}-term-{index}"
+        nodes.append(
+            {
+                "id": term_id,
+                "x": term_x,
+                "y": term_y,
+                "kind": "term",
+                "state": state,
+                "title": f"{lhs_name} x {rhs_name}",
+                "subtitle": (
+                    f"{contribution.coefficient} * {_format_scalar(contribution.lhs_value)}"
+                    f" * {_format_scalar(contribution.rhs_value)} = {_format_scalar(contribution.value)}"
+                ),
+            }
         )
-        svg_parts.append(
-            f'<path class="{classes}" style="animation-delay:{delay}" d="{_curve_path(term_x + 72, term_y, out_x - 58, out_pos[out_name])}" />'
-        )
-
-        term_classes = "term-node active" if active else "term-node inactive"
-        if active:
-            term_classes += f" {polarity}"
-        svg_parts.append(
-            f'<g class="{term_classes}" style="animation-delay:{delay}">'
-            f'<rect x="{term_x - 72}" y="{term_y - 24}" width="144" height="48" rx="14" />'
-            f'<text class="term-label" x="{term_x}" y="{term_y - 4}">{html.escape(lhs_name)} x {html.escape(rhs_name)}</text>'
-            f'<text class="term-detail" x="{term_x}" y="{term_y + 13}">c={contribution.coefficient}, value={html.escape(_format_scalar(contribution.value))}</text>'
-            "</g>"
-        )
-
-    for name, y in lhs_pos.items():
-        node_class = "blade-node active" if name in active_lhs_names else "blade-node inactive"
-        svg_parts.append(
-            f'<g class="{node_class}"><circle cx="{lhs_x}" cy="{y}" r="28" /><text x="{lhs_x}" y="{y + 5}">{html.escape(name)}</text></g>'
-        )
-
-    for name, y in rhs_pos.items():
-        node_class = "blade-node active" if name in active_rhs_names else "blade-node inactive"
-        svg_parts.append(
-            f'<g class="{node_class}"><circle cx="{rhs_x}" cy="{y}" r="28" /><text x="{rhs_x}" y="{y + 5}">{html.escape(name)}</text></g>'
+        edges.extend(
+            [
+                {
+                    "from": f"step{step_index}-lhs-{lhs_name}",
+                    "to": term_id,
+                    "state": state,
+                },
+                {
+                    "from": f"step{step_index}-rhs-{rhs_name}",
+                    "to": term_id,
+                    "state": state,
+                },
+                {
+                    "from": term_id,
+                    "to": f"step{step_index}-out-{out_name}",
+                    "state": state,
+                },
+            ]
         )
 
     for name, y in out_pos.items():
         if name in result_output_names:
-            output_class = "blade-node active"
+            state = "active"
         elif name in active_output_names:
-            output_class = "blade-node cancelled"
+            state = "cancelled"
         else:
-            output_class = "blade-node inactive"
-        svg_parts.append(
-            f'<g class="{output_class}"><circle cx="{out_x}" cy="{y}" r="28" /><text x="{out_x}" y="{y + 5}">{html.escape(name)}</text></g>'
+            state = "inactive"
+        nodes.append(
+            {
+                "id": f"step{step_index}-out-{name}",
+                "x": out_x,
+                "y": y,
+                "kind": "output",
+                "state": state,
+                "title": name,
+                "subtitle": f"total = {output_totals[name]}",
+            }
         )
 
-    svg_parts.append("</svg>")
-    return "".join(svg_parts)
+    totals_markup = "".join(
+        (
+            f'<div class="total-chip {state}">'
+            f'<span class="total-name">{html.escape(name)}</span>'
+            f'<span class="total-value">{html.escape(value)}</span>'
+            "</div>"
+        )
+        for name, value, state in _trace_output_totals(trace)
+    )
+    nodes_markup = "".join(
+        (
+            f'<div class="node {node["kind"]} {node["state"]}" '
+            f'data-node-id="{html.escape(str(node["id"]))}" '
+            f'style="left:{int(node["x"])}px; top:{int(node["y"])}px;">'
+            f'<div class="node-title">{html.escape(str(node["title"]))}</div>'
+            f'<div class="node-subtitle">{html.escape(str(node["subtitle"]))}</div>'
+            "</div>"
+        )
+        for node in nodes
+    )
+    edges_json = html.escape(json.dumps(edges), quote=True)
+    return (
+        '<div class="board-wrap">'
+        '<div class="board-head">'
+        '<div class="column-kicker">lhs</div>'
+        '<div class="column-kicker">rhs</div>'
+        '<div class="column-kicker">terms</div>'
+        '<div class="column-kicker">outputs</div>'
+        "</div>"
+        f'<div class="totals-row">{totals_markup}</div>'
+        f'<div class="graph-board" data-edges="{edges_json}" style="height:{height}px;">'
+        '<svg class="graph-wires" aria-hidden="true"></svg>'
+        f"{nodes_markup}"
+        "</div>"
+        '<p class="drag-note">drag any node to rearrange the board; wires update live.</p>'
+        "</div>"
+    )
 
 
 def render_report(report: TraceReport) -> str:
@@ -432,7 +508,7 @@ def render_report(report: TraceReport) -> str:
             f"<h2>{html.escape(trace.lhs_text)} {html.escape(trace.operator_symbol)} {html.escape(trace.rhs_text)}</h2>"
             f"<p class=\"result-text\">result: {html.escape(trace.result_text)}</p>"
             f"<p class=\"step-summary\">structural terms: {structural_terms} | active terms: {active_terms}</p>"
-            f"{_trace_svg(trace, index)}"
+            f"{_trace_board(trace, index)}"
             "</section>"
         )
 
@@ -453,27 +529,27 @@ def render_report(report: TraceReport) -> str:
 <style>
 :root {{
   color-scheme: dark;
-  --bg: #06141f;
-  --panel: rgba(8, 28, 43, 0.84);
-  --panel-edge: rgba(132, 196, 255, 0.18);
-  --text: #e9f4ff;
-  --muted: #95afc6;
-  --accent: #79d2ff;
-  --positive: #6cf1a7;
-  --negative: #ff7c7c;
-  --inactive: rgba(151, 180, 205, 0.22);
-  --cancelled: #ffd36b;
+  --bg: #111315;
+  --panel: rgba(22, 24, 27, 0.94);
+  --panel-edge: rgba(255, 255, 255, 0.08);
+  --text: #f1efe8;
+  --muted: #aaa59a;
+  --accent: #d8c3a5;
+  --line: rgba(255, 255, 255, 0.12);
+  --positive: #9fcf8f;
+  --negative: #cf8f8f;
+  --inactive: #4f5358;
+  --cancelled: #d0b276;
 }}
 * {{
   box-sizing: border-box;
 }}
 body {{
   margin: 0;
-  font-family: "Iosevka", "SFMono-Regular", "Consolas", monospace;
+  font-family: "IBM Plex Mono", "Iosevka", "SFMono-Regular", "Consolas", monospace;
   background:
-    radial-gradient(circle at top left, rgba(121, 210, 255, 0.16), transparent 32%),
-    radial-gradient(circle at top right, rgba(108, 241, 167, 0.10), transparent 28%),
-    linear-gradient(180deg, #041018 0%, #081a27 44%, #030c13 100%);
+    radial-gradient(circle at top left, rgba(216, 195, 165, 0.10), transparent 30%),
+    linear-gradient(180deg, #17191c 0%, #101214 100%);
   color: var(--text);
 }}
 main {{
@@ -485,12 +561,11 @@ main {{
 .step-card {{
   background: var(--panel);
   border: 1px solid var(--panel-edge);
-  border-radius: 24px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.30);
-  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }}
 .hero {{
-  padding: 28px;
+  padding: 22px;
   margin-bottom: 24px;
 }}
 .eyebrow {{
@@ -515,15 +590,15 @@ h2 {{
 }}
 .hero-grid {{
   display: grid;
-  gap: 16px;
+  gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  margin-top: 22px;
+  margin-top: 18px;
 }}
 .stat {{
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: rgba(8, 33, 49, 0.70);
-  border: 1px solid rgba(132, 196, 255, 0.12);
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }}
 .stat-label {{
   font-size: 11px;
@@ -559,102 +634,136 @@ h2 {{
 .step-summary {{
   margin: 0 0 16px;
 }}
-svg {{
-  width: 100%;
-  height: auto;
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(5, 21, 33, 0.96), rgba(4, 17, 26, 0.90)),
-    linear-gradient(90deg, rgba(121, 210, 255, 0.06), transparent 20%, transparent 80%, rgba(108, 241, 167, 0.06));
-  border: 1px solid rgba(132, 196, 255, 0.10);
+.board-wrap {{
+  margin-top: 18px;
 }}
-.column-title {{
-  fill: var(--muted);
-  font-size: 12px;
-  text-anchor: middle;
+.board-head {{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.25fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}}
+.column-kicker {{
+  color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
+  font-size: 11px;
 }}
-.flow {{
+.totals-row {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}}
+.total-chip {{
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}}
+.total-chip.active {{
+  border-color: rgba(159, 207, 143, 0.35);
+}}
+.total-chip.cancelled {{
+  border-color: rgba(208, 178, 118, 0.4);
+}}
+.total-name {{
+  color: var(--muted);
+}}
+.total-value {{
+  color: var(--text);
+}}
+.graph-board {{
+  position: relative;
+  overflow: hidden;
+  min-height: 360px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, #17191b, #121416);
+  background-size: 24px 24px, 24px 24px, auto;
+}}
+.graph-wires {{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}}
+.wire {{
   fill: none;
-  stroke-width: 2.6;
-}}
-.flow.inactive {{
-  stroke: var(--inactive);
-}}
-.flow.active.positive {{
-  stroke: var(--positive);
-  stroke-dasharray: 10 8;
-  animation: dash 2.4s linear infinite;
-}}
-.flow.active.negative {{
-  stroke: var(--negative);
-  stroke-dasharray: 10 8;
-  animation: dash 2.4s linear infinite;
-}}
-.blade-node circle {{
   stroke-width: 2;
 }}
-.blade-node text,
-.term-node text {{
-  fill: var(--text);
-  text-anchor: middle;
+.wire.inactive {{
+  stroke: rgba(255, 255, 255, 0.10);
 }}
-.blade-node.active circle {{
-  fill: rgba(16, 63, 95, 0.95);
-  stroke: rgba(121, 210, 255, 0.72);
+.wire.positive {{
+  stroke: rgba(159, 207, 143, 0.70);
 }}
-.blade-node.inactive circle {{
-  fill: rgba(20, 35, 48, 0.82);
-  stroke: rgba(151, 180, 205, 0.18);
+.wire.negative {{
+  stroke: rgba(207, 143, 143, 0.70);
 }}
-.blade-node.cancelled circle {{
-  fill: rgba(61, 48, 13, 0.88);
-  stroke: rgba(255, 211, 107, 0.62);
+.node {{
+  position: absolute;
+  width: 132px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(27, 29, 33, 0.96);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
 }}
-.blade-node text {{
-  font-size: 15px;
-  font-weight: 600;
+.node.blade {{
+  width: 110px;
 }}
-.term-node rect {{
-  stroke-width: 1.8;
+.node.output {{
+  width: 136px;
 }}
-.term-node.active rect {{
-  fill: rgba(13, 40, 59, 0.96);
-  stroke: rgba(121, 210, 255, 0.56);
-  animation: pulse 2.0s ease-in-out infinite;
+.node.term {{
+  width: 182px;
 }}
-.term-node.active.positive rect {{
-  box-shadow: 0 0 10px rgba(108, 241, 167, 0.35);
+.node.active {{
+  border-color: rgba(216, 195, 165, 0.24);
 }}
-.term-node.active.negative rect {{
-  box-shadow: 0 0 10px rgba(255, 124, 124, 0.35);
+.node.positive {{
+  border-color: rgba(159, 207, 143, 0.30);
 }}
-.term-node.inactive rect {{
-  fill: rgba(17, 31, 43, 0.80);
-  stroke: rgba(151, 180, 205, 0.16);
+.node.negative {{
+  border-color: rgba(207, 143, 143, 0.30);
 }}
-.term-label {{
+.node.cancelled {{
+  border-color: rgba(208, 178, 118, 0.34);
+}}
+.node.inactive {{
+  opacity: 0.72;
+}}
+.node.dragging {{
+  cursor: grabbing;
+  z-index: 4;
+}}
+.node-title {{
   font-size: 14px;
-  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
 }}
-.term-detail {{
+.node-subtitle {{
+  margin-top: 6px;
   font-size: 11px;
-  fill: var(--muted);
+  line-height: 1.4;
+  color: var(--muted);
 }}
-@keyframes dash {{
-  to {{
-    stroke-dashoffset: -36;
-  }}
-}}
-@keyframes pulse {{
-  0%,
-  100% {{
-    transform: translateY(0px);
-  }}
-  50% {{
-    transform: translateY(-1px);
-  }}
+.drag-note {{
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }}
 @media (max-width: 720px) {{
   main {{
@@ -663,8 +772,11 @@ svg {{
   }}
   .hero,
   .step-card {{
-    border-radius: 18px;
+    border-radius: 14px;
     padding: 18px;
+  }}
+  .board-head {{
+    grid-template-columns: repeat(2, 1fr);
   }}
 }}
 </style>
@@ -695,6 +807,89 @@ svg {{
   </section>
   {"".join(sections)}
 </main>
+<script>
+const boards = document.querySelectorAll(".graph-board");
+
+function boardPoint(board, node) {{
+  return {{
+    x: node.offsetLeft + node.offsetWidth / 2,
+    y: node.offsetTop + node.offsetHeight / 2,
+  }};
+}}
+
+function curvePath(fromPoint, toPoint) {{
+  const dx = (toPoint.x - fromPoint.x) * 0.45;
+  return `M ${{fromPoint.x}} ${{fromPoint.y}} C ${{fromPoint.x + dx}} ${{fromPoint.y}}, ${{toPoint.x - dx}} ${{toPoint.y}}, ${{toPoint.x}} ${{toPoint.y}}`;
+}}
+
+function renderBoard(board) {{
+  const svg = board.querySelector(".graph-wires");
+  const edges = JSON.parse(board.dataset.edges);
+  const nodes = new Map(
+    Array.from(board.querySelectorAll(".node")).map((node) => [node.dataset.nodeId, node])
+  );
+  svg.innerHTML = "";
+  for (const edge of edges) {{
+    const fromNode = nodes.get(edge.from);
+    const toNode = nodes.get(edge.to);
+    if (!fromNode || !toNode) {{
+      continue;
+    }}
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("class", `wire ${{edge.state}}`);
+    path.setAttribute("d", curvePath(boardPoint(board, fromNode), boardPoint(board, toNode)));
+    svg.appendChild(path);
+  }}
+}}
+
+for (const board of boards) {{
+  let drag = null;
+
+  renderBoard(board);
+
+  board.addEventListener("pointerdown", (event) => {{
+    const node = event.target.closest(".node");
+    if (!node || !board.contains(node)) {{
+      return;
+    }}
+    const rect = board.getBoundingClientRect();
+    drag = {{
+      node,
+      offsetX: event.clientX - rect.left - node.offsetLeft,
+      offsetY: event.clientY - rect.top - node.offsetTop,
+    }};
+    node.classList.add("dragging");
+    node.setPointerCapture(event.pointerId);
+  }});
+
+  board.addEventListener("pointermove", (event) => {{
+    if (!drag) {{
+      return;
+    }}
+    const rect = board.getBoundingClientRect();
+    const nextLeft = Math.max(0, Math.min(rect.width - drag.node.offsetWidth, event.clientX - rect.left - drag.offsetX));
+    const nextTop = Math.max(0, Math.min(rect.height - drag.node.offsetHeight, event.clientY - rect.top - drag.offsetY));
+    drag.node.style.left = `${{nextLeft}}px`;
+    drag.node.style.top = `${{nextTop}}px`;
+    renderBoard(board);
+  }});
+
+  function endDrag(event) {{
+    if (!drag) {{
+      return;
+    }}
+    drag.node.classList.remove("dragging");
+    if (event && drag.node.hasPointerCapture(event.pointerId)) {{
+      drag.node.releasePointerCapture(event.pointerId);
+    }}
+    drag = null;
+  }}
+
+  board.addEventListener("pointerup", endDrag);
+  board.addEventListener("pointercancel", endDrag);
+  window.addEventListener("resize", () => renderBoard(board));
+}}
+</script>
 </body>
 </html>
 """
