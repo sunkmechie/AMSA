@@ -211,6 +211,47 @@ def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "scalar")
 
 
+def _require_degenerate_algebra(mv: MVArray, *, name: str) -> int:
+    null_mask = 0
+    for axis, metric in enumerate(mv.algebra.signature):
+        if metric == 0:
+            null_mask |= 1 << axis
+    if null_mask == 0:
+        raise ValueError(f"{name} requires an algebra with at least one null basis vector.")
+    return null_mask
+
+
+def _select_null_factor(mv: MVArray, *, include_null_factor: bool, name: str) -> MVArray:
+    null_mask = _require_degenerate_algebra(mv, name=name)
+    blades = tuple(
+        blade
+        for blade in mv.layout.blades
+        if bool(blade & null_mask) == include_null_factor
+    )
+    layout_name = name
+    if len(blades) == mv.algebra.blade_count:
+        layout = MVLayout.dense(mv.algebra)
+    else:
+        layout = MVLayout.sparse_pattern(mv.algebra, blades, name=layout_name)
+    return mv.to_layout(layout)
+
+
+def bulk(mv: MVArray) -> MVArray:
+    return _select_null_factor(mv, include_null_factor=False, name="bulk")
+
+
+def weight(mv: MVArray) -> MVArray:
+    return _select_null_factor(mv, include_null_factor=True, name="weight")
+
+
+def bulk_dual(mv: MVArray) -> MVArray:
+    return poincare_dual(bulk(mv))
+
+
+def weight_dual(mv: MVArray) -> MVArray:
+    return poincare_dual(weight(mv))
+
+
 def norm_squared(mv: MVArray) -> MVArray:
     return scalar_product(mv, reverse(mv))
 
@@ -237,6 +278,60 @@ def normalize(mv: MVArray) -> MVArray:
     magnitudes = _require_scalar_output(norm(mv), name="norm(mv)")
     if np.any(np.isclose(magnitudes, 0.0)):
         raise ValueError("normalize() is undefined for zero-magnitude multivectors.")
+    reciprocals = np.reciprocal(magnitudes)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=row_scale_storage(mv.storage, reciprocals),
+    )
+
+
+def bulk_norm_squared(mv: MVArray) -> MVArray:
+    bulk_mv = bulk(mv)
+    if bulk_mv.layout.size == 0:
+        zeros = np.zeros(mv.batch_shape, dtype=np.result_type(mv.dtype, np.float64))
+        return _scalar_mv(mv, zeros)
+    return norm_squared(bulk_mv)
+
+
+def bulk_norm(mv: MVArray) -> MVArray:
+    bulksq = _require_scalar_output(bulk_norm_squared(mv), name="bulk_norm_squared(mv)")
+    return _scalar_mv(mv, np.sqrt(np.abs(bulksq)))
+
+
+def _coefficient_magnitude_squared(mv: MVArray) -> np.ndarray:
+    values = np.asarray(mv.values, dtype=np.result_type(mv.dtype, np.float64))
+    if values.shape[-1] == 0:
+        return np.zeros(mv.batch_shape, dtype=values.dtype)
+    return np.asarray(np.sum(values * values, axis=-1), dtype=values.dtype)
+
+
+def weight_norm_squared(mv: MVArray) -> MVArray:
+    weighted = weight(mv)
+    return _scalar_mv(mv, _coefficient_magnitude_squared(weighted))
+
+
+def weight_norm(mv: MVArray) -> MVArray:
+    weightsq = _require_scalar_output(weight_norm_squared(mv), name="weight_norm_squared(mv)")
+    return _scalar_mv(mv, np.sqrt(weightsq))
+
+
+def bulk_normalize(mv: MVArray) -> MVArray:
+    magnitudes = _require_scalar_output(bulk_norm(mv), name="bulk_norm(mv)")
+    if np.any(np.isclose(magnitudes, 0.0)):
+        raise ValueError("bulk_normalize() is undefined for zero bulk magnitude.")
+    reciprocals = np.reciprocal(magnitudes)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=row_scale_storage(mv.storage, reciprocals),
+    )
+
+
+def unitize(mv: MVArray) -> MVArray:
+    magnitudes = _require_scalar_output(weight_norm(mv), name="weight_norm(mv)")
+    if np.any(np.isclose(magnitudes, 0.0)):
+        raise ValueError("unitize() is undefined for zero weight magnitude.")
     reciprocals = np.reciprocal(magnitudes)
     return MVArray(
         algebra=mv.algebra,

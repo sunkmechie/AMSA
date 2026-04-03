@@ -84,11 +84,21 @@ The top-level package currently exports:
 - `right_contraction`
 - `regressive_product`
 - `sandwich`
+- `bulk`
+- `weight`
+- `bulk_dual`
+- `weight_dual`
 - `inverse`
 - `divide`
 - `norm_squared`
 - `norm`
 - `normalize`
+- `bulk_norm_squared`
+- `bulk_norm`
+- `weight_norm_squared`
+- `weight_norm`
+- `bulk_normalize`
+- `unitize`
 - `reverse`
 - `involute`
 - `conjugate`
@@ -211,10 +221,20 @@ Internal storage execution helpers currently available:
   - `right_contract(lhs, rhs)`
   - `regress(lhs, rhs)`
   - `sandwich(actor, target)`
+  - `bulk(mv)`
+  - `weight(mv)`
+  - `bulk_dual(mv)`
+  - `weight_dual(mv)`
   - `inverse(mv)`
   - `norm_squared(mv)`
   - `norm(mv)`
   - `normalize(mv)`
+  - `bulk_norm_squared(mv)`
+  - `bulk_norm(mv)`
+  - `weight_norm_squared(mv)`
+  - `weight_norm(mv)`
+  - `bulk_normalize(mv)`
+  - `unitize(mv)`
   - `add(lhs, rhs)`
   - `sub(lhs, rhs)`
   - `div(lhs, rhs)`
@@ -279,6 +299,16 @@ Current backend policy:
   - `norm_squared()`
   - `norm()`
   - `normalized()`
+  - `bulk()`
+  - `weight()`
+  - `bulk_dual()`
+  - `weight_dual()`
+  - `bulk_norm_squared()`
+  - `bulk_norm()`
+  - `weight_norm_squared()`
+  - `weight_norm()`
+  - `bulk_normalized()`
+  - `unitized()`
   - unary negation via `-mv`
 - binary operations:
   - `mv + other`
@@ -314,6 +344,8 @@ These are the exact algebraic operations currently implemented in the reference 
 - right contraction
 - regressive product
 - sandwich / conjugation
+- bulk dual
+- weight dual
 
 ### Unary multivector operations
 
@@ -329,6 +361,12 @@ These are the exact algebraic operations currently implemented in the reference 
 - norm squared
 - norm
 - normalize
+- bulk norm squared
+- bulk norm
+- weight norm squared
+- weight norm
+- bulk normalize
+- unitize
 
 ### Scalar interactions
 
@@ -369,6 +407,9 @@ The current binary product semantics are:
 - regressive product:
   - is the Poincare-dual complement of the outer product:
     `regressive_product(a, b) = poincare_undual(poincare_dual(a) ^ poincare_dual(b))`
+- bulk dual / weight dual:
+  - apply Poincare complement duality after splitting a multivector by null-basis participation
+  - these helpers are intended for degenerate/projective algebras such as the PGA presets
 
 All seven products:
 
@@ -399,7 +440,7 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `/`, `^`, `|`, `scalar_product(...)`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `sandwich(...)`, `norm_squared()`, `norm()`, `normalized()`, `+`, `-`, `inverse()`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
+3. Use `*`, `/`, `^`, `|`, `scalar_product(...)`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `sandwich(...)`, `norm_squared()`, `norm()`, `normalized()`, `bulk_dual()`, `weight_dual()`, `bulk_norm()`, `weight_norm()`, `bulk_normalized()`, `unitized()`, `+`, `-`, `inverse()`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
 
 Duality note:
@@ -426,6 +467,13 @@ Sandwich note:
 
 - `sandwich(actor, target)` computes the full conjugation `actor * target * inverse(actor)`.
 - It therefore inherits the current restricted `inverse()` support and is most useful today with normalized versor-like operands.
+
+PGA note:
+
+- `bulk()` keeps coefficients whose blades do not contain the null basis factor.
+- `weight()` keeps coefficients whose blades do contain the null basis factor.
+- `bulk_dual()` and `weight_dual()` are explicit PGA-facing duality helpers layered on top of Poincare complement duality.
+- `bulk_normalized()` and `unitized()` are intentionally separate because PGA does not have a single universal normalization notion.
 
 ### Example: 2D VGA vectors
 

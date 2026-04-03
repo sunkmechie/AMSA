@@ -217,6 +217,26 @@ class MVArray:
 
         return scalar_product(self, other)
 
+    def bulk(self) -> MVArray:
+        from amsa.ops import bulk
+
+        return bulk(self)
+
+    def weight(self) -> MVArray:
+        from amsa.ops import weight
+
+        return weight(self)
+
+    def bulk_dual(self) -> MVArray:
+        from amsa.ops import bulk_dual
+
+        return bulk_dual(self)
+
+    def weight_dual(self) -> MVArray:
+        from amsa.ops import weight_dual
+
+        return weight_dual(self)
+
     def norm_squared(self) -> MVArray:
         from amsa.ops import norm_squared
 
@@ -231,6 +251,36 @@ class MVArray:
         from amsa.ops import normalize
 
         return normalize(self)
+
+    def bulk_norm_squared(self) -> MVArray:
+        from amsa.ops import bulk_norm_squared
+
+        return bulk_norm_squared(self)
+
+    def bulk_norm(self) -> MVArray:
+        from amsa.ops import bulk_norm
+
+        return bulk_norm(self)
+
+    def weight_norm_squared(self) -> MVArray:
+        from amsa.ops import weight_norm_squared
+
+        return weight_norm_squared(self)
+
+    def weight_norm(self) -> MVArray:
+        from amsa.ops import weight_norm
+
+        return weight_norm(self)
+
+    def bulk_normalized(self) -> MVArray:
+        from amsa.ops import bulk_normalize
+
+        return bulk_normalize(self)
+
+    def unitized(self) -> MVArray:
+        from amsa.ops import unitize
+
+        return unitize(self)
 
     def left_contract(self, other: MVArray) -> MVArray:
         from amsa.ops import left_contraction

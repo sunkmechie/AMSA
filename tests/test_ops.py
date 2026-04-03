@@ -5,6 +5,11 @@ from amsa import (
     Algebra,
     AlgebraSpec,
     MVLayout,
+    bulk,
+    bulk_dual,
+    bulk_norm,
+    bulk_norm_squared,
+    bulk_normalize,
     divide,
     dual,
     geometric_product,
@@ -22,8 +27,13 @@ from amsa import (
     sandwich,
     scalar_product,
     undual,
+    unitize,
     vga2d,
     vga3d,
+    weight,
+    weight_dual,
+    weight_norm,
+    weight_norm_squared,
 )
 from amsa.mv import MVArray
 from amsa.plans import build_op_plan, plan_binary_product
@@ -337,6 +347,79 @@ def test_normalize_rejects_zero_magnitude_multivectors() -> None:
 
     with pytest.raises(ValueError, match="zero-magnitude"):
         algebra.zeros(layout=algebra.grade_layout(1)).normalized()
+
+
+def test_bulk_and_weight_split_pga_support_by_null_factor() -> None:
+    algebra = Algebra.pga2d()
+    mv = algebra.multivector({"e1": 2.0, "e2": -1.0, "e01": 3.0, "e02": 4.0})
+
+    assert_mv_allclose(bulk(mv), algebra.multivector({"e1": 2.0, "e2": -1.0}))
+    assert_mv_allclose(weight(mv), algebra.multivector({"e01": 3.0, "e02": 4.0}))
+    assert_mv_allclose(bulk(mv) + weight(mv), mv)
+
+
+def test_bulk_and_weight_duals_match_poincare_dual_of_projected_parts() -> None:
+    algebra = Algebra.pga3d()
+    mv = algebra.multivector({"e1": 1.0, "e23": -2.0, "e01": 3.0, "e012": 4.0})
+
+    assert_mv_allclose(bulk_dual(mv), bulk(mv).poincare_dual())
+    assert_mv_allclose(weight_dual(mv), weight(mv).poincare_dual())
+
+
+def test_bulk_and_weight_norms_support_pga_specific_normalization_paths() -> None:
+    algebra = Algebra.pga2d()
+    mv = algebra.multivector({"e1": 3.0, "e01": 4.0})
+
+    assert bulk_norm_squared(mv).component("e") == 9.0
+    assert bulk_norm(mv).component("e") == 3.0
+    assert weight_norm_squared(mv).component("e") == 16.0
+    assert weight_norm(mv).component("e") == 4.0
+
+    assert_mv_allclose(bulk_normalize(mv), algebra.multivector({"e1": 1.0, "e01": 4.0 / 3.0}))
+    assert_mv_allclose(unitize(mv), algebra.multivector({"e1": 0.75, "e01": 1.0}))
+
+
+def test_bulk_and_weight_normalization_preserve_csr_storage() -> None:
+    algebra = Algebra.pga2d()
+    bulk_mv = algebra.multivector({"e1": np.array([3.0, 4.0])}, backend="csr")
+    weight_mv = algebra.multivector({"e01": np.array([3.0, 4.0])}, backend="csr")
+
+    bulk_normalized = bulk_mv.bulk_normalized()
+    unitized = weight_mv.unitized()
+
+    assert bulk_normalized.storage_kind == "csr"
+    assert unitized.storage_kind == "csr"
+    assert_mv_allclose(
+        bulk_normalized,
+        algebra.multivector({"e1": np.array([1.0, 1.0])}),
+    )
+    assert_mv_allclose(
+        unitized,
+        algebra.multivector({"e01": np.array([1.0, 1.0])}),
+    )
+
+
+def test_bulk_weight_operations_require_null_basis_vectors() -> None:
+    algebra = Algebra.vga2d()
+    mv = algebra.vector([1.0, 2.0])
+
+    with pytest.raises(ValueError, match="null basis vector"):
+        mv.bulk()
+    with pytest.raises(ValueError, match="null basis vector"):
+        mv.weight()
+    with pytest.raises(ValueError, match="null basis vector"):
+        mv.bulk_dual()
+    with pytest.raises(ValueError, match="null basis vector"):
+        mv.weight_dual()
+
+
+def test_bulk_and_weight_normalization_reject_zero_target_magnitude() -> None:
+    algebra = Algebra.pga2d()
+
+    with pytest.raises(ValueError, match="zero bulk magnitude"):
+        algebra.blade("e01").bulk_normalized()
+    with pytest.raises(ValueError, match="zero weight magnitude"):
+        algebra.blade("e1").unitized()
 
 
 def test_division_supports_scalar_and_multivector_operands() -> None:

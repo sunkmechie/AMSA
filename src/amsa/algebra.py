@@ -13,6 +13,21 @@ from amsa.ops import (
     add as add_op,
 )
 from amsa.ops import (
+    bulk as bulk_op,
+)
+from amsa.ops import (
+    bulk_dual as bulk_dual_op,
+)
+from amsa.ops import (
+    bulk_norm as bulk_norm_op,
+)
+from amsa.ops import (
+    bulk_norm_squared as bulk_norm_squared_op,
+)
+from amsa.ops import (
+    bulk_normalize as bulk_normalize_op,
+)
+from amsa.ops import (
     divide as divide_op,
 )
 from amsa.ops import (
@@ -50,6 +65,21 @@ from amsa.ops import (
 )
 from amsa.ops import (
     sub as sub_op,
+)
+from amsa.ops import (
+    unitize as unitize_op,
+)
+from amsa.ops import (
+    weight as weight_op,
+)
+from amsa.ops import (
+    weight_dual as weight_dual_op,
+)
+from amsa.ops import (
+    weight_norm as weight_norm_op,
+)
+from amsa.ops import (
+    weight_norm_squared as weight_norm_squared_op,
 )
 from amsa.specs import AlgebraSpec
 from amsa.specs import pga2d as pga2d_spec
@@ -240,6 +270,18 @@ class Algebra:
     def scalar_product(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return scalar_product_op(lhs, rhs)
 
+    def bulk(self, mv: MVArray) -> MVArray:
+        return bulk_op(mv)
+
+    def weight(self, mv: MVArray) -> MVArray:
+        return weight_op(mv)
+
+    def bulk_dual(self, mv: MVArray) -> MVArray:
+        return bulk_dual_op(mv)
+
+    def weight_dual(self, mv: MVArray) -> MVArray:
+        return weight_dual_op(mv)
+
     def norm_squared(self, mv: MVArray) -> MVArray:
         return norm_squared_op(mv)
 
@@ -248,6 +290,24 @@ class Algebra:
 
     def normalize(self, mv: MVArray) -> MVArray:
         return normalize_op(mv)
+
+    def bulk_norm_squared(self, mv: MVArray) -> MVArray:
+        return bulk_norm_squared_op(mv)
+
+    def bulk_norm(self, mv: MVArray) -> MVArray:
+        return bulk_norm_op(mv)
+
+    def weight_norm_squared(self, mv: MVArray) -> MVArray:
+        return weight_norm_squared_op(mv)
+
+    def weight_norm(self, mv: MVArray) -> MVArray:
+        return weight_norm_op(mv)
+
+    def bulk_normalize(self, mv: MVArray) -> MVArray:
+        return bulk_normalize_op(mv)
+
+    def unitize(self, mv: MVArray) -> MVArray:
+        return unitize_op(mv)
 
     def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return left_contraction_op(lhs, rhs)

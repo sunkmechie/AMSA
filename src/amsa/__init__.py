@@ -3,6 +3,11 @@ from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.ops import (
     add,
+    bulk,
+    bulk_dual,
+    bulk_norm,
+    bulk_norm_squared,
+    bulk_normalize,
     conjugate,
     divide,
     dual,
@@ -26,6 +31,11 @@ from amsa.ops import (
     scalar_product,
     sub,
     undual,
+    unitize,
+    weight,
+    weight_dual,
+    weight_norm,
+    weight_norm_squared,
 )
 from amsa.specs import AlgebraSpec, grade_of_blade, pga2d, pga3d, vga, vga2d, vga3d
 
@@ -35,6 +45,11 @@ __all__ = [
     "MVArray",
     "MVLayout",
     "add",
+    "bulk",
+    "bulk_dual",
+    "bulk_norm",
+    "bulk_norm_squared",
+    "bulk_normalize",
     "conjugate",
     "divide",
     "dual",
@@ -61,7 +76,12 @@ __all__ = [
     "scalar_product",
     "sub",
     "undual",
+    "unitize",
     "vga",
     "vga2d",
     "vga3d",
+    "weight",
+    "weight_dual",
+    "weight_norm",
+    "weight_norm_squared",
 ]
