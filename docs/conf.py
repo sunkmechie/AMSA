@@ -1,8 +1,8 @@
 """Sphinx configuration for AMSA."""
 
 project = "AMSA"
-copyright = "2026, Surya"
-author = "Surya"
+copyright = "2026, Surya Sunkara"
+author = "Surya Sunkara"
 version = "0.1.0"
 release = "0.1.0"
 
