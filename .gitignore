@@ -13,3 +13,14 @@ benchmarks/results/
 plan.md
 .codex
 tempo/
+
+# Sphinx docs
+docs/_build/
+docs/.jupyter_cache/
+
+# Jupyter
+tmp*
+.ipynb_checkpoints/
+
+# Legacy prerelease doc (superseded by docs/)
+documentation/prerelease.md

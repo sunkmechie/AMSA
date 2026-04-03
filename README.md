@@ -57,6 +57,31 @@ s = alg.scalar(1.0)
 
 Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 
+## Documentation
+
+Full documentation is in `docs/` as Sphinx reStructuredText files:
+
+```bash
+uv run sphinx-build docs docs/_build
+```
+
+You can also browse the source directly:
+
+- `docs/quickstart.rst` — installation and first steps
+- `docs/algebra.rst` — `AlgebraSpec`, presets, and blade products
+- `docs/layouts.rst` — `MVLayout` and sparse support
+- `docs/storage.rst` — dense and CSR backends
+- `docs/operators.rst` — product semantics, duality, and normalization
+- `docs/examples.rst` — index of runnable example scripts
+- `docs/probes.rst` — visual debugger probe (`amsa_lab`)
+
+## Notebooks
+
+Introductory notebooks are in `notebooks/`:
+
+- `01_vga_rotors.ipynb` — VGA vector products, rotors, and sandwich conjugation
+- `02_pga_rigid_body.ipynb` — PGA2d lines, meet/join, motors, and bulk/weight splits
+
 ## What Works Today
 
 - geometric product
@@ -89,6 +114,12 @@ uv sync --extra dev
 uv run pytest -q
 uv run ruff check .
 uv run mypy
+```
+
+Build the documentation:
+
+```bash
+uv run sphinx-build docs docs/_build
 ```
 
 ## Current Operations
