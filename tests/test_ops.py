@@ -11,11 +11,15 @@ from amsa import (
     inner_product,
     inverse,
     left_contraction,
+    norm,
+    norm_squared,
+    normalize,
     outer_product,
     pga2d,
     poincare_dual,
     regressive_product,
     right_contraction,
+    sandwich,
     scalar_product,
     undual,
     vga2d,
@@ -299,6 +303,42 @@ def test_inverse_rejects_null_and_non_scalar_reverse_norm_cases() -> None:
         mixed.inverse()
 
 
+def test_norm_squared_norm_and_normalized_work_for_euclidean_vectors() -> None:
+    algebra = Algebra.vga2d()
+    vector = algebra.vector([3.0, 4.0])
+
+    assert norm_squared(vector).component("e") == 25.0
+    assert norm(vector).component("e") == 5.0
+    assert_mv_allclose(vector.normalized(), algebra.vector([0.6, 0.8]), tol=1e-12)
+    assert norm(vector.normalized()).component("e") == pytest.approx(1.0)
+
+
+def test_norm_uses_absolute_reverse_norm_in_indefinite_signature() -> None:
+    algebra = Algebra(AlgebraSpec(signature=(-1,)))
+    e1 = algebra.blade("e1")
+
+    assert norm_squared(e1).component("e") == -1.0
+    assert norm(e1).component("e") == 1.0
+    assert_mv_allclose(normalize(e1), e1)
+
+
+def test_normalize_preserves_csr_storage_for_sparse_support() -> None:
+    algebra = Algebra.vga3d()
+    mv = algebra.multivector({"e1": np.array([3.0, 4.0])}, backend="csr")
+
+    actual = mv.normalized()
+
+    assert actual.storage_kind == "csr"
+    assert_mv_allclose(actual, algebra.multivector({"e1": np.array([1.0, 1.0])}))
+
+
+def test_normalize_rejects_zero_magnitude_multivectors() -> None:
+    algebra = Algebra.vga2d()
+
+    with pytest.raises(ValueError, match="zero-magnitude"):
+        algebra.zeros(layout=algebra.grade_layout(1)).normalized()
+
+
 def test_division_supports_scalar_and_multivector_operands() -> None:
     algebra = Algebra.vga2d()
     mv = algebra.multivector({"e1": np.array([2.0, -4.0]), "e12": 6.0}, backend="csr")
@@ -313,6 +353,33 @@ def test_division_supports_scalar_and_multivector_operands() -> None:
     e1 = algebra.blade("e1")
     assert_mv_allclose(divide(e1, e1), algebra.scalar(1.0))
     assert_mv_allclose(2.0 / e1, algebra.blade("e1", value=2.0))
+
+
+def test_sandwich_matches_conjugation_via_inverse() -> None:
+    algebra = Algebra.vga2d()
+    actor = algebra.multivector({"e": 2.0, "e12": 1.0})
+    target = algebra.blade("e1")
+
+    actual = sandwich(actor, target)
+    expected = actor * target * actor.inverse()
+
+    assert_mv_allclose(actual, expected)
+
+
+def test_sandwich_rotates_e1_to_e2_with_normalized_vga2d_rotor() -> None:
+    algebra = Algebra.vga2d()
+    rotor = algebra.multivector(
+        {
+            "e": np.sqrt(0.5),
+            "e12": -np.sqrt(0.5),
+        }
+    )
+    vector = algebra.blade("e1")
+
+    actual = rotor.sandwich(vector)
+
+    assert actual.component("e1") == pytest.approx(0.0)
+    assert actual.component("e2") == pytest.approx(1.0)
 
 
 def test_dual_maps_vga3d_plane_bivector_to_normal_vector() -> None:

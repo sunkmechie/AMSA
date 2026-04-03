@@ -211,6 +211,40 @@ def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "scalar")
 
 
+def norm_squared(mv: MVArray) -> MVArray:
+    return scalar_product(mv, reverse(mv))
+
+
+def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
+    dtype = np.result_type(mv.dtype, values.dtype)
+    scalar_layout = MVLayout.grade(mv.algebra, 0)
+    payload = np.asarray(values, dtype=dtype)
+    if payload.shape == ():
+        payload = np.asarray([payload.item()], dtype=dtype)
+    else:
+        payload = payload[..., np.newaxis]
+    return MVArray(algebra=mv.algebra, layout=scalar_layout, values=payload)
+
+
+def norm(mv: MVArray) -> MVArray:
+    normsq = norm_squared(mv)
+    normsq_values = _require_scalar_output(normsq, name="norm_squared(mv)")
+    magnitudes = np.sqrt(np.abs(normsq_values))
+    return _scalar_mv(mv, magnitudes)
+
+
+def normalize(mv: MVArray) -> MVArray:
+    magnitudes = _require_scalar_output(norm(mv), name="norm(mv)")
+    if np.any(np.isclose(magnitudes, 0.0)):
+        raise ValueError("normalize() is undefined for zero-magnitude multivectors.")
+    reciprocals = np.reciprocal(magnitudes)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=row_scale_storage(mv.storage, reciprocals),
+    )
+
+
 def left_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "left_contraction")
 
@@ -221,6 +255,11 @@ def right_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 def regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "regressive")
+
+
+def sandwich(actor: MVArray, target: MVArray) -> MVArray:
+    ensure_compatible(actor, target)
+    return geometric_product(geometric_product(actor, target), inverse(actor))
 
 
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:

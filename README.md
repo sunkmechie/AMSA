@@ -66,8 +66,10 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - left contraction
 - right contraction
 - regressive product
+- sandwich / conjugation
 - addition and subtraction
 - inverse and division for the current reverse-scalar-norm cases
+- reverse-based `norm_squared`, `norm`, and `normalize`
 - reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
 - grade projection and component lookup
@@ -93,8 +95,8 @@ uv run mypy
 | --- | --- |
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, `mv / scalar`, multivector-scalar add/sub |
-| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `left_contraction`, `right_contraction`, `regressive_product` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, unary `-mv` |
+| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `norm_squared`, `norm`, `normalize`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
@@ -107,3 +109,7 @@ That makes the Poincare pair available on degenerate algebras such as the PGA pr
 `inverse()` is currently a restricted reverse-based inverse: it succeeds when
 `reverse(mv) * mv` and `mv * reverse(mv)` both collapse to the same nonzero scalar,
 and raises otherwise.
+
+`norm_squared()` returns the signed reverse norm scalar `<mv * reverse(mv)>_0`.
+`norm()` takes `sqrt(abs(norm_squared))` so it stays real on indefinite signatures, and
+`normalize()` divides by that magnitude.
