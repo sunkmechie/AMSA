@@ -455,3 +455,39 @@ def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
         width=storage.width,
         dtype=result_dtype,
     )
+
+
+def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
+    factor_array = np.asarray(factors)
+    if factor_array.shape != storage.batch_shape:
+        raise ValueError(
+            "factors must match storage batch_shape "
+            f"{storage.batch_shape}, got {factor_array.shape}."
+        )
+
+    result_dtype = np.dtype(np.result_type(storage.dtype, factor_array.dtype))
+    resolved_factors = np.asarray(factor_array, dtype=result_dtype)
+
+    if isinstance(storage, DenseStorage):
+        values = np.asarray(storage.array, dtype=result_dtype) * resolved_factors[..., np.newaxis]
+        return DenseStorage(values)
+    if not isinstance(storage, CSRStorage):
+        raise TypeError(f"Unsupported storage type: {type(storage)!r}")
+
+    flat_factors = resolved_factors.reshape(storage.row_count)
+    data = np.asarray(storage.data, dtype=result_dtype).copy()
+    for row in range(storage.row_count):
+        start = int(storage.indptr[row])
+        stop = int(storage.indptr[row + 1])
+        if start == stop:
+            continue
+        data[start:stop] *= flat_factors[row]
+
+    return CSRStorage(
+        data,
+        storage.indices.copy(),
+        storage.indptr.copy(),
+        batch_shape=storage.batch_shape,
+        width=storage.width,
+        dtype=result_dtype,
+    )

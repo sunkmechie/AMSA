@@ -62,10 +62,12 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 - geometric product
 - outer product
 - inner product
+- scalar product
 - left contraction
 - right contraction
 - regressive product
 - addition and subtraction
+- inverse and division for the current reverse-scalar-norm cases
 - reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
 - grade projection and component lookup
@@ -90,9 +92,9 @@ uv run mypy
 | Category | Available now |
 | --- | --- |
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
-| Scalar arithmetic | `scalar * mv`, `mv * scalar`, multivector-scalar add/sub |
-| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `left_contraction`, `right_contraction`, `regressive_product` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, unary `-mv` |
+| Scalar arithmetic | `scalar * mv`, `mv * scalar`, `mv / scalar`, multivector-scalar add/sub |
+| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `left_contraction`, `right_contraction`, `regressive_product` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
@@ -101,3 +103,7 @@ uv run mypy
 `dual()` / `undual()` currently use the metric pseudoscalar transform, while
 `poincare_dual()` / `poincare_undual()` use the metric-free basis complement.
 That makes the Poincare pair available on degenerate algebras such as the PGA presets.
+
+`inverse()` is currently a restricted reverse-based inverse: it succeeds when
+`reverse(mv) * mv` and `mv * reverse(mv)` both collapse to the same nonzero scalar,
+and raises otherwise.

@@ -130,7 +130,7 @@ def _format_multivector(
     values = _sample_values(mv, target_batch_shape, sample_index)
 
     parts: list[str] = []
-    for blade, coefficient in zip(mv.layout.blades, values):
+    for blade, coefficient in zip(mv.layout.blades, values, strict=True):
         if _is_zero(coefficient):
             continue
         parts.append(_format_term(mv.algebra.blade_name(blade), coefficient))
@@ -157,12 +157,16 @@ def _resolve_sample_index(batch_shape: tuple[int, ...], sample: str | None) -> t
     if len(pieces) != len(batch_shape):
         shape_text = ", ".join(str(size) for size in batch_shape)
         raise ValueError(
-            f"sample index {sample!r} does not match batch rank {len(batch_shape)} for shape ({shape_text})."
+            "sample index "
+            f"{sample!r} does not match batch rank {len(batch_shape)} "
+            f"for shape ({shape_text})."
         )
 
-    for index, size in zip(pieces, batch_shape):
+    for index, size in zip(pieces, batch_shape, strict=True):
         if index < 0 or index >= size:
-            raise ValueError(f"sample index {pieces!r} is out of bounds for batch shape {batch_shape}.")
+            raise ValueError(
+                f"sample index {pieces!r} is out of bounds for batch shape {batch_shape}."
+            )
     return pieces
 
 
@@ -287,7 +291,9 @@ def trace_expression(
         raise TypeError(f"Expression must evaluate to an MVArray, got {type(result)!r}.")
 
     final_sample = _resolve_sample_index(result.batch_shape, sample)
-    final_text = _format_multivector(result, batch_shape=result.batch_shape, sample_index=final_sample)
+    final_text = _format_multivector(
+        result, batch_shape=result.batch_shape, sample_index=final_sample
+    )
     return TraceReport(
         algebra_name=algebra_name,
         expression=expression,
@@ -303,13 +309,17 @@ def _node_positions(items: tuple[str, ...], *, top: int, step: int) -> dict[str,
 
 def _trace_output_totals(trace: ProductTrace) -> list[tuple[str, str, str]]:
     totals: list[tuple[str, str, str]] = []
-    for blade, value in zip(trace.plan.output_blades, trace.result_values):
+    for blade, value in zip(trace.plan.output_blades, trace.result_values, strict=True):
         name = trace.plan.algebra.blade_name(blade)
         if _is_zero(value):
-            state = "cancelled" if any(
-                contribution.out_blade == blade and not _is_zero(contribution.value)
-                for contribution in trace.contributions
-            ) else "inactive"
+            state = (
+                "cancelled"
+                if any(
+                    contribution.out_blade == blade and not _is_zero(contribution.value)
+                    for contribution in trace.contributions
+                )
+                else "inactive"
+            )
         else:
             state = "active"
         totals.append((name, _format_scalar(value), state))
@@ -335,22 +345,23 @@ def _trace_board(trace: ProductTrace, step_index: int) -> str:
 
     active_lhs_names = {
         trace.plan.algebra.blade_name(blade)
-        for blade, value in zip(trace.plan.lhs_blades, trace.lhs_values)
+        for blade, value in zip(trace.plan.lhs_blades, trace.lhs_values, strict=True)
         if not _is_zero(value)
     }
     active_rhs_names = {
         trace.plan.algebra.blade_name(blade)
-        for blade, value in zip(trace.plan.rhs_blades, trace.rhs_values)
+        for blade, value in zip(trace.plan.rhs_blades, trace.rhs_values, strict=True)
         if not _is_zero(value)
     }
-    active_terms = [contribution for contribution in trace.contributions if not _is_zero(contribution.value)]
+    active_terms = [
+        contribution for contribution in trace.contributions if not _is_zero(contribution.value)
+    ]
     active_output_names = {
-        trace.plan.algebra.blade_name(contribution.out_blade)
-        for contribution in active_terms
+        trace.plan.algebra.blade_name(contribution.out_blade) for contribution in active_terms
     }
     result_output_names = {
         trace.plan.algebra.blade_name(blade)
-        for blade, value in zip(trace.plan.output_blades, trace.result_values)
+        for blade, value in zip(trace.plan.output_blades, trace.result_values, strict=True)
         if not _is_zero(value)
     }
     output_totals = {name: value for name, value, _ in _trace_output_totals(trace)}
@@ -409,7 +420,8 @@ def _trace_board(trace: ProductTrace, step_index: int) -> str:
                 "title": f"{lhs_name} x {rhs_name}",
                 "subtitle": (
                     f"{contribution.coefficient} * {_format_scalar(contribution.lhs_value)}"
-                    f" * {_format_scalar(contribution.rhs_value)} = {_format_scalar(contribution.value)}"
+                    f" * {_format_scalar(contribution.rhs_value)} = "
+                    f"{_format_scalar(contribution.value)}"
                 ),
             }
         )
@@ -503,19 +515,23 @@ def render_report(report: TraceReport) -> str:
         structural_terms = len(trace.contributions)
         active_terms = sum(not _is_zero(contribution.value) for contribution in trace.contributions)
         sections.append(
-            "<section class=\"step-card\">"
-            f"<div class=\"step-meta\">step {index + 1}: {html.escape(trace.kind)} ({html.escape(trace.operator_symbol)})</div>"
-            f"<h2>{html.escape(trace.lhs_text)} {html.escape(trace.operator_symbol)} {html.escape(trace.rhs_text)}</h2>"
-            f"<p class=\"result-text\">result: {html.escape(trace.result_text)}</p>"
-            f"<p class=\"step-summary\">structural terms: {structural_terms} | active terms: {active_terms}</p>"
+            '<section class="step-card">'
+            f'<div class="step-meta">step {index + 1}: '
+            f"{html.escape(trace.kind)} ({html.escape(trace.operator_symbol)})"
+            "</div>"
+            f"<h2>{html.escape(trace.lhs_text)} "
+            f"{html.escape(trace.operator_symbol)} {html.escape(trace.rhs_text)}</h2>"
+            f'<p class="result-text">result: {html.escape(trace.result_text)}</p>'
+            f'<p class="step-summary">structural terms: {structural_terms} | '
+            f"active terms: {active_terms}</p>"
             f"{_trace_board(trace, index)}"
             "</section>"
         )
 
     if not sections:
         sections.append(
-            "<section class=\"step-card\">"
-            "<div class=\"step-meta\">no binary product steps captured</div>"
+            '<section class="step-card">'
+            '<div class="step-meta">no binary product steps captured</div>'
             "<h2>This expression did not trigger AMSA's binary product planner.</h2>"
             "</section>"
         )
@@ -817,7 +833,12 @@ function boardPoint(board, node) {{
 
 function curvePath(fromPoint, toPoint) {{
   const dx = (toPoint.x - fromPoint.x) * 0.45;
-  return `M ${{fromPoint.x}} ${{fromPoint.y}} C ${{fromPoint.x + dx}} ${{fromPoint.y}}, ${{toPoint.x - dx}} ${{toPoint.y}}, ${{toPoint.x}} ${{toPoint.y}}`;
+  return (
+    `M ${{fromPoint.x}} ${{fromPoint.y}} C `
+    + `${{fromPoint.x + dx}} ${{fromPoint.y}}, `
+    + `${{toPoint.x - dx}} ${{toPoint.y}}, `
+    + `${{toPoint.x}} ${{toPoint.y}}`
+  );
 }}
 
 function renderBoard(board) {{
@@ -865,8 +886,20 @@ for (const board of boards) {{
       return;
     }}
     const rect = board.getBoundingClientRect();
-    const nextLeft = Math.max(0, Math.min(rect.width - drag.node.offsetWidth, event.clientX - rect.left - drag.offsetX));
-    const nextTop = Math.max(0, Math.min(rect.height - drag.node.offsetHeight, event.clientY - rect.top - drag.offsetY));
+    const nextLeft = Math.max(
+      0,
+      Math.min(
+        rect.width - drag.node.offsetWidth,
+        event.clientX - rect.left - drag.offsetX,
+      ),
+    );
+    const nextTop = Math.max(
+      0,
+      Math.min(
+        rect.height - drag.node.offsetHeight,
+        event.clientY - rect.top - drag.offsetY,
+      ),
+    );
     drag.node.style.left = `${{nextLeft}}px`;
     drag.node.style.top = `${{nextTop}}px`;
     renderBoard(board);

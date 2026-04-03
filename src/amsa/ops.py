@@ -9,7 +9,7 @@ from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
-from amsa.storage import project_storage, reweight_storage, scale_storage
+from amsa.storage import project_storage, reweight_storage, row_scale_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -207,6 +207,10 @@ def inner_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "inner")
 
 
+def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    return _execute_binary_product(lhs, rhs, "scalar")
+
+
 def left_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "left_contraction")
 
@@ -217,6 +221,66 @@ def right_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 def regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "regressive")
+
+
+def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
+    scalar_blade = 0
+    resolved_dtype = np.result_type(mv.dtype, np.float64)
+    scalar_value = np.asarray(mv.component(scalar_blade), dtype=resolved_dtype)
+
+    if mv.layout.size == 0:
+        raise ValueError(f"{name} is zero and therefore non-invertible.")
+
+    for index, blade in enumerate(mv.layout.blades):
+        if blade == scalar_blade:
+            continue
+        component = np.asarray(mv.values[..., index], dtype=resolved_dtype)
+        if np.any(~np.isclose(component, 0.0)):
+            raise ValueError(f"{name} must be scalar-valued for this operation.")
+
+    return scalar_value
+
+
+def inverse(mv: MVArray) -> MVArray:
+    reversed_mv = reverse(mv)
+    left_norm_mv = geometric_product(reversed_mv, mv)
+    right_norm_mv = geometric_product(mv, reversed_mv)
+    left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
+    right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
+
+    if not np.allclose(left_norm, right_norm):
+        raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
+    if np.any(np.isclose(left_norm, 0.0)):
+        raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
+
+    reciprocals = np.reciprocal(left_norm)
+    return MVArray(
+        algebra=mv.algebra,
+        layout=reversed_mv.layout,
+        storage=row_scale_storage(reversed_mv.storage, reciprocals),
+    )
+
+
+def divide(lhs: MVArray | Number, rhs: MVArray | Number) -> MVArray:
+    if isinstance(lhs, MVArray):
+        if isinstance(rhs, MVArray):
+            return geometric_product(lhs, inverse(rhs))
+        if isinstance(rhs, Number):
+            rhs_array = np.asarray(rhs)
+            if bool(np.equal(rhs_array, 0).item()):
+                raise ZeroDivisionError("Division by zero scalar.")
+            return MVArray(
+                algebra=lhs.algebra,
+                layout=lhs.layout,
+                storage=scale_storage(lhs.storage, np.reciprocal(rhs_array)),
+            )
+        raise TypeError(f"Unsupported operand type: {type(rhs)!r}")
+
+    if isinstance(lhs, Number) and isinstance(rhs, MVArray):
+        scalar_lhs = _coerce_operand(rhs, lhs)
+        return geometric_product(scalar_lhs, inverse(rhs))
+
+    raise TypeError(f"Unsupported operand types: {type(lhs)!r} and {type(rhs)!r}")
 
 
 def project_grades(mv: MVArray, *grades: int) -> MVArray:

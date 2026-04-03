@@ -79,9 +79,12 @@ The top-level package currently exports:
 - `geometric_product`
 - `outer_product`
 - `inner_product`
+- `scalar_product`
 - `left_contraction`
 - `right_contraction`
 - `regressive_product`
+- `inverse`
+- `divide`
 - `reverse`
 - `involute`
 - `conjugate`
@@ -199,11 +202,14 @@ Internal storage execution helpers currently available:
   - `gp(lhs, rhs)`
   - `outer(lhs, rhs)`
   - `inner(lhs, rhs)`
+  - `scalar_product(lhs, rhs)`
   - `left_contract(lhs, rhs)`
   - `right_contract(lhs, rhs)`
   - `regress(lhs, rhs)`
+  - `inverse(mv)`
   - `add(lhs, rhs)`
   - `sub(lhs, rhs)`
+  - `div(lhs, rhs)`
 
 `Algebra.from_name(...)` currently recognizes:
 
@@ -261,17 +267,21 @@ Current backend policy:
   - `undual()`
   - `poincare_dual()`
   - `poincare_undual()`
+  - `inverse()`
   - unary negation via `-mv`
 - binary operations:
   - `mv + other`
   - `mv - other`
   - `mv * other`
+  - `mv / other`
   - `mv ^ other`
   - `mv | other`
   - scalar multiplication via `scalar * mv` and `mv * scalar`
+  - scalar division and reverse-order division via `scalar / mv`
 - named methods:
   - `outer(other)`
   - `inner(other)`
+  - `scalar_product(other)`
   - `left_contract(other)`
   - `right_contract(other)`
   - `regress(other)`
@@ -287,6 +297,7 @@ These are the exact algebraic operations currently implemented in the reference 
 - geometric product
 - outer product
 - inner product
+- scalar product
 - left contraction
 - right contraction
 - regressive product
@@ -301,6 +312,7 @@ These are the exact algebraic operations currently implemented in the reference 
 - undual
 - poincare dual
 - poincare undual
+- inverse
 
 ### Scalar interactions
 
@@ -310,6 +322,8 @@ These are the exact algebraic operations currently implemented in the reference 
 - scalar-multivector subtraction
 - left scalar multiplication
 - right scalar multiplication
+- multivector-scalar division
+- scalar-multivector division through `inverse()`
 
 ### Projection and storage operations
 
@@ -330,6 +344,8 @@ The current binary product semantics are:
   - includes only terms whose output grade equals the sum of the input grades
 - inner product:
   - includes only terms whose output grade equals the absolute difference of the input grades
+- scalar product:
+  - includes only terms whose output grade equals `0`
 - left contraction:
   - includes only terms whose output grade equals `grade(rhs) - grade(lhs)` with `grade(lhs) <= grade(rhs)`
 - right contraction:
@@ -338,7 +354,7 @@ The current binary product semantics are:
   - is the Poincare-dual complement of the outer product:
     `regressive_product(a, b) = poincare_undual(poincare_dual(a) ^ poincare_dual(b))`
 
-All six products:
+All seven products:
 
 - respect the algebra metric, including degenerate signatures
 - preserve sparse support when possible
@@ -351,8 +367,6 @@ All six products:
 
 The following are not implemented yet:
 
-- scalar product as a separate operator
-- inverse / division
 - sandwich operators
 - normalization helpers
 - symbolic backends
@@ -371,7 +385,7 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `^`, `|`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `+`, `-`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
+3. Use `*`, `/`, `^`, `|`, `scalar_product(...)`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `+`, `-`, `inverse()`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
 
 Duality note:
@@ -380,6 +394,13 @@ Duality note:
 - They require an invertible pseudoscalar, so they raise on degenerate algebras such as the PGA presets.
 - `poincare_dual()` and `poincare_undual()` are metric-free complement duals.
 - The Poincare pair works on degenerate algebras, so it is the current duality path for PGA-style use cases.
+
+Inverse note:
+
+- `inverse()` is currently a restricted reverse-based inverse.
+- It succeeds when `reverse(mv) * mv` and `mv * reverse(mv)` both reduce to the same nonzero scalar.
+- That covers scalars, invertible blades, and common rotor-like/versor-like cases.
+- It raises on null elements, degenerate zero-norm cases, and multivectors whose reverse norms do not collapse to a scalar.
 
 ### Example: 2D VGA vectors
 
