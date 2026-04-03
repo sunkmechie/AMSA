@@ -217,6 +217,21 @@ class MVArray:
 
         return scalar_product(self, other)
 
+    def norm_squared(self) -> MVArray:
+        from amsa.ops import norm_squared
+
+        return norm_squared(self)
+
+    def norm(self) -> MVArray:
+        from amsa.ops import norm
+
+        return norm(self)
+
+    def normalized(self) -> MVArray:
+        from amsa.ops import normalize
+
+        return normalize(self)
+
     def left_contract(self, other: MVArray) -> MVArray:
         from amsa.ops import left_contraction
 
@@ -231,6 +246,11 @@ class MVArray:
         from amsa.ops import regressive_product
 
         return regressive_product(self, other)
+
+    def sandwich(self, other: MVArray) -> MVArray:
+        from amsa.ops import sandwich
+
+        return sandwich(self, other)
 
     def inverse(self) -> MVArray:
         from amsa.ops import inverse

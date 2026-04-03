@@ -83,8 +83,12 @@ The top-level package currently exports:
 - `left_contraction`
 - `right_contraction`
 - `regressive_product`
+- `sandwich`
 - `inverse`
 - `divide`
+- `norm_squared`
+- `norm`
+- `normalize`
 - `reverse`
 - `involute`
 - `conjugate`
@@ -206,7 +210,11 @@ Internal storage execution helpers currently available:
   - `left_contract(lhs, rhs)`
   - `right_contract(lhs, rhs)`
   - `regress(lhs, rhs)`
+  - `sandwich(actor, target)`
   - `inverse(mv)`
+  - `norm_squared(mv)`
+  - `norm(mv)`
+  - `normalize(mv)`
   - `add(lhs, rhs)`
   - `sub(lhs, rhs)`
   - `div(lhs, rhs)`
@@ -268,6 +276,9 @@ Current backend policy:
   - `poincare_dual()`
   - `poincare_undual()`
   - `inverse()`
+  - `norm_squared()`
+  - `norm()`
+  - `normalized()`
   - unary negation via `-mv`
 - binary operations:
   - `mv + other`
@@ -285,6 +296,7 @@ Current backend policy:
   - `left_contract(other)`
   - `right_contract(other)`
   - `regress(other)`
+  - `sandwich(other)`
 
 ## Exact Operations Available Today
 
@@ -301,6 +313,7 @@ These are the exact algebraic operations currently implemented in the reference 
 - left contraction
 - right contraction
 - regressive product
+- sandwich / conjugation
 
 ### Unary multivector operations
 
@@ -313,6 +326,9 @@ These are the exact algebraic operations currently implemented in the reference 
 - poincare dual
 - poincare undual
 - inverse
+- norm squared
+- norm
+- normalize
 
 ### Scalar interactions
 
@@ -367,8 +383,6 @@ All seven products:
 
 The following are not implemented yet:
 
-- sandwich operators
-- normalization helpers
 - symbolic backends
 - JAX, Triton, or PyTorch execution paths
 - density-based backend auto-selection beyond the current explicit policy
@@ -385,7 +399,7 @@ The safest way to use AMSA today is:
 
 1. Construct an algebra preset with `Algebra.vga2d()`, `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.pga3d()`, or `Algebra.from_name(...)`.
 2. Build multivectors with `scalar`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, or mapping-based `multivector({...})`.
-3. Use `*`, `/`, `^`, `|`, `scalar_product(...)`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `+`, `-`, `inverse()`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
+3. Use `*`, `/`, `^`, `|`, `scalar_product(...)`, `left_contract(...)`, `right_contract(...)`, `regress(...)`, `sandwich(...)`, `norm_squared()`, `norm()`, `normalized()`, `+`, `-`, `inverse()`, `dual()`, `undual()`, `poincare_dual()`, and `poincare_undual()` for the currently implemented operators.
 4. Use `component(...)`, `grade(...)`, and `as_dense()` to inspect results.
 
 Duality note:
@@ -401,6 +415,17 @@ Inverse note:
 - It succeeds when `reverse(mv) * mv` and `mv * reverse(mv)` both reduce to the same nonzero scalar.
 - That covers scalars, invertible blades, and common rotor-like/versor-like cases.
 - It raises on null elements, degenerate zero-norm cases, and multivectors whose reverse norms do not collapse to a scalar.
+
+Normalization note:
+
+- `norm_squared()` returns the signed reverse norm scalar `<mv * reverse(mv)>_0`.
+- `norm()` returns `sqrt(abs(norm_squared()))`, keeping the numeric path real on indefinite signatures.
+- `normalized()` divides by that magnitude, so normalized elements have unit reverse-magnitude, but not necessarily `norm_squared() == +1` in indefinite algebras.
+
+Sandwich note:
+
+- `sandwich(actor, target)` computes the full conjugation `actor * target * inverse(actor)`.
+- It therefore inherits the current restricted `inverse()` support and is most useful today with normalized versor-like operands.
 
 ### Example: 2D VGA vectors
 

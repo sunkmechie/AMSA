@@ -25,6 +25,15 @@ from amsa.ops import (
     left_contraction as left_contraction_op,
 )
 from amsa.ops import (
+    norm as norm_op,
+)
+from amsa.ops import (
+    norm_squared as norm_squared_op,
+)
+from amsa.ops import (
+    normalize as normalize_op,
+)
+from amsa.ops import (
     outer_product as outer_op,
 )
 from amsa.ops import (
@@ -32,6 +41,9 @@ from amsa.ops import (
 )
 from amsa.ops import (
     right_contraction as right_contraction_op,
+)
+from amsa.ops import (
+    sandwich as sandwich_op,
 )
 from amsa.ops import (
     scalar_product as scalar_product_op,
@@ -228,6 +240,15 @@ class Algebra:
     def scalar_product(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return scalar_product_op(lhs, rhs)
 
+    def norm_squared(self, mv: MVArray) -> MVArray:
+        return norm_squared_op(mv)
+
+    def norm(self, mv: MVArray) -> MVArray:
+        return norm_op(mv)
+
+    def normalize(self, mv: MVArray) -> MVArray:
+        return normalize_op(mv)
+
     def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return left_contraction_op(lhs, rhs)
 
@@ -236,6 +257,9 @@ class Algebra:
 
     def regress(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return regressive_product_op(lhs, rhs)
+
+    def sandwich(self, actor: MVArray, target: MVArray) -> MVArray:
+        return sandwich_op(actor, target)
 
     def inverse(self, mv: MVArray) -> MVArray:
         return inverse_op(mv)
