@@ -13,6 +13,7 @@ authors = [
   { name = "Surya" },
 ]
 dependencies = [
+  "matplotlib>=3.10.8",
   "numpy>=1.26",
   "typing-extensions>=4.12",
 ]

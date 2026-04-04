@@ -32,6 +32,7 @@ producing a robot trajectory.
 """
 
 import numpy as np
+
 from amsa import Algebra
 
 print("\n=== Rigid Body Trajectory (PGA Motor) ===")
@@ -52,20 +53,24 @@ steps = 20
 # rotor (rotation)
 # --------------------------------------------------
 
-rotor = alg.multivector({
-    "e": np.cos(theta / 2),
-    "e12": -np.sin(theta / 2),
-}).normalized()
+rotor = alg.multivector(
+    {
+        "e": np.cos(theta / 2),
+        "e12": -np.sin(theta / 2),
+    }
+).normalized()
 
 # --------------------------------------------------
 # translator
 # --------------------------------------------------
 
-translator = alg.multivector({
-    "e": 1.0,
-    "e01": -0.5 * ty,
-    "e02": 0.5 * tx,
-})
+translator = alg.multivector(
+    {
+        "e": 1.0,
+        "e01": -0.5 * ty,
+        "e02": 0.5 * tx,
+    }
+)
 
 # motor = translation * rotation
 motor = translator * rotor
@@ -74,19 +79,20 @@ motor = translator * rotor
 # starting point
 # --------------------------------------------------
 
-point = alg.multivector({
-    "e01": 0.0,
-    "e02": 0.0,
-    "e12": 1.0,
-})
+point = alg.multivector(
+    {
+        "e01": 0.0,
+        "e02": 0.0,
+        "e12": 1.0,
+    }
+)
 
 print("\nRobot trajectory:")
 
 for i in range(steps):
-
     point = motor.sandwich(point)
 
     px = point.component("e01")
     py = point.component("e02")
 
-    print(f"step {i+1:02d} -> ({px:.3f}, {py:.3f})")
+    print(f"step {i + 1:02d} -> ({px:.3f}, {py:.3f})")

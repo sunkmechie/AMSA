@@ -32,6 +32,7 @@ In this example we rotate the robot's forward axis by 30 degrees.
 """
 
 import numpy as np
+
 from amsa import Algebra
 
 print("\n=== Planar Heading Update ===")
@@ -42,10 +43,7 @@ forward_body = alg.vector([1.0, 0.0])
 
 theta = np.deg2rad(30)
 
-rotor = alg.multivector({
-    "e": np.cos(theta / 2),
-    "e12": -np.sin(theta / 2)
-}).normalized()
+rotor = alg.multivector({"e": np.cos(theta / 2), "e12": -np.sin(theta / 2)}).normalized()
 
 forward_world = rotor.sandwich(forward_body)
 

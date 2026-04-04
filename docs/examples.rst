@@ -28,17 +28,19 @@ Planes
 Robotics
 --------
 
-- ``examples/robotics/pga_circle_motion_2d.py``
-- ``examples/robotics/pga_corridor_corner_2d.py``
-- ``examples/robotics/pga_rigid_body_trajectory_2d.py``
-- ``examples/robotics/planar_heading_rotor.py``
-- ``examples/robotics/ray_plane_reflection_3d.py``
-- ``examples/robotics/robot_rotation_comparison_2d.py``
-- ``examples/robotics/trilateration_localization_2d.py``
-- ``examples/robotics/vector_projection_2d.py``
+- ``examples/robotics/pga_circle_motion_2d.py`` — 2D PGA motor stepping
+- ``examples/robotics/pga_corridor_corner_2d.py`` — wall intersection via regressive product
+- ``examples/robotics/pga_rigid_body_trajectory_2d.py`` — repeated motor application
+- ``examples/robotics/planar_heading_rotor.py`` — VGA rotor heading update
+- ``examples/robotics/ray_plane_reflection_3d.py`` — sandwich reflection in VGA3d
+- ``examples/robotics/robot_rotation_comparison_2d.py`` — rotor vs matrix/quaternion comparison
+- ``examples/robotics/trilateration_localization_2d.py`` — PGA2d localization with optional viz
+- ``examples/robotics/vector_projection_2d.py`` — corridor-axis projection
 
 All examples can be run directly:
 
 .. code-block:: bash
 
    uv run python examples/geometry/triangle_area_2d.py
+
+Some robotics examples optionally use ``amsa.viz`` plus matplotlib for plotting.

@@ -42,12 +42,7 @@ print("\n=== Even / Odd Decomposition ===")
 
 alg = Algebra.vga3d()
 
-mv = alg.multivector({
-    "e1": 1.0,
-    "e2": -0.5,
-    "e12": 2.0,
-    "e123": 3.0
-})
+mv = alg.multivector({"e1": 1.0, "e2": -0.5, "e12": 2.0, "e123": 3.0})
 
 even = mv.grade(0, 2)
 odd = mv.grade(1, 3)

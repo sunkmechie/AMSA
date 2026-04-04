@@ -14,6 +14,7 @@ AMSA is inspired by Kingdon and Look-Ma-No-Matrices, it is still under active de
 - `src/amsa/reference.py`: reference execution of plans
 - `src/amsa/ops.py`: public operator layer
 - `src/amsa/algebra.py`: user-facing algebra handle and constructors
+- `src/amsa/viz/`: visualization adapters, neutral primitives, and optional backends
 
 ## Quick Start
 
@@ -72,6 +73,7 @@ You can also browse the source directly:
 - `docs/layouts.rst` — `MVLayout` and sparse support
 - `docs/storage.rst` — dense and CSR backends
 - `docs/operators.rst` — product semantics, duality, and normalization
+- `docs/viz.rst` — visualization adapters, primitives, and matplotlib backend
 - `docs/examples.rst` — index of runnable example scripts
 - `docs/probes.rst` — visual debugger probe (`amsa_lab`)
 
@@ -103,6 +105,7 @@ Introductory notebooks are in `notebooks/`:
 - lazy basis-product tables and on-demand Cayley tables via `AlgebraSpec`
 - dense/CSR conversion
 - dense and CSR-backed input execution in the reference backend
+- neutral visualization primitives and point adapters in `amsa.viz`
 
 
 ## Development
@@ -152,3 +155,8 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `bulk_dual()` / `weight_dual()` apply Poincare complement duality to those parts
 - `bulk_norm*` and `weight_norm*` keep the two normalization notions separate
 - `bulk_normalize()` and `unitize()` are explicit PGA-facing normalization paths
+
+Visualization note:
+- `amsa.viz` is now a lightweight in-package visualization layer
+- it provides neutral primitives, point adapters for PGA points, and an optional matplotlib backend
+- the richer operator-plan debugger still lives separately in `probes/amsa_lab.py`

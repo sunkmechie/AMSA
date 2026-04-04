@@ -1,7 +1,7 @@
 Visual debugger probe
 =====================
 
-The ``probes/amsa_lab.py`` script is an external visual debugger for AMSA binary products. It traces operator plans and renders a self-contained HTML report. It intentionally lives outside ``src/amsa`` so that visualization and debugging UX can evolve without changing core algebra semantics.
+The ``probes/amsa_lab.py`` script is an external visual debugger for AMSA binary products. It traces operator plans and renders a self-contained HTML report. It intentionally remains separate from the lightweight in-package ``amsa.viz`` layer so that debugging UX can evolve without forcing the core visualization API to change with it.
 
 What it does
 ------------
@@ -17,6 +17,16 @@ Limitations
 - It is not a hardened expression parser
 - It does not trace unary operations or addition/subtraction
 - It does not include a geometry overlay for PGA object semantics
+
+Relationship to ``amsa.viz``
+----------------------------
+
+AMSA now has two distinct visualization surfaces:
+
+- ``amsa.viz`` for lightweight multivector-to-primitive adapters and simple plotting
+- ``probes/amsa_lab.py`` for operator-plan introspection and debugger-style exploration
+
+They serve different purposes and should not be treated as duplicates.
 
 Usage
 -----
