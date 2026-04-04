@@ -197,8 +197,7 @@ class Algebra:
 
         if isinstance(data, Mapping):
             normalized = {
-                self.spec.blade_from_key(key): np.asarray(value)
-                for key, value in data.items()
+                self.spec.blade_from_key(key): np.asarray(value) for key, value in data.items()
             }
             if layout is None:
                 blades = tuple(sorted(normalized))

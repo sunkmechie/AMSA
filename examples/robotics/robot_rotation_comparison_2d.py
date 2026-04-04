@@ -34,8 +34,8 @@ Geometric algebra performs rotations using the sandwich product:
 where R is a rotor.
 """
 
-
 import numpy as np
+
 from amsa import Algebra
 
 print("\n=== Rotation Comparison (Matrix / Quaternion / Rotor) ===")
@@ -50,10 +50,12 @@ print("\nOriginal vector:", v)
 # Matrix rotation
 # --------------------------------------------------
 
-R = np.array([
-    [np.cos(theta), -np.sin(theta)],
-    [np.sin(theta),  np.cos(theta)],
-])
+R = np.array(
+    [
+        [np.cos(theta), -np.sin(theta)],
+        [np.sin(theta), np.cos(theta)],
+    ]
+)
 
 v_matrix = R @ v
 
@@ -66,10 +68,12 @@ print(v_matrix)
 
 x, y = v
 
-v_quat = np.array([
-    np.cos(theta)*x - np.sin(theta)*y,
-    np.sin(theta)*x + np.cos(theta)*y,
-])
+v_quat = np.array(
+    [
+        np.cos(theta) * x - np.sin(theta) * y,
+        np.sin(theta) * x + np.cos(theta) * y,
+    ]
+)
 
 print("\nQuaternion rotation:")
 print(v_quat)
@@ -82,10 +86,12 @@ alg = Algebra.vga2d()
 
 vec = alg.vector([1.0, 0.0])
 
-rotor = alg.multivector({
-    "e": np.cos(theta / 2),
-    "e12": -np.sin(theta / 2),
-}).normalized()
+rotor = alg.multivector(
+    {
+        "e": np.cos(theta / 2),
+        "e12": -np.sin(theta / 2),
+    }
+).normalized()
 
 rotated = rotor.sandwich(vec)
 

@@ -224,9 +224,7 @@ def _require_degenerate_algebra(mv: MVArray, *, name: str) -> int:
 def _select_null_factor(mv: MVArray, *, include_null_factor: bool, name: str) -> MVArray:
     null_mask = _require_degenerate_algebra(mv, name=name)
     blades = tuple(
-        blade
-        for blade in mv.layout.blades
-        if bool(blade & null_mask) == include_null_factor
+        blade for blade in mv.layout.blades if bool(blade & null_mask) == include_null_factor
     )
     layout_name = name
     if len(blades) == mv.algebra.blade_count:

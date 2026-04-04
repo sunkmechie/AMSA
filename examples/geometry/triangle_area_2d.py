@@ -58,7 +58,7 @@ This illustrates two key properties of the wedge product:
 
 from amsa import Algebra
 
-# select the algebra 
+# select the algebra
 alg = Algebra.vga2d()
 
 # === RIGHT TRAINGLE ===
@@ -100,4 +100,3 @@ v = r - p
 skew_area_bivector = u ^ v
 area_skew = skew_area_bivector.component("e12") / 2.0
 print(f"Area is {area_skew}")
-
