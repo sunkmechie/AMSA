@@ -23,7 +23,7 @@ Demonstrates reflecting a velocity vector across various coordinate planes using
 Provides a direct comparison between rotation matrices, quaternions, and GA rotors for a 45-degree rotation, verifying that they yield identical results.
 
 ### [Trilateration Localization (PGA 2D)](trilateration_localization_2d.py)
-Simulates a robot's position estimation by calculating the distances to three known landmark beacons.
+Simulates a robot's position estimation by calculating the distances to three known landmark beacons. When matplotlib is available, it also uses `amsa.viz` to render the beacons and robot estimate.
 
 ### [Vector Projection (VGA 2D)](vector_projection_2d.py)
 Projects a robot's position onto a corridor axis using the inner product, a common task in navigation and alignment.

@@ -90,3 +90,25 @@ By default, fresh construction uses dense storage. You can opt into CSR explicit
    mv = alg.multivector({"e1": np.array([0.0, 2.0]), "e23": 3.0}, backend="csr")
 
    print(mv.storage_kind)  # csr
+
+Visualization
+-------------
+
+AMSA includes a lightweight ``amsa.viz`` layer for converting selected multivectors into
+plot-friendly primitives.
+
+.. code-block:: python
+
+   import matplotlib.pyplot as plt
+   from amsa import Algebra
+   from amsa.viz.adapters import to_point
+   from amsa.viz.backends import mpl
+
+   alg = Algebra.pga2d()
+   point = alg.multivector({"e01": 3.0, "e02": 4.0, "e12": 1.0})
+
+   fig, ax = plt.subplots()
+   mpl.plot(ax, to_point(point, color="red", label="robot"))
+   ax.set_aspect("equal", "box")
+   ax.legend()
+   mpl.show()
