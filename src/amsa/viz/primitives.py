@@ -1,16 +1,22 @@
+#/src/amsa/viz/primitives.py
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import numpy as np
+
+type ColorLike = (
+    str
+    | tuple[float, float, float]
+    | tuple[float, float, float, float]
+)
 
 
 @dataclass(kw_only=True)
 class VizPrimitive:
     """Base class for neutral geometric primitives."""
     label: str | None = None
-    color: Any | None = None
+    color: ColorLike | None = None
 
 
 @dataclass
@@ -50,10 +56,11 @@ class Plane(VizPrimitive):
 @dataclass
 class Rotor(VizPrimitive):
     """
-    A rotation/transformation frame.
-    
-    origin: array of shape (D,) representing the translation part.
-    matrix: array of shape (D, D) representing the linear transformation (rotation).
+    A backend-friendly visualization of a rigid transform frame.
+
+    This is intentionally a derived visualization primitive, not a core AMSA rotor or
+    motor representation. Keeping the linear map here is acceptable because it stays
+    isolated inside the visualization layer.
     """
     origin: np.ndarray
     matrix: np.ndarray

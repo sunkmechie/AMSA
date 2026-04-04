@@ -1,12 +1,18 @@
+#/src/amsa/viz/adapters.py
 from __future__ import annotations
 
 import numpy as np
 
 from amsa.mv import MVArray
-from amsa.viz.primitives import Point
+from amsa.viz.primitives import ColorLike, Point
 
 
-def to_point(mv: MVArray, **kwargs: dict[str, str | None]) -> Point:
+def to_point(
+    mv: MVArray,
+    *,
+    color: ColorLike | None = None,
+    label: str | None = None,
+) -> Point:
     """
     Extract geometric point data from a multivector based on its algebra type.
     """
@@ -26,7 +32,7 @@ def to_point(mv: MVArray, **kwargs: dict[str, str | None]) -> Point:
                 py = np.where(w != 0, y / w, y)
 
             position = np.stack([px, py], axis=-1)
-            return Point(position=position, **kwargs)  # type: ignore[arg-type]
+            return Point(position=position, color=color, label=label)
         except KeyError as exc:
             raise ValueError(
                 "Multivector layout does not contain the necessary basis blades "
@@ -52,7 +58,7 @@ def to_point(mv: MVArray, **kwargs: dict[str, str | None]) -> Point:
                 pz = np.where(w != 0, z / w, z)
 
             position = np.stack([px, py, pz], axis=-1)
-            return Point(position=position, **kwargs)  # type: ignore[arg-type]
+            return Point(position=position, color=color, label=label)
         except KeyError as exc:
             raise ValueError(
                 "Multivector layout does not contain the necessary basis blades "

@@ -1,4 +1,7 @@
-import numpy as np
+#/src/amsa/viz/backends/mpl.py
+from __future__ import annotations
+
+from typing import Any
 
 try:
     import matplotlib.pyplot as plt
@@ -9,10 +12,10 @@ except ImportError as exc:
         "Install it via `pip install matplotlib`."
     ) from exc
 
-from amsa.viz.primitives import Point
+from amsa.viz.primitives import Point, VizPrimitive
 
 
-def plot(ax: Axes, primitive: Point, **kwargs) -> None:
+def plot(ax: Axes, primitive: VizPrimitive, **kwargs: Any) -> None:
     """
     Plots a viz primitive onto a matplotlib Axes.
     """

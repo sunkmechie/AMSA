@@ -40,6 +40,26 @@ def test_pga3d_to_point():
     np.testing.assert_allclose(pt.position, [1.0, 2.0, 3.0])
 
 
+def test_pga3d_to_point_with_weight_round_trips_coordinates() -> None:
+    alg = Algebra.pga3d()
+    pt_mv = alg.multivector({"e023": -2.0, "e013": 4.0, "e012": -6.0, "e123": 2.0})
+
+    pt = to_point(pt_mv, label="P3", color="green")
+
+    np.testing.assert_allclose(pt.position, [1.0, 2.0, 3.0])
+    assert pt.label == "P3"
+    assert pt.color == "green"
+
+
+def test_pga2d_to_point_handles_ideal_points_without_dividing_by_zero() -> None:
+    alg = Algebra.pga2d()
+    ideal = alg.multivector({"e01": 2.0, "e02": -3.0, "e12": 0.0})
+
+    pt = to_point(ideal)
+
+    np.testing.assert_allclose(pt.position, [2.0, -3.0])
+
+
 def test_unsupported_algebra_for_point():
     alg = Algebra.vga2d()
     # In vga2d, points are just vectors (e1, e2).
