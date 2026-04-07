@@ -1,8 +1,22 @@
 # AMSA
 
-AMSA is a Clifford algebra library focused on high-performance numerical computation for robotics, engineering, and science.
+AMSA is still under active development and doesn't have a stable implementation yet.
 
-AMSA is inspired by Kingdon and Look-Ma-No-Matrices, it is still under active development and doesn't have a stable implementation yet.
+## Table of Contents
+
+1. [What is AMSA?](#what-is-amsa)
+2. [Package Layout](#package-layout)
+3. [Quick Start](#quick-start)
+4. [Documentation](#documentation)
+5. [Notebooks](#notebooks)
+6. [License and Acknowledgments](#license-and-acknowledgments)
+7. [What Works Today](#what-works-today)
+8. [Development](#development)
+9. [Current Operations](#current-operations)
+
+## What is AMSA?
+
+AMSA (Advanced Multivector Symbolic Architecture Engine) is a Clifford algebra library focused on high-performance numerical computation for robotics, engineering, and science.
 
 ## Package Layout
 
@@ -84,21 +98,34 @@ Introductory notebooks are in `notebooks/`:
 - `01_vga_rotors.ipynb` — VGA vector products, rotors, and sandwich conjugation
 - `02_pga_rigid_body.ipynb` — PGA2d lines, meet/join, motors, and bulk/weight splits
 
+## License and Acknowledgements
+
+The AMSA source code is licensed under Apache 2.0.
+
+AMSA's development has been made possible and was inspired by the following open-source projects:
+
+- Kingdon
+- Look-Ma-No-Matrices
+- Ganja.js
+
 ## What Works Today
 
 - geometric product
 - outer product
 - inner product
 - scalar product
+- commutator
+- anticommutator
 - left contraction
 - right contraction
 - regressive product
 - sandwich / conjugation
+- exponential / logarithm support (for robotics-friendly motor slices)
 - bulk dual and weight dual on degenerate/projective algebras
 - addition and subtraction
 - inverse and division for the current reverse-scalar-norm cases
 - reverse-based `norm_squared`, `norm`, and `normalize`
-- bulk/weight norms plus `bulk_normalize` and `unitize` for PGA-style work
+- bulk/weight norms plus `bulk_normalize`, `unitize`, and `rigid_body_normalize` (for PGA-style work)
 - reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
 - scalar arithmetic
 - grade projection and component lookup
@@ -131,8 +158,8 @@ uv run sphinx-build docs docs/_build
 | --- | --- |
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, `mv / scalar`, multivector-scalar add/sub |
-| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich`, `bulk_dual`, `weight_dual` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `norm_squared`, `norm`, `normalize`, `bulk_norm_squared`, `bulk_norm`, `weight_norm_squared`, `weight_norm`, `bulk_normalize`, `unitize`, unary `-mv` |
+| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `commutator_product`, `anticommutator_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich`, `bulk_dual`, `weight_dual` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `exp`, `motor_exp`, `motor_log`, `norm_squared`, `norm`, `normalize`, `bulk_norm_squared`, `bulk_norm`, `weight_norm_squared`, `weight_norm`, `bulk_normalize`, `unitize`, `rigid_body_normalize`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
@@ -150,11 +177,34 @@ and raises otherwise.
 `norm()` takes `sqrt(abs(norm_squared))` so it stays real on indefinite signatures, and
 `normalize()` divides by that magnitude.
 
+`commutator_product(a, b)` and `anticommutator_product(a, b)` expose the Lie/Jordan
+splits of the geometric product:
+- `0.5 * (a * b - b * a)`
+- `0.5 * (a * b + b * a)`
+
+`exp()` is currently defined for simple elements whose square collapses to a scalar.
+That covers the common circular, hyperbolic, and nilpotent generator cases used for
+rotors, boosts, and translators.
+
+For robotics-oriented PGA3d work, AMSA also supports `motor_exp()` for pure bivector
+twist generators, and `exp()` now dispatches to that same closed form when given a
+PGA3d bivector whose square is scalar + pseudoscalar valued.
+
+`motor_log()` is the inverse-side companion for the currently supported robotics cases.
+Today it supports:
+- PGA2d motor-like even multivectors after rigid-body normalization
+- PGA3d unit-motor style multivectors with scalar, bivector, and optional pseudoscalar terms
+
+Small future-reference benchmarks now live in `benchmarks/`, starting with:
+- `benchmarks/motor_ops.py`
+
 For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `bulk()` and `weight()` split components by whether they carry the null basis factor
 - `bulk_dual()` / `weight_dual()` apply Poincare complement duality to those parts
 - `bulk_norm*` and `weight_norm*` keep the two normalization notions separate
 - `bulk_normalize()` and `unitize()` are explicit PGA-facing normalization paths
+- `rigid_body_normalize()` is a motor-oriented PGA helper that currently bulk-normalizes
+  even grade-`0/2` multivectors without pretending to be a universal projective normalization
 
 Visualization note:
 - `amsa.viz` is now a lightweight in-package visualization layer

@@ -26,6 +26,16 @@ Scalar product
 
 Includes only terms whose output grade equals ``0``.
 
+Commutator product
+^^^^^^^^^^^^^^^^^^
+
+Defined as ``0.5 * (a * b - b * a)``.
+
+Anticommutator product
+^^^^^^^^^^^^^^^^^^^^^^
+
+Defined as ``0.5 * (a * b + b * a)``.
+
 Left contraction
 ^^^^^^^^^^^^^^^^
 
@@ -57,6 +67,9 @@ Involutions and duality
 Normalization
 -------------
 
+- ``exp()`` — exponential of a simple element whose square is scalar-valued, plus PGA3d bivector motor generators
+- ``motor_exp()`` — explicit PGA3d motor exponential for pure bivector twist generators
+- ``motor_log()`` — robotics-oriented motor logarithm for the current PGA2d / PGA3d supported motor slices
 - ``norm_squared()`` — signed reverse norm scalar ``<mv * reverse(mv)>_0``
 - ``norm()`` — ``sqrt(abs(norm_squared()))``, kept real on indefinite signatures
 - ``normalize()`` — divides by ``norm()``
@@ -76,6 +89,7 @@ For degenerate / projective algebras:
 - ``bulk_dual()`` / ``weight_dual()`` — Poincaré duals applied to the split parts
 - ``bulk_norm()``, ``weight_norm()`` — separate normalization magnitudes
 - ``bulk_normalize()`` / ``unitize()`` — PGA-facing normalization paths
+- ``rigid_body_normalize()`` — motor-oriented PGA helper that bulk-normalizes even grade-``0/2`` multivectors
 
 Sandwich
 --------

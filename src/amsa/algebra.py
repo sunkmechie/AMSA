@@ -13,6 +13,9 @@ from amsa.ops import (
     add as add_op,
 )
 from amsa.ops import (
+    anticommutator_product as anticommutator_product_op,
+)
+from amsa.ops import (
     bulk as bulk_op,
 )
 from amsa.ops import (
@@ -28,7 +31,13 @@ from amsa.ops import (
     bulk_normalize as bulk_normalize_op,
 )
 from amsa.ops import (
+    commutator_product as commutator_product_op,
+)
+from amsa.ops import (
     divide as divide_op,
+)
+from amsa.ops import (
+    exp as exp_op,
 )
 from amsa.ops import (
     inner_product as inner_op,
@@ -38,6 +47,12 @@ from amsa.ops import (
 )
 from amsa.ops import (
     left_contraction as left_contraction_op,
+)
+from amsa.ops import (
+    motor_exp as motor_exp_op,
+)
+from amsa.ops import (
+    motor_log as motor_log_op,
 )
 from amsa.ops import (
     norm as norm_op,
@@ -56,6 +71,9 @@ from amsa.ops import (
 )
 from amsa.ops import (
     right_contraction as right_contraction_op,
+)
+from amsa.ops import (
+    rigid_body_normalize as rigid_body_normalize_op,
 )
 from amsa.ops import (
     sandwich as sandwich_op,
@@ -269,6 +287,12 @@ class Algebra:
     def scalar_product(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return scalar_product_op(lhs, rhs)
 
+    def commutator(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return commutator_product_op(lhs, rhs)
+
+    def anticommutator(self, lhs: MVArray, rhs: MVArray) -> MVArray:
+        return anticommutator_product_op(lhs, rhs)
+
     def bulk(self, mv: MVArray) -> MVArray:
         return bulk_op(mv)
 
@@ -290,6 +314,15 @@ class Algebra:
     def normalize(self, mv: MVArray) -> MVArray:
         return normalize_op(mv)
 
+    def exp(self, mv: MVArray) -> MVArray:
+        return exp_op(mv)
+
+    def motor_exp(self, mv: MVArray) -> MVArray:
+        return motor_exp_op(mv)
+
+    def motor_log(self, mv: MVArray) -> MVArray:
+        return motor_log_op(mv)
+
     def bulk_norm_squared(self, mv: MVArray) -> MVArray:
         return bulk_norm_squared_op(mv)
 
@@ -307,6 +340,9 @@ class Algebra:
 
     def unitize(self, mv: MVArray) -> MVArray:
         return unitize_op(mv)
+
+    def rigid_body_normalize(self, mv: MVArray) -> MVArray:
+        return rigid_body_normalize_op(mv)
 
     def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return left_contraction_op(lhs, rhs)

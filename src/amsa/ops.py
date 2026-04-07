@@ -211,6 +211,26 @@ def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     return _execute_binary_product(lhs, rhs, "scalar")
 
 
+def commutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    ensure_compatible(lhs, rhs)
+    result = geometric_product(lhs, rhs) - geometric_product(rhs, lhs)
+    return MVArray(
+        algebra=result.algebra,
+        layout=result.layout,
+        storage=scale_storage(result.storage, 0.5),
+    )
+
+
+def anticommutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    ensure_compatible(lhs, rhs)
+    result = geometric_product(lhs, rhs) + geometric_product(rhs, lhs)
+    return MVArray(
+        algebra=result.algebra,
+        layout=result.layout,
+        storage=scale_storage(result.storage, 0.5),
+    )
+
+
 def _require_degenerate_algebra(mv: MVArray, *, name: str) -> int:
     null_mask = 0
     for axis, metric in enumerate(mv.algebra.signature):
@@ -265,6 +285,68 @@ def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
     return MVArray(algebra=mv.algebra, layout=scalar_layout, values=payload)
 
 
+def _single_blade_mv(mv: MVArray, blade: int, values: np.ndarray) -> MVArray:
+    dtype = np.result_type(mv.dtype, values.dtype)
+    layout = MVLayout.sparse_pattern(mv.algebra, (blade,), name=mv.algebra.blade_name(blade))
+    payload = np.asarray(values, dtype=dtype)
+    if payload.shape == ():
+        payload = np.asarray([payload.item()], dtype=dtype)
+    else:
+        payload = payload[..., np.newaxis]
+    return MVArray(algebra=mv.algebra, layout=layout, values=payload)
+
+
+def _row_scale_mv(mv: MVArray, scales: np.ndarray) -> MVArray:
+    return MVArray(
+        algebra=mv.algebra,
+        layout=mv.layout,
+        storage=row_scale_storage(mv.storage, scales),
+    )
+
+
+def _require_study_output(mv: MVArray, *, name: str) -> tuple[np.ndarray, np.ndarray]:
+    pseudoscalar_blade = mv.algebra.pseudoscalar_blade
+    resolved_dtype = np.result_type(mv.dtype, np.float64)
+    scalar_value = np.asarray(mv.component(0), dtype=resolved_dtype)
+    pseudoscalar_value = np.asarray(mv.component(pseudoscalar_blade), dtype=resolved_dtype)
+
+    if mv.layout.size == 0:
+        zeros = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+        return zeros, zeros
+
+    for index, blade in enumerate(mv.layout.blades):
+        if blade in (0, pseudoscalar_blade):
+            continue
+        component = np.asarray(mv.values[..., index], dtype=resolved_dtype)
+        if np.any(~np.isclose(component, 0.0)):
+            raise ValueError(f"{name} must be scalar + pseudoscalar valued for this operation.")
+
+    return scalar_value, pseudoscalar_value
+
+
+def _study_value_mv(
+    mv: MVArray,
+    scalar_values: np.ndarray,
+    pseudoscalar_values: np.ndarray,
+) -> MVArray:
+    result = _scalar_mv(mv, scalar_values)
+    if np.any(~np.isclose(pseudoscalar_values, 0.0)):
+        result = result + _single_blade_mv(mv, mv.algebra.pseudoscalar_blade, pseudoscalar_values)
+    return result
+
+
+def _study_times_mv(
+    mv: MVArray,
+    scalar_values: np.ndarray,
+    pseudoscalar_values: np.ndarray,
+) -> MVArray:
+    result = _row_scale_mv(mv, scalar_values)
+    if np.any(~np.isclose(pseudoscalar_values, 0.0)):
+        pseudoscalar = _single_blade_mv(mv, mv.algebra.pseudoscalar_blade, pseudoscalar_values)
+        result = result + geometric_product(pseudoscalar, mv)
+    return result
+
+
 def norm(mv: MVArray) -> MVArray:
     normsq = norm_squared(mv)
     normsq_values = _require_scalar_output(normsq, name="norm_squared(mv)")
@@ -277,11 +359,219 @@ def normalize(mv: MVArray) -> MVArray:
     if np.any(np.isclose(magnitudes, 0.0)):
         raise ValueError("normalize() is undefined for zero-magnitude multivectors.")
     reciprocals = np.reciprocal(magnitudes)
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=row_scale_storage(mv.storage, reciprocals),
+    return _row_scale_mv(mv, reciprocals)
+
+
+def _motor_exp_from_bivector(mv: MVArray) -> MVArray:
+    if mv.algebra.signature != (0, 1, 1, 1):
+        raise ValueError("motor_exp() currently supports PGA3d bivector generators.")
+    if set(mv.grades) != {2}:
+        raise ValueError("motor_exp() currently requires a pure bivector generator.")
+
+    square = geometric_product(mv, mv)
+    scalar_part, pseudoscalar_part = _require_study_output(square, name="mv * mv")
+    resolved_dtype = np.result_type(mv.dtype, np.float64)
+    scalar_part = np.asarray(scalar_part, dtype=resolved_dtype)
+    pseudoscalar_part = np.asarray(pseudoscalar_part, dtype=resolved_dtype)
+
+    scalar_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+    pseudo_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+    linear_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+    dual_linear_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+
+    zero_mask = np.isclose(scalar_part, 0.0)
+    circular_mask = scalar_part < 0.0
+    hyperbolic_mask = scalar_part > 0.0
+
+    if np.any(zero_mask):
+        scalar_coeff[zero_mask] = 1.0
+        linear_coeff[zero_mask] = 1.0
+        pseudo_coeff[zero_mask] = 0.5 * pseudoscalar_part[zero_mask]
+        dual_linear_coeff[zero_mask] = pseudoscalar_part[zero_mask] / 6.0
+
+    if np.any(circular_mask):
+        roots = np.sqrt(-scalar_part[circular_mask])
+        delta = -pseudoscalar_part[circular_mask] / (2.0 * roots)
+        sinc = np.sin(roots) / roots
+        dsinc = (roots * np.cos(roots) - np.sin(roots)) / (roots * roots)
+
+        scalar_coeff[circular_mask] = np.cos(roots)
+        pseudo_coeff[circular_mask] = -delta * np.sin(roots)
+        linear_coeff[circular_mask] = sinc
+        dual_linear_coeff[circular_mask] = delta * dsinc
+
+    if np.any(hyperbolic_mask):
+        roots = np.sqrt(scalar_part[hyperbolic_mask])
+        delta = pseudoscalar_part[hyperbolic_mask] / (2.0 * roots)
+        sinhc = np.sinh(roots) / roots
+        dsinhc = (roots * np.cosh(roots) - np.sinh(roots)) / (roots * roots)
+
+        scalar_coeff[hyperbolic_mask] = np.cosh(roots)
+        pseudo_coeff[hyperbolic_mask] = delta * np.sinh(roots)
+        linear_coeff[hyperbolic_mask] = sinhc
+        dual_linear_coeff[hyperbolic_mask] = delta * dsinhc
+
+    return _study_value_mv(mv, scalar_coeff, pseudo_coeff) + _study_times_mv(
+        mv,
+        linear_coeff,
+        dual_linear_coeff,
     )
+
+
+def exp(mv: MVArray) -> MVArray:
+    square = geometric_product(mv, mv)
+    resolved_dtype = np.result_type(mv.dtype, np.float64)
+    if square.layout.size == 0:
+        scalar_values = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+    else:
+        try:
+            square_values = _require_scalar_output(square, name="mv * mv")
+        except ValueError as exc:
+            if set(mv.grades) == {2} and mv.algebra.signature == (0, 1, 1, 1):
+                return _motor_exp_from_bivector(mv)
+            raise exc
+        scalar_values = np.asarray(square_values, dtype=resolved_dtype)
+
+    positive_mask = scalar_values > 0.0
+    negative_mask = scalar_values < 0.0
+    zero_mask = np.isclose(scalar_values, 0.0)
+
+    roots = np.sqrt(np.abs(scalar_values))
+    scalar_coefficients = np.empty_like(roots, dtype=resolved_dtype)
+    linear_coefficients = np.empty_like(roots, dtype=resolved_dtype)
+
+    scalar_coefficients[positive_mask] = np.cosh(roots[positive_mask])
+    linear_coefficients[positive_mask] = np.sinh(roots[positive_mask]) / roots[positive_mask]
+
+    scalar_coefficients[negative_mask] = np.cos(roots[negative_mask])
+    linear_coefficients[negative_mask] = np.sin(roots[negative_mask]) / roots[negative_mask]
+
+    scalar_coefficients[zero_mask] = 1.0
+    linear_coefficients[zero_mask] = 1.0
+
+    return _scalar_mv(mv, scalar_coefficients) + _row_scale_mv(mv, linear_coefficients)
+
+
+def motor_exp(mv: MVArray) -> MVArray:
+    return _motor_exp_from_bivector(mv)
+
+
+def _simple_bivector_log(mv: MVArray) -> MVArray:
+    scalar_values = _require_scalar_output(project_grades(mv, 0), name="grade_0(mv)")
+    bivector = project_grades(mv, 2)
+    if bivector.layout.size == 0 or np.allclose(bivector.values, 0.0):
+        if np.any(scalar_values < 0.0):
+            raise ValueError(
+                "motor_log() is undefined on the principal branch for negative scalars."
+            )
+        return MVArray.zeros(mv.algebra, MVLayout.grade(mv.algebra, 2), batch_shape=mv.batch_shape)
+
+    square = geometric_product(bivector, bivector)
+    square_values = _require_scalar_output(square, name="grade_2(mv) * grade_2(mv)")
+    resolved_dtype = np.result_type(mv.dtype, np.float64)
+    scalar_values = np.asarray(scalar_values, dtype=resolved_dtype)
+    square_values = np.asarray(square_values, dtype=resolved_dtype)
+    roots = np.sqrt(np.abs(square_values))
+    coefficients = np.zeros_like(roots, dtype=resolved_dtype)
+
+    circular_mask = square_values < 0.0
+    hyperbolic_mask = square_values > 0.0
+    null_mask = np.isclose(square_values, 0.0)
+
+    if np.any(circular_mask):
+        coefficients[circular_mask] = (
+            np.arctan2(roots[circular_mask], scalar_values[circular_mask]) / roots[circular_mask]
+        )
+    if np.any(hyperbolic_mask):
+        coefficients[hyperbolic_mask] = (
+            np.arctanh(roots[hyperbolic_mask] / scalar_values[hyperbolic_mask])
+            / roots[hyperbolic_mask]
+        )
+    if np.any(null_mask):
+        coefficients[null_mask] = np.reciprocal(scalar_values[null_mask])
+
+    return _row_scale_mv(bivector, coefficients)
+
+
+def _motor_log_pga3d(mv: MVArray) -> MVArray:
+    motor = rigid_body_normalize(mv)
+    if not set(motor.grades).issubset({0, 2, 4}):
+        raise ValueError(
+            "motor_log() currently requires a PGA3d motor-like multivector with grades 0, 2, and 4."
+        )
+
+    scalar_values = np.asarray(motor.component(0), dtype=np.result_type(motor.dtype, np.float64))
+    pseudoscalar_blade = motor.algebra.pseudoscalar_blade
+    pseudoscalar_values = np.asarray(
+        motor.component(pseudoscalar_blade),
+        dtype=np.result_type(motor.dtype, np.float64),
+    )
+    bivector = project_grades(motor, 2)
+    moment_part = bulk(bivector)
+    sine_values = _require_scalar_output(bulk_norm(moment_part), name="bulk_norm(grade_2(mv))")
+    sine_values = np.asarray(sine_values, dtype=np.result_type(motor.dtype, np.float64))
+
+    if bivector.layout.size == 0 or np.allclose(bivector.values, 0.0):
+        return MVArray.zeros(
+            motor.algebra,
+            MVLayout.grade(motor.algebra, 2),
+            batch_shape=motor.batch_shape,
+        )
+
+    zero_mask = np.isclose(sine_values, 0.0)
+    nonzero_mask = ~zero_mask
+
+    if np.any(zero_mask & ~np.isclose(scalar_values, 1.0)):
+        raise ValueError("motor_log() does not support the pi-rotation singular branch yet.")
+
+    if np.all(zero_mask):
+        return bivector
+
+    phi_values = np.zeros_like(sine_values)
+    phi_values[nonzero_mask] = np.arctan2(sine_values[nonzero_mask], scalar_values[nonzero_mask])
+
+    distance_values = np.zeros_like(sine_values)
+    distance_values[nonzero_mask] = -pseudoscalar_values[nonzero_mask] / sine_values[nonzero_mask]
+
+    alpha_values = np.zeros_like(sine_values)
+    beta_values = np.zeros_like(sine_values)
+    alpha_values[nonzero_mask] = phi_values[nonzero_mask] / sine_values[nonzero_mask]
+    beta_values[nonzero_mask] = (
+        distance_values[nonzero_mask]
+        * (
+            1.0
+            - (
+                phi_values[nonzero_mask]
+                * scalar_values[nonzero_mask]
+                / sine_values[nonzero_mask]
+            )
+        )
+        / sine_values[nonzero_mask]
+    )
+
+    pseudoscalar_values = np.ones(
+        motor.batch_shape if motor.batch_shape else (),
+        dtype=np.result_type(motor.dtype, np.float64),
+    )
+    pseudoscalar = _single_blade_mv(
+        motor,
+        pseudoscalar_blade,
+        pseudoscalar_values,
+    )
+    pseudoscalar_times_bivector = project_grades(geometric_product(pseudoscalar, bivector), 2)
+
+    return _row_scale_mv(bivector, alpha_values) + _row_scale_mv(
+        pseudoscalar_times_bivector,
+        beta_values,
+    )
+
+
+def motor_log(mv: MVArray) -> MVArray:
+    if mv.algebra.signature == (0, 1, 1):
+        return _simple_bivector_log(rigid_body_normalize(mv))
+    if mv.algebra.signature == (0, 1, 1, 1):
+        return _motor_log_pga3d(mv)
+    raise ValueError("motor_log() currently supports PGA2d and PGA3d motor-like multivectors.")
 
 
 def bulk_norm_squared(mv: MVArray) -> MVArray:
@@ -319,11 +609,7 @@ def bulk_normalize(mv: MVArray) -> MVArray:
     if np.any(np.isclose(magnitudes, 0.0)):
         raise ValueError("bulk_normalize() is undefined for zero bulk magnitude.")
     reciprocals = np.reciprocal(magnitudes)
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=row_scale_storage(mv.storage, reciprocals),
-    )
+    return _row_scale_mv(mv, reciprocals)
 
 
 def unitize(mv: MVArray) -> MVArray:
@@ -331,11 +617,18 @@ def unitize(mv: MVArray) -> MVArray:
     if np.any(np.isclose(magnitudes, 0.0)):
         raise ValueError("unitize() is undefined for zero weight magnitude.")
     reciprocals = np.reciprocal(magnitudes)
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=row_scale_storage(mv.storage, reciprocals),
-    )
+    return _row_scale_mv(mv, reciprocals)
+
+
+def rigid_body_normalize(mv: MVArray) -> MVArray:
+    _require_degenerate_algebra(mv, name="rigid_body_normalize")
+    grade_set = set(mv.grades)
+    if not grade_set.issubset({0, 2, 4}):
+        raise ValueError(
+            "rigid_body_normalize() currently requires an even PGA motor-like multivector "
+            "with only grades 0, 2, and optional pseudoscalar grade 4 terms."
+        )
+    return bulk_normalize(mv)
 
 
 def left_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:

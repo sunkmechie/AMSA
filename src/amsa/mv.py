@@ -217,6 +217,16 @@ class MVArray:
 
         return scalar_product(self, other)
 
+    def commutator(self, other: MVArray) -> MVArray:
+        from amsa.ops import commutator_product
+
+        return commutator_product(self, other)
+
+    def anticommutator(self, other: MVArray) -> MVArray:
+        from amsa.ops import anticommutator_product
+
+        return anticommutator_product(self, other)
+
     def bulk(self) -> MVArray:
         from amsa.ops import bulk
 
@@ -252,6 +262,21 @@ class MVArray:
 
         return normalize(self)
 
+    def exp(self) -> MVArray:
+        from amsa.ops import exp
+
+        return exp(self)
+
+    def motor_exp(self) -> MVArray:
+        from amsa.ops import motor_exp
+
+        return motor_exp(self)
+
+    def motor_log(self) -> MVArray:
+        from amsa.ops import motor_log
+
+        return motor_log(self)
+
     def bulk_norm_squared(self) -> MVArray:
         from amsa.ops import bulk_norm_squared
 
@@ -281,6 +306,11 @@ class MVArray:
         from amsa.ops import unitize
 
         return unitize(self)
+
+    def rigid_body_normalized(self) -> MVArray:
+        from amsa.ops import rigid_body_normalize
+
+        return rigid_body_normalize(self)
 
     def left_contract(self, other: MVArray) -> MVArray:
         from amsa.ops import left_contraction

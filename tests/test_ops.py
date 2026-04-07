@@ -5,17 +5,22 @@ from amsa import (
     Algebra,
     AlgebraSpec,
     MVLayout,
+    anticommutator_product,
     bulk,
     bulk_dual,
     bulk_norm,
     bulk_norm_squared,
     bulk_normalize,
+    commutator_product,
     divide,
     dual,
+    exp,
     geometric_product,
     inner_product,
     inverse,
     left_contraction,
+    motor_exp,
+    motor_log,
     norm,
     norm_squared,
     normalize,
@@ -24,6 +29,7 @@ from amsa import (
     poincare_dual,
     regressive_product,
     right_contraction,
+    rigid_body_normalize,
     sandwich,
     scalar_product,
     undual,
@@ -332,6 +338,117 @@ def test_norm_uses_absolute_reverse_norm_in_indefinite_signature() -> None:
     assert_mv_allclose(normalize(e1), e1)
 
 
+def test_exp_handles_simple_circular_hyperbolic_and_nilpotent_elements() -> None:
+    vga2 = Algebra.vga2d()
+    bivector = vga2.blade("e12")
+    vector = vga2.blade("e1")
+
+    assert_mv_allclose(
+        exp(bivector),
+        vga2.multivector({"e": np.cos(1.0), "e12": np.sin(1.0)}),
+        tol=1e-12,
+    )
+    assert_mv_allclose(
+        vector.exp(),
+        vga2.multivector({"e": np.cosh(1.0), "e1": np.sinh(1.0)}),
+        tol=1e-12,
+    )
+
+    pga = Algebra.pga2d()
+    translator_generator = pga.blade("e01", value=0.25)
+    assert_mv_allclose(
+        translator_generator.exp(),
+        pga.multivector({"e": 1.0, "e01": 0.25}),
+        tol=1e-12,
+    )
+
+
+def test_exp_rejects_elements_whose_square_is_not_scalar() -> None:
+    algebra = Algebra.vga3d()
+    mixed = algebra.multivector({"e1": 1.0, "e23": 1.0})
+
+    with pytest.raises(ValueError, match="scalar-valued"):
+        mixed.exp()
+
+
+def test_pga3d_bivector_exp_matches_motor_cases_used_in_robotics() -> None:
+    algebra = Algebra.pga3d()
+
+    rotation_generator = algebra.multivector({"e12": -0.3})
+    translation_generator = algebra.multivector({"e03": 0.2})
+    screw_generator = algebra.multivector({"e12": -0.3, "e03": 0.2})
+
+    expected_rotation = algebra.multivector({"e": np.cos(0.3), "e12": -np.sin(0.3)})
+    expected_translation = algebra.multivector({"e": 1.0, "e03": 0.2})
+    expected_screw = expected_translation * expected_rotation
+
+    assert_mv_allclose(rotation_generator.exp(), expected_rotation, tol=1e-12)
+    assert_mv_allclose(translation_generator.exp(), expected_translation, tol=1e-12)
+    assert_mv_allclose(screw_generator.exp(), expected_screw, tol=1e-12)
+    assert_mv_allclose(motor_exp(screw_generator), expected_screw, tol=1e-12)
+
+
+def test_motor_exp_rejects_unsupported_inputs() -> None:
+    algebra = Algebra.pga2d()
+    with pytest.raises(ValueError, match="PGA3d"):
+        motor_exp(algebra.blade("e12"))
+
+    algebra3 = Algebra.pga3d()
+    with pytest.raises(ValueError, match="pure bivector"):
+        motor_exp(algebra3.multivector({"e": 1.0, "e12": 0.5}))
+
+
+def test_motor_log_round_trips_pga2d_motor_generators() -> None:
+    algebra = Algebra.pga2d()
+    generator = algebra.multivector({"e12": -0.35, "e01": 0.1, "e02": -0.2})
+
+    motor = generator.exp()
+
+    assert_mv_allclose(motor_log(motor), generator, tol=1e-12)
+    assert_mv_allclose(motor.motor_log(), generator, tol=1e-12)
+
+
+def test_motor_log_round_trips_pga3d_twist_generators_and_ignores_scale() -> None:
+    algebra = Algebra.pga3d()
+    generator = algebra.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05})
+
+    motor = motor_exp(generator)
+    scaled_motor = 4.0 * motor
+
+    assert_mv_allclose(motor_log(motor), generator, tol=1e-12)
+    assert_mv_allclose(motor_log(scaled_motor), generator, tol=1e-12)
+
+
+def test_motor_log_rejects_unsupported_algebras() -> None:
+    algebra = Algebra.vga3d()
+
+    with pytest.raises(ValueError, match="PGA2d and PGA3d"):
+        motor_log(algebra.multivector({"e": 1.0, "e12": 0.25}))
+
+
+def test_commutator_and_anticommutator_match_geometric_product_splits() -> None:
+    algebra = Algebra.vga3d()
+    lhs = algebra.multivector({"e1": 1.0, "e23": -2.0})
+    rhs = algebra.multivector({"e2": 3.0, "e12": 4.0})
+
+    gp_lhs_rhs = lhs * rhs
+    gp_rhs_lhs = rhs * lhs
+
+    assert_mv_allclose(commutator_product(lhs, rhs), 0.5 * (gp_lhs_rhs - gp_rhs_lhs))
+    assert_mv_allclose(anticommutator_product(lhs, rhs), 0.5 * (gp_lhs_rhs + gp_rhs_lhs))
+
+
+def test_commutator_basis_case_matches_bivector_generator_action() -> None:
+    algebra = Algebra.vga3d()
+    e12 = algebra.blade("e12")
+    e1 = algebra.blade("e1")
+
+    actual = e12.commutator(e1)
+
+    assert actual.component("e2") == pytest.approx(-1.0)
+    assert actual.layout.blades == (2,)
+
+
 def test_normalize_preserves_csr_storage_for_sparse_support() -> None:
     algebra = Algebra.vga3d()
     mv = algebra.multivector({"e1": np.array([3.0, 4.0])}, backend="csr")
@@ -397,6 +514,31 @@ def test_bulk_and_weight_normalization_preserve_csr_storage() -> None:
         unitized,
         algebra.multivector({"e01": np.array([1.0, 1.0])}),
     )
+
+
+def test_rigid_body_normalize_rescales_even_pga_motor_like_multivectors() -> None:
+    algebra = Algebra.pga2d()
+    motor = 3.0 * algebra.multivector({"e": 1.0, "e12": -0.25, "e02": 0.5})
+
+    normalized = rigid_body_normalize(motor)
+
+    assert bulk_norm(normalized).component("e") == pytest.approx(1.0)
+    probe = algebra.multivector({"e01": 1.0, "e02": -2.0, "e12": 1.0})
+    assert_mv_allclose(normalized.sandwich(probe), motor.sandwich(probe), tol=1e-12)
+
+
+def test_rigid_body_normalize_preserves_csr_storage_and_rejects_non_motor_shapes() -> None:
+    algebra = Algebra.pga2d()
+    motor = algebra.multivector({"e": np.array([2.0, 4.0]), "e12": 1.0}, backend="csr")
+    expected = algebra.multivector({"e": np.array([2.0, 4.0]), "e12": 1.0}, backend="csr")
+
+    actual = motor.rigid_body_normalized()
+
+    assert actual.storage_kind == "csr"
+    assert_mv_allclose(actual, expected.bulk_normalized())
+
+    with pytest.raises(ValueError, match="grades 0, 2, and optional pseudoscalar"):
+        algebra.blade("e1").rigid_body_normalized()
 
 
 def test_bulk_weight_operations_require_null_basis_vectors() -> None:
