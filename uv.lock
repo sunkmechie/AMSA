@@ -20,6 +20,7 @@ name = "amsa"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "jax" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "typing-extensions" },
@@ -49,6 +50,7 @@ torch = [
 
 [package.metadata]
 requires-dist = [
+    { name = "jax", specifier = ">=0.9.2" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.30" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
