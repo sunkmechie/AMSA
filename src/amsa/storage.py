@@ -8,8 +8,8 @@ from typing import Any, Literal, Protocol, Self
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-StorageKind = Literal["dense", "csr"]
-StorageRequest = Literal["auto", "dense", "csr"]
+StorageKind = Literal["dense", "csr", "jax"]
+StorageRequest = Literal["auto", "dense", "csr", "jax"]
 
 
 def _normalize_batch_shape(batch_shape: tuple[int, ...]) -> tuple[int, ...]:
@@ -49,7 +49,7 @@ def resolve_storage_kind(
 ) -> StorageKind:
     if kind == "auto":
         return auto_kind
-    if kind in ("dense", "csr"):
+    if kind in ("dense", "csr", "jax"):
         return kind
     raise ValueError(f"Unsupported storage kind request: {kind!r}")
 
@@ -96,6 +96,58 @@ class DenseStorage:
     @classmethod
     def from_array(cls, values: ArrayLike) -> DenseStorage:
         return cls(np.asarray(values))
+
+
+@dataclass(frozen=True, slots=True)
+class JAXStorage:
+    """JAX-backed dense storage for multivector batches."""
+
+    array: Any
+    kind: StorageKind = "jax"
+
+    def __post_init__(self) -> None:
+        import jax.numpy as jnp
+
+        values = jnp.asarray(self.array)
+        if values.ndim == 0:
+            raise ValueError("storage values must have at least one dimension.")
+        object.__setattr__(self, "array", values)
+
+    @property
+    def batch_shape(self) -> tuple[int, ...]:
+        return tuple(self.array.shape[:-1])
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return np.dtype(self.array.dtype)
+
+    @property
+    def width(self) -> int:
+        return int(self.array.shape[-1])
+
+    def as_dense(self) -> NDArray[Any]:
+        return np.asarray(self.array)
+
+    def copy(self) -> JAXStorage:
+        return JAXStorage(self.array)  # JAX arrays are immutable
+
+    @classmethod
+    def zeros(
+        cls,
+        width: int,
+        *,
+        batch_shape: tuple[int, ...] = (),
+        dtype: np.dtype[Any] | type[np.float64] = np.float64,
+    ) -> JAXStorage:
+        import jax.numpy as jnp
+
+        return cls(jnp.zeros(batch_shape + (width,), dtype=dtype))
+
+    @classmethod
+    def from_array(cls, values: ArrayLike) -> JAXStorage:
+        import jax.numpy as jnp
+
+        return cls(jnp.asarray(values))
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -226,9 +278,15 @@ class CSRStorage:
 def to_dense_storage(storage: MVStorage) -> DenseStorage:
     if isinstance(storage, DenseStorage):
         return storage.copy()
-    if isinstance(storage, CSRStorage):
+    if isinstance(storage, (CSRStorage, JAXStorage)):
         return DenseStorage.from_array(storage.as_dense())
     raise TypeError(f"Unsupported storage type: {type(storage)!r}")
+
+
+def to_jax_storage(storage: MVStorage) -> JAXStorage:
+    if isinstance(storage, JAXStorage):
+        return storage.copy()
+    return JAXStorage.from_array(storage.as_dense())
 
 
 def to_csr_storage(storage: MVStorage) -> CSRStorage:
@@ -265,7 +323,9 @@ def build_storage_from_array(values: ArrayLike, *, kind: StorageRequest = "dense
     resolved_kind = resolve_storage_kind(kind)
     if resolved_kind == "dense":
         return dense
-    return to_csr_storage(dense)
+    if resolved_kind == "csr":
+        return to_csr_storage(dense)
+    return to_jax_storage(dense)
 
 
 def build_zero_storage(
@@ -278,7 +338,9 @@ def build_zero_storage(
     resolved_kind = resolve_storage_kind(kind)
     if resolved_kind == "dense":
         return DenseStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
-    return CSRStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
+    if resolved_kind == "csr":
+        return CSRStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
+    return JAXStorage.zeros(width, batch_shape=batch_shape, dtype=dtype)
 
 
 def convert_storage_kind(storage: MVStorage, kind: StorageKind) -> MVStorage:
@@ -286,6 +348,8 @@ def convert_storage_kind(storage: MVStorage, kind: StorageKind) -> MVStorage:
         return to_dense_storage(storage)
     if kind == "csr":
         return to_csr_storage(storage)
+    if kind == "jax":
+        return to_jax_storage(storage)
     raise ValueError(f"Unsupported storage kind: {kind!r}")
 
 
@@ -295,6 +359,8 @@ def storage_component(storage: MVStorage, column: int) -> NDArray[Any]:
 
     if isinstance(storage, DenseStorage):
         return np.asarray(storage.array[..., column], dtype=storage.dtype)
+    if isinstance(storage, JAXStorage):
+        return np.asarray(storage.array[..., column])
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -328,6 +394,9 @@ def gather_storage_columns(
     if isinstance(storage, DenseStorage):
         gathered = np.asarray(storage.array[..., list(columns)], dtype=storage.dtype)
         return np.broadcast_to(gathered, target_batch_shape + (len(columns),))
+    if isinstance(storage, JAXStorage):
+        gathered = np.asarray(storage.array[..., list(columns)])
+        return np.broadcast_to(gathered, target_batch_shape + (len(columns),))
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -353,12 +422,19 @@ def gather_storage_columns(
 
 def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVStorage:
     target_width = len(columns)
-    if isinstance(storage, DenseStorage):
-        projected = np.zeros(storage.batch_shape + (target_width,), dtype=storage.dtype)
+    if isinstance(storage, (DenseStorage, JAXStorage)):
+        import jax.numpy as jnp
+
+        is_jax = isinstance(storage, JAXStorage)
+        xp = jnp if is_jax else np
+        projected = xp.zeros(storage.batch_shape + (target_width,), dtype=storage.dtype)
         for out_column, in_column in enumerate(columns):
             if in_column is not None:
-                projected[..., out_column] = storage.array[..., in_column]
-        return DenseStorage(projected)
+                if is_jax:
+                    projected = projected.at[..., out_column].set(storage.array[..., in_column])
+                else:
+                    projected[..., out_column] = storage.array[..., in_column]
+        return JAXStorage(projected) if is_jax else DenseStorage(projected)
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -410,6 +486,8 @@ def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * scalar
         return DenseStorage(values)
+    if isinstance(storage, JAXStorage):
+        return JAXStorage(storage.array * scalar)
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
     if is_zero:
@@ -438,6 +516,10 @@ def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * resolved_weights
         return DenseStorage(values)
+    if isinstance(storage, JAXStorage):
+        import jax.numpy as jnp
+
+        return JAXStorage(storage.array * jnp.asarray(resolved_weights))
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -465,6 +547,10 @@ def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * resolved_factors[..., np.newaxis]
         return DenseStorage(values)
+    if isinstance(storage, JAXStorage):
+        import jax.numpy as jnp
+
+        return JAXStorage(storage.array * jnp.asarray(resolved_factors)[..., jnp.newaxis])
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
