@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 
@@ -100,6 +100,35 @@ def _accumulate_numpy_result(
     return result
 
 
+_JAX_JIT_CACHE: dict[tuple[int, str], Callable] = {}
+
+def _compile_jax_plan(
+    plan: OpPlan,
+    layout_size: int,
+    dtype: np.dtype[Any],
+    lhs_column_index: dict[int, int],
+    rhs_column_index: dict[int, int],
+    out_index: dict[int, int],
+) -> Callable:
+    import jax
+    import jax.numpy as jnp
+
+    @jax.jit
+    def kernel(lhs_values: Any, rhs_values: Any) -> Any:
+        batch_axes = lhs_values.shape[:-1]
+        result = jnp.zeros(batch_axes + (layout_size,), dtype=dtype)
+        for term in plan.terms:
+            contribution = (
+                term.coefficient
+                * lhs_values[..., lhs_column_index[term.lhs_index]]
+                * rhs_values[..., rhs_column_index[term.rhs_index]]
+            )
+            result = result.at[..., out_index[term.out_blade]].add(contribution)
+        return result
+
+    return kernel
+
+
 def _accumulate_jax_result(
     lhs_values: Any,
     rhs_values: Any,
@@ -112,17 +141,20 @@ def _accumulate_jax_result(
     rhs_column_index: dict[int, int],
     out_index: dict[int, int],
 ) -> Any:
-    import jax.numpy as jnp
-
-    result = jnp.zeros(tuple(batch_shape) + (layout_size,), dtype=dtype)
-    for term in plan.terms:
-        contribution = (
-            term.coefficient
-            * lhs_values[..., lhs_column_index[term.lhs_index]]
-            * rhs_values[..., rhs_column_index[term.rhs_index]]
+    cache_key = (id(plan), str(dtype))
+    
+    if cache_key not in _JAX_JIT_CACHE:
+        _JAX_JIT_CACHE[cache_key] = _compile_jax_plan(
+            plan,
+            layout_size,
+            dtype,
+            lhs_column_index,
+            rhs_column_index,
+            out_index,
         )
-        result = result.at[..., out_index[term.out_blade]].add(contribution)
-    return result
+        
+    kernel = _JAX_JIT_CACHE[cache_key]
+    return kernel(lhs_values, rhs_values)
 
 
 def execute_binary_plan(lhs: MVArray, rhs: MVArray, plan: OpPlan) -> MVArray:
