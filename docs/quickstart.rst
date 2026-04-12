@@ -91,6 +91,18 @@ By default, fresh construction uses dense storage. You can opt into CSR explicit
 
    print(mv.storage_kind)  # csr
 
+There is also an experimental JAX storage mode:
+
+.. code-block:: python
+
+   alg = Algebra.vga2d()
+   mv = alg.vector([1.0, 2.0], backend="jax")
+
+   print(mv.storage_kind)  # jax
+
+This is currently a storage-layer option. The reference binary executor still materializes NumPy
+results, so ``backend="jax"`` is not yet a full accelerated operator backend.
+
 Visualization
 -------------
 

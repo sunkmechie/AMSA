@@ -9,7 +9,15 @@ from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
-from amsa.storage import project_storage, reweight_storage, row_scale_storage, scale_storage
+from amsa.storage import (
+    JAXStorage,
+    add_storage,
+    project_storage,
+    reweight_storage,
+    row_scale_storage,
+    scale_storage,
+    sub_storage,
+)
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -27,6 +35,10 @@ def _coerce_operand(reference: MVArray, operand: MVArray | Number) -> MVArray:
         scalar_layout = MVLayout.grade(reference.algebra, 0)
         dtype = np.result_type(reference.dtype, operand_array.dtype)
         values = np.asarray([operand], dtype=dtype)
+        if reference.storage_kind == "jax":
+            return MVArray(
+                algebra=reference.algebra, layout=scalar_layout, storage=JAXStorage(values)
+            )
         return MVArray(algebra=reference.algebra, layout=scalar_layout, values=values)
     raise TypeError(f"Unsupported operand type: {type(operand)!r}")
 
@@ -50,16 +62,22 @@ def add(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    values = lhs_projected.values + rhs_projected.values
-    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
+    return MVArray(
+        algebra=lhs.algebra,
+        layout=layout,
+        storage=add_storage(lhs_projected.storage, rhs_projected.storage),
+    )
 
 
 def sub(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    values = lhs_projected.values - rhs_projected.values
-    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
+    return MVArray(
+        algebra=lhs.algebra,
+        layout=layout,
+        storage=sub_storage(lhs_projected.storage, rhs_projected.storage),
+    )
 
 
 def reverse(mv: MVArray) -> MVArray:
@@ -282,6 +300,8 @@ def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
         payload = np.asarray([payload.item()], dtype=dtype)
     else:
         payload = payload[..., np.newaxis]
+    if mv.storage_kind == "jax":
+        return MVArray(algebra=mv.algebra, layout=scalar_layout, storage=JAXStorage(payload))
     return MVArray(algebra=mv.algebra, layout=scalar_layout, values=payload)
 
 
@@ -293,6 +313,8 @@ def _single_blade_mv(mv: MVArray, blade: int, values: np.ndarray) -> MVArray:
         payload = np.asarray([payload.item()], dtype=dtype)
     else:
         payload = payload[..., np.newaxis]
+    if mv.storage_kind == "jax":
+        return MVArray(algebra=mv.algebra, layout=layout, storage=JAXStorage(payload))
     return MVArray(algebra=mv.algebra, layout=layout, values=payload)
 
 
