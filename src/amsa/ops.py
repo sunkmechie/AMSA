@@ -673,10 +673,15 @@ def sandwich(actor: MVArray, target: MVArray) -> MVArray:
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
     scalar_blade = 0
     resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_value = np.asarray(mv.component(scalar_blade), dtype=resolved_dtype)
-
+    
     if mv.layout.size == 0:
         raise ValueError(f"{name} is zero and therefore non-invertible.")
+
+    if mv.storage_kind == "jax":
+        # Skip concrete value checks for JAX to allow JIT tracing.
+        return mv.component(scalar_blade)
+
+    scalar_value = np.asarray(mv.component(scalar_blade), dtype=resolved_dtype)
 
     for index, blade in enumerate(mv.layout.blades):
         if blade == scalar_blade:
@@ -695,12 +700,19 @@ def inverse(mv: MVArray) -> MVArray:
     left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
     right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
 
-    if not np.allclose(left_norm, right_norm):
-        raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
-    if np.any(np.isclose(left_norm, 0.0)):
-        raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
+    if mv.storage_kind != "jax":
+        if not np.allclose(left_norm, right_norm):
+            raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
+        if np.any(np.isclose(left_norm, 0.0)):
+            raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
-    reciprocals = np.reciprocal(left_norm)
+    if mv.storage_kind == "jax":
+        # Let JAX reciprocal handle zeros natively with inf/nan
+        import jax.numpy as jnp
+
+        reciprocals = jnp.reciprocal(left_norm)
+    else:
+        reciprocals = np.reciprocal(left_norm)
     return MVArray(
         algebra=mv.algebra,
         layout=reversed_mv.layout,

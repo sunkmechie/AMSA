@@ -432,3 +432,16 @@ class MVArray:
         if isinstance(other, Number):
             return divide(other, self)
         return NotImplemented
+
+
+try:
+    import jax
+    from jax.tree_util import register_pytree_node
+
+    register_pytree_node(
+        MVArray,
+        lambda mv: ((mv.storage,), (mv.algebra, mv.layout)),
+        lambda aux, leaves: MVArray(algebra=aux[0], layout=aux[1], storage=leaves[0]),
+    )
+except ImportError:
+    pass
