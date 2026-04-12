@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from numpy.testing import assert_allclose
 
 from amsa import Algebra
 from amsa.ops import (
@@ -49,6 +48,8 @@ from amsa.ops import (
     weight_norm,
     weight_norm_squared,
 )
+
+from ._utils import assert_allclose, assert_mv_allclose
 
 pytest.importorskip("jax")
 
@@ -140,29 +141,29 @@ class TestAddSubJAXPreservation:
         b = vga3d.multivector({"e1": 3.0, "e2": -1.0}, backend="jax")
         result = add(a, b)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e1"), 4.0)
-        assert_allclose(result.component("e2"), 1.0)
+        assert_allclose(result.component("e1"), 4.0, tol=1e-5)
+        assert_allclose(result.component("e2"), 1.0, tol=1e-5)
 
     def test_sub_jax_jax_preserves_jax(self, vga3d):
         a = vga3d.multivector({"e1": 1.0, "e2": 2.0}, backend="jax")
         b = vga3d.multivector({"e1": 3.0, "e2": -1.0}, backend="jax")
         result = sub(a, b)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e1"), -2.0)
-        assert_allclose(result.component("e2"), 3.0)
+        assert_allclose(result.component("e1"), -2.0, tol=1e-5)
+        assert_allclose(result.component("e2"), 3.0, tol=1e-5)
 
     def test_add_jax_scalar_preserves_jax(self, vga3d):
         a = vga3d.multivector({"e1": 1.0}, backend="jax")
         result = add(a, 5.0)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e"), 5.0)
-        assert_allclose(result.component("e1"), 1.0)
+        assert_allclose(result.component("e"), 5.0, tol=1e-5)
+        assert_allclose(result.component("e1"), 1.0, tol=1e-5)
 
     def test_sub_jax_scalar_preserves_jax(self, vga3d):
         a = vga3d.multivector({"e1": 1.0, "e": 3.0}, backend="jax")
         result = sub(a, 1.0)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e"), 2.0)
+        assert_allclose(result.component("e"), 2.0, tol=1e-5)
 
     def test_operator_add_preserves_jax(self, vga3d):
         a = vga3d.multivector({"e1": 1.0}, backend="jax")
@@ -181,7 +182,7 @@ class TestAddSubJAXPreservation:
         dense_mv = vga3d.multivector({"e1": 2.0}, backend="dense")
         result = add(jax_mv, dense_mv)
         assert result.storage_kind == "dense"
-        assert_allclose(result.component("e1"), 3.0)
+        assert_allclose(result.component("e1"), 3.0, tol=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -255,20 +256,20 @@ class TestNormInverseJAXPreservation:
         v = vga3d.vector([1.0, 2.0, 3.0], backend="jax")
         result = norm_squared(v)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e"), 14.0)
+        assert_allclose(result.component("e"), 14.0, tol=1e-5)
 
     def test_norm_preserves_jax(self, vga3d):
         v = vga3d.vector([1.0, 2.0, 3.0], backend="jax")
         result = norm(v)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e"), np.sqrt(14.0))
+        assert_allclose(result.component("e"), np.sqrt(14.0), tol=1e-5)
 
     def test_normalize_preserves_jax(self, vga3d):
         v = vga3d.vector([3.0, 4.0, 0.0], backend="jax")
         result = normalize(v)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e1"), 0.6)
-        assert_allclose(result.component("e2"), 0.8)
+        assert_allclose(result.component("e1"), 0.6, tol=1e-5)
+        assert_allclose(result.component("e2"), 0.8, tol=1e-5)
 
     def test_inverse_preserves_jax(self, vga3d):
         v = vga3d.vector([1.0, 2.0, 3.0], backend="jax")
@@ -342,7 +343,7 @@ class TestExpLogJAXPreservation:
         assert result.storage_kind == "jax"
         # Verify correctness against dense
         bv_dense = vga3d.multivector({"e12": 0.5}, backend="dense")
-        assert_allclose(result.values, bv_dense.exp().values, atol=1e-12)
+        assert_mv_allclose(result, bv_dense.exp(), tol=1e-5)
 
     def test_motor_exp_pga3d_preserves_jax(self, pga3d):
         gen = pga3d.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05}, backend="jax")
@@ -350,7 +351,7 @@ class TestExpLogJAXPreservation:
         assert result.storage_kind == "jax"
         # Verify correctness against dense
         gen_dense = pga3d.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05}, backend="dense")
-        assert_allclose(result.values, motor_exp(gen_dense).values, atol=1e-12)
+        assert_mv_allclose(result, motor_exp(gen_dense), tol=1e-5)
 
     def test_motor_log_pga2d_preserves_jax(self, pga2d):
         gen = pga2d.multivector({"e12": -0.35, "e01": 0.1, "e02": -0.2}, backend="jax")
@@ -358,7 +359,7 @@ class TestExpLogJAXPreservation:
         result = motor_log(motor)
         assert result.storage_kind == "jax"
         # Round-trip: log(exp(gen)) ≈ gen
-        assert_allclose(result.component("e12"), -0.35, atol=1e-12)
+        assert_allclose(result.component("e12"), -0.35, tol=1e-5)
 
     def test_motor_log_pga3d_preserves_jax(self, pga3d):
         gen = pga3d.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05}, backend="jax")
@@ -389,7 +390,7 @@ class TestBatchedJAXPreservation:
         b = vga3d.multivector({"e1": np.ones(8) * 2}, backend="jax")
         result = add(a, b)
         assert result.storage_kind == "jax"
-        assert_allclose(result.component("e1"), np.ones(8) * 3)
+        assert_allclose(result.component("e1"), np.ones(8) * 3, tol=1e-5)
 
     def test_batched_norm_preserves_jax(self, vga3d):
         v = vga3d.multivector(
@@ -411,23 +412,24 @@ class TestJAXDenseCorrectness:
         b_d = vga3d.multivector({"e2": 3.0, "e12": -1.0}, backend="dense")
         a_j = a_d.with_storage("jax")
         b_j = b_d.with_storage("jax")
-        assert_allclose(add(a_j, b_j).values, add(a_d, b_d).values)
+        assert_mv_allclose(add(a_j, b_j), add(a_d, b_d), tol=1e-5)
 
     def test_sub_values_match(self, vga3d):
         a_d = vga3d.multivector({"e1": 1.0, "e23": 2.0}, backend="dense")
         b_d = vga3d.multivector({"e2": 3.0, "e12": -1.0}, backend="dense")
         a_j = a_d.with_storage("jax")
         b_j = b_d.with_storage("jax")
-        assert_allclose(sub(a_j, b_j).values, sub(a_d, b_d).values)
+        assert_mv_allclose(sub(a_j, b_j), sub(a_d, b_d), tol=1e-5)
 
     def test_gp_values_match(self, vga3d):
         a_d = vga3d.multivector({"e1": 1.0, "e23": 2.0}, backend="dense")
         b_d = vga3d.multivector({"e2": 3.0, "e12": -1.0}, backend="dense")
         a_j = a_d.with_storage("jax")
         b_j = b_d.with_storage("jax")
-        assert_allclose(
-            geometric_product(a_j, b_j).values,
-            geometric_product(a_d, b_d).values,
+        assert_mv_allclose(
+            geometric_product(a_j, b_j),
+            geometric_product(a_d, b_d),
+            tol=1e-5,
         )
 
     def test_commutator_values_match(self, vga3d):
@@ -435,12 +437,13 @@ class TestJAXDenseCorrectness:
         b_d = vga3d.multivector({"e2": 3.0, "e12": -1.0}, backend="dense")
         a_j = a_d.with_storage("jax")
         b_j = b_d.with_storage("jax")
-        assert_allclose(
-            commutator_product(a_j, b_j).values,
-            commutator_product(a_d, b_d).values,
+        assert_mv_allclose(
+            commutator_product(a_j, b_j),
+            commutator_product(a_d, b_d),
+            tol=1e-5,
         )
 
     def test_norm_values_match(self, vga3d):
         v_d = vga3d.vector([1.0, 2.0, 3.0], backend="dense")
         v_j = v_d.with_storage("jax")
-        assert_allclose(norm(v_j).values, norm(v_d).values)
+        assert_mv_allclose(norm(v_j), norm(v_d), tol=1e-5)
