@@ -22,7 +22,7 @@ AMSA (Advanced Multivector Symbolic Architecture Engine) is a Clifford algebra l
 
 - `src/amsa/specs.py`: algebra signatures, blade naming, blade products, presets
 - `src/amsa/layouts.py`: dense, grade, and sparse layout descriptors
-- `src/amsa/storage.py`: dense and CSR storage backends plus storage helpers
+- `src/amsa/storage.py`: dense, CSR, and experimental JAX storage backends plus storage helpers
 - `src/amsa/mv.py`: storage-backed multivector array type
 - `src/amsa/plans.py`: cached operator plans
 - `src/amsa/reference.py`: reference execution of plans
@@ -85,7 +85,7 @@ You can also browse the source directly:
 - `docs/quickstart.rst` — installation and first steps
 - `docs/algebra.rst` — `AlgebraSpec`, presets, and blade products
 - `docs/layouts.rst` — `MVLayout` and sparse support
-- `docs/storage.rst` — dense and CSR backends
+- `docs/storage.rst` — dense, CSR, and experimental JAX storage backends
 - `docs/operators.rst` — product semantics, duality, and normalization
 - `docs/viz.rst` — visualization adapters, primitives, and matplotlib backend
 - `docs/examples.rst` — index of runnable example scripts
@@ -97,6 +97,11 @@ Introductory notebooks are in `notebooks/`:
 
 - `01_vga_rotors.ipynb` — VGA vector products, rotors, and sandwich conjugation
 - `02_pga_rigid_body.ipynb` — PGA2d lines, meet/join, motors, and bulk/weight splits
+- `01_fundamentals/02_vectors_products.ipynb` — geometric, outer, and inner product decomposition
+- `02_projective/01_pga_intro.ipynb` — PGA2d/PGA3d basics, dual encodings, and line equations
+- `02_projective/02_lines_points.ipynb` — meet/join with the current AMSA vector-form and bivector-form PGA conventions
+- `02_projective/04_bulk_weight.ipynb` — bulk/weight split, dual helpers, and current PGA normalization helpers
+- `03_visualization_tour.ipynb` — renders the current example set with `amsa.viz`
 
 ## License and Acknowledgements
 
@@ -131,7 +136,11 @@ AMSA's development has been made possible and was inspired by the following open
 - grade projection and component lookup
 - lazy basis-product tables and on-demand Cayley tables via `AlgebraSpec`
 - dense/CSR conversion
-- dense and CSR-backed input execution in the reference backend
+- backend-aware reference execution:
+  - `csr + csr -> csr`
+  - `jax + jax -> jax`
+  - mixed backend binary execution currently falls back to dense output
+- experimental JAX dense storage for construction, conversion, and storage-local transforms
 - neutral visualization primitives and point adapters in `amsa.viz`
 
 
@@ -161,7 +170,7 @@ uv run sphinx-build docs docs/_build
 | Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `commutator_product`, `anticommutator_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich`, `bulk_dual`, `weight_dual` |
 | Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `exp`, `motor_exp`, `motor_log`, `norm_squared`, `norm`, `normalize`, `bulk_norm_squared`, `bulk_norm`, `weight_norm_squared`, `weight_norm`, `bulk_normalize`, `unitize`, `rigid_body_normalize`, unary `-mv` |
 | Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
-| Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
+| Storage operations | dense/CSR/JAX construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)`, `to_jax_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
 | Presets | `vga`, `vga2d`, `vga3d`, `pga2d`, `pga3d`, `Algebra.from_name(...)` |
 
@@ -197,6 +206,7 @@ Today it supports:
 
 Small future-reference benchmarks now live in `benchmarks/`, starting with:
 - `benchmarks/motor_ops.py`
+- `benchmarks/backend_outputs.py`
 
 For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `bulk()` and `weight()` split components by whether they carry the null basis factor
@@ -210,3 +220,10 @@ Visualization note:
 - `amsa.viz` is now a lightweight in-package visualization layer
 - it provides neutral primitives, point adapters for PGA points, and an optional matplotlib backend
 - the richer operator-plan debugger still lives separately in `probes/amsa_lab.py`
+
+JAX backend note:
+- `src/amsa/storage.py` currently includes an experimental `JAXStorage`
+- it supports construction, conversion, projection, scaling, and other storage-local helpers
+- the binary reference executor now preserves `jax` output when both inputs are JAX-backed
+- mixed-backend binary execution still falls back to dense output
+- AMSA still does not have a fused or JIT-compiled JAX operator backend yet

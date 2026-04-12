@@ -740,8 +740,44 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
 
     expected = _naive_binary_product(lhs.copy(), rhs.copy(), kind="geometric")
     monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+    actual = geometric_product(lhs, rhs)
+    monkeypatch.undo()
+
+    assert actual.storage_kind == "csr"
+    assert_mv_allclose(actual, expected)
+
+
+def test_reference_execution_preserves_jax_output_when_both_inputs_are_jax() -> None:
+    pytest.importorskip("jax")
+
+    algebra = Algebra.vga2d()
+    lhs = algebra.multivector({"e1": np.array([1.0, -2.0]), "e12": 3.0}, backend="jax")
+    rhs = algebra.multivector({"e": 2.0, "e2": np.array([0.5, 1.5])}, backend="jax")
 
     actual = geometric_product(lhs, rhs)
+    expected = _naive_binary_product(
+        lhs.with_storage("dense"),
+        rhs.with_storage("dense"),
+        kind="geometric",
+    )
+
+    assert actual.storage_kind == "jax"
+    assert_mv_allclose(actual, expected)
+
+
+def test_reference_execution_uses_dense_output_for_mixed_jax_and_dense_inputs() -> None:
+    pytest.importorskip("jax")
+
+    algebra = Algebra.vga2d()
+    lhs = algebra.multivector({"e1": 1.0, "e12": -3.0}, backend="jax")
+    rhs = algebra.multivector({"e": 2.0, "e2": 4.0}, backend="dense")
+
+    actual = geometric_product(lhs, rhs)
+    expected = _naive_binary_product(
+        lhs.with_storage("dense"),
+        rhs.with_storage("dense"),
+        kind="geometric",
+    )
 
     assert actual.storage_kind == "dense"
     assert_mv_allclose(actual, expected)

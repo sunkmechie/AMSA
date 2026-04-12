@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from amsa import Algebra, MVArray, MVLayout, involute, neg, pga2d, reverse, vga
-from amsa.storage import CSRStorage, DenseStorage, to_csr_storage, to_dense_storage
+from amsa.storage import CSRStorage, DenseStorage, to_csr_storage, to_dense_storage, to_jax_storage
 
 from ._utils import assert_allclose
 
@@ -394,6 +394,28 @@ def test_explicit_csr_backend_is_available_on_constructors() -> None:
     assert_allclose(zeros.values, np.zeros((2, 3)))
 
 
+def test_explicit_jax_backend_is_available_on_constructors() -> None:
+    pytest.importorskip("jax")
+
+    algebra = Algebra(vga(2))
+
+    mv = algebra.multivector({"e1": np.array([0.0, 2.0]), "e2": 3.0}, backend="jax")
+    scalar = algebra.scalar(2.0, backend="jax")
+    zeros = algebra.zeros(
+        layout=algebra.grade_layout(1),
+        batch_shape=(2,),
+        dtype=np.float32,
+        backend="jax",
+    )
+
+    assert mv.storage_kind == "jax"
+    assert scalar.storage_kind == "jax"
+    assert zeros.storage_kind == "jax"
+    assert_allclose(mv.values, np.array([[0.0, 3.0], [2.0, 3.0]]))
+    assert_allclose(scalar.values, np.array([2.0]))
+    assert_allclose(zeros.values, np.zeros((2, 2), dtype=np.float32))
+
+
 def test_imported_multivector_can_be_rewrapped_with_requested_backend() -> None:
     algebra = Algebra(vga(2))
     dense = algebra.multivector({"e1": 2.0, "e12": -3.0})
@@ -422,6 +444,24 @@ def test_mvarray_with_storage_round_trip_preserves_layout_and_values() -> None:
     assert dense.layout == mv.layout
     assert_allclose(csr.values, mv.values)
     assert_allclose(dense.values, mv.values)
+
+
+def test_to_jax_storage_and_with_storage_preserve_values() -> None:
+    pytest.importorskip("jax")
+
+    algebra = Algebra(vga(3))
+    mv = algebra.multivector({"e1": 1.0, "e23": -2.0})
+
+    jax_storage = to_jax_storage(mv.storage)
+    jax_mv = mv.with_storage("jax")
+    dense_again = jax_mv.with_storage("dense")
+
+    assert jax_storage.kind == "jax"
+    assert jax_mv.storage_kind == "jax"
+    assert dense_again.storage_kind == "dense"
+    assert_allclose(jax_storage.as_dense(), mv.values)
+    assert_allclose(jax_mv.values, mv.values)
+    assert_allclose(dense_again.values, mv.values)
 
 
 def test_unary_ops_preserve_csr_storage() -> None:

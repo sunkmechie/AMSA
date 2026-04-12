@@ -9,11 +9,12 @@ Initial release.
 - Portable algebra core based on bit-pattern blade identifiers
 - Lazy numeric basis-product tables for small-basis algebras (≤512 blades)
 - Dense, grade-packed, and sparse layout descriptors
-- Dense and CSR storage backends behind a shared storage contract
+- Dense and CSR storage backends behind a shared storage contract, plus an experimental JAX dense storage path
 - Reference multivector array type with batch broadcasting
 - Cached operator plans for binary products
 - Storage-aware binary execution consuming dense or CSR inputs
-- Explicit constructor-level backend selection (``backend="auto" | "dense" | "csr"``)
+- Explicit constructor-level backend selection (``backend="auto" | "dense" | "csr" | "jax"``)
+- Backend-aware reference result emission for same-backend binary execution (dense, CSR, and JAX)
 - Public API covering geometric, outer, inner, scalar, left/right contraction, and regressive products
 - Commutator and anticommutator products plus robotics-oriented motor exp/log support
 - Reverse, involute, conjugate, metric dual/undual, and Poincaré dual/undual

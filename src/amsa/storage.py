@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import prod
 from operator import index
-from typing import Any, Literal, Protocol, Self
+from typing import Any, Literal, Protocol, Self, cast
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -119,7 +119,7 @@ class JAXStorage:
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return np.dtype(self.array.dtype)
+        return cast(np.dtype[Any], np.dtype(self.array.dtype))
 
     @property
     def width(self) -> int:
@@ -571,3 +571,21 @@ def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
         width=storage.width,
         dtype=result_dtype,
     )
+
+
+def add_storage(lhs: MVStorage, rhs: MVStorage) -> MVStorage:
+    """Element-wise addition of two same-width storages, preserving backend."""
+    if isinstance(lhs, JAXStorage) and isinstance(rhs, JAXStorage):
+        return JAXStorage(lhs.array + rhs.array)
+    if isinstance(lhs, DenseStorage) and isinstance(rhs, DenseStorage):
+        return DenseStorage(lhs.array + rhs.array)
+    return DenseStorage(lhs.as_dense() + rhs.as_dense())
+
+
+def sub_storage(lhs: MVStorage, rhs: MVStorage) -> MVStorage:
+    """Element-wise subtraction of two same-width storages, preserving backend."""
+    if isinstance(lhs, JAXStorage) and isinstance(rhs, JAXStorage):
+        return JAXStorage(lhs.array - rhs.array)
+    if isinstance(lhs, DenseStorage) and isinstance(rhs, DenseStorage):
+        return DenseStorage(lhs.array - rhs.array)
+    return DenseStorage(lhs.as_dense() - rhs.as_dense())
