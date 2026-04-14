@@ -100,7 +100,7 @@ There is also an JAX (Beta) storage mode:
 
    print(mv.storage_kind)  # jax
 
-This backend is fully accelerated via JIT compilation and supports end-to-end trace fusion.
+This backend enables JAX tracing and PyTree fusion. Binary operators (geometric, outer, inner products) use JIT-compiled kernels; higher-level operations execute in Python. When used inside `@jax.jit`, the entire expression can be traced and fused by JAX into optimized XLA code.
 
 .. code-block:: python
 

@@ -6,6 +6,7 @@ to dense.
 """
 from __future__ import annotations
 
+import jax
 import numpy as np
 import pytest
 
@@ -366,6 +367,64 @@ class TestExpLogJAXPreservation:
         motor = motor_exp(gen)
         result = motor_log(motor)
         assert result.storage_kind == "jax"
+
+
+class TestJAXEagerValidation:
+    @pytest.mark.parametrize(
+        "invalid_multivector",
+        [
+            {"e1": 1.0, "e12": 1.0},
+            {"e": 1.0, "e1": 1.0},
+        ],
+    )
+    def test_inverse_raises_on_non_scalar_jax_eager(self, vga3d, invalid_multivector):
+        mv = vga3d.multivector(invalid_multivector, backend="jax")
+        with pytest.raises(ValueError, match="must be scalar-valued"):
+            inverse(mv)
+
+    @pytest.mark.parametrize(
+        "invalid_multivector",
+        [
+            {"e1": 1.0, "e23": 1.0},
+            {"e": 1.0, "e1": 1.0},
+        ],
+    )
+    def test_exp_raises_on_non_scalar_jax_eager(self, vga3d, invalid_multivector):
+        mv = vga3d.multivector(invalid_multivector, backend="jax")
+        with pytest.raises(ValueError, match="must be scalar-valued"):
+            exp(mv)
+
+    def test_inverse_jit_tracing_preserves_jax(self, vga3d):
+        mv = vga3d.vector([1.0, 2.0, 3.0], backend="jax")
+        jit_inverse = jax.jit(inverse)
+        result = jit_inverse(mv)
+        assert result.storage_kind == "jax"
+        assert_mv_allclose(result, inverse(mv), tol=1e-5)
+
+    def test_exp_jit_tracing_preserves_jax(self, vga3d):
+        bv = vga3d.multivector({"e12": 0.5}, backend="jax")
+        jit_exp = jax.jit(exp)
+        result = jit_exp(bv)
+        assert result.storage_kind == "jax"
+        assert_mv_allclose(result, exp(bv), tol=1e-5)
+
+    def test_jax_eager_validation_stress(self, vga3d):
+        invalid_inverses = [
+            {"e1": 1.0, "e12": 1.0},
+            {"e": 1.0, "e1": 1.0},
+        ]
+        invalid_exps = [
+            {"e1": 1.0, "e23": 1.0},
+            {"e": 1.0, "e1": 1.0},
+        ]
+        for invalid in invalid_inverses:
+            mv = vga3d.multivector(invalid, backend="jax")
+            with pytest.raises(ValueError, match="must be scalar-valued"):
+                inverse(mv)
+        for invalid in invalid_exps:
+            mv = vga3d.multivector(invalid, backend="jax")
+            with pytest.raises(ValueError, match="must be scalar-valued"):
+                exp(mv)
 
 
 # ---------------------------------------------------------------------------

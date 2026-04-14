@@ -224,6 +224,6 @@ Visualization note:
 JAX backend note:
 - `src/amsa/storage.py` includes a `JAXStorage` (beta) backend
 - it supports construction, conversion, projection, scaling, and other storage-local helpers
-- the binary executor now preserves `jax` output and is **fully JIT-compiled** for geometric products
-- **Trace Fusion**: AMSA types are registered as JAX PyTrees, allowing `@jax.jit` to fuse composed multivector expressions (e.g., sandwich products) into single XLA kernels.
-- **Performance**: Composed operations such as `sandwich` exhibit up to **268x speedup** on JIT-fused paths compared to dynamic evaluation.
+- **Binary Operators**: geometric, outer, and inner products use **JIT-compiled kernels** via cached execution plans
+- **Unary Operations & Composition**: higher-level operators (add, sub, inverse, exp, sandwich) execute in Python; when wrapped in `@jax.jit`, AMSA types (registered as JAX PyTrees) enable trace fusion for entire expressions
+- **Performance**: Batched operations exhibit significant speedup on GPU; single-operation latency may favor the NumPy dense backend due to kernel launch overhead

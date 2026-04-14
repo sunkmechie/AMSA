@@ -20,6 +20,36 @@ from amsa.storage import (
 )
 
 
+def _is_jax_tracing(value: np.ndarray) -> bool:
+    """
+    Detect if a JAX array is being traced (inside @jax.jit, vmap, grad, etc.).
+
+    In tracing contexts, JAX arrays become Tracer objects. We use this to distinguish
+    between eager-mode (where we validate semantics strictly) and compilation contexts
+    (where we must allow deferred evaluation).
+
+    This preserves AMSA's core principle: eager-mode JAX has exact Clifford semantics;
+    only tracing contexts are allowed to relax checks for compiler compatibility.
+    """
+    if not hasattr(value, "dtype"):
+        return False
+    try:
+        import jax.core
+
+        # A Tracer indicates we're inside a tracing context (jit, vmap, grad, scan, etc.)
+        return isinstance(value, jax.core.Tracer)
+    except (ImportError, AttributeError):
+        return False
+
+
+def _asarray(value: object, dtype: np.dtype) -> np.ndarray:
+    if _is_jax_tracing(value):
+        import jax.numpy as jnp
+
+        return jnp.asarray(value, dtype=dtype)
+    return np.asarray(value, dtype=dtype)
+
+
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
     """Validate that two multivectors share algebra and layout metadata."""
     if lhs.algebra != rhs.algebra:
@@ -295,9 +325,14 @@ def norm_squared(mv: MVArray) -> MVArray:
 def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
     dtype = np.result_type(mv.dtype, values.dtype)
     scalar_layout = MVLayout.grade(mv.algebra, 0)
-    payload = np.asarray(values, dtype=dtype)
+    payload = _asarray(values, dtype=dtype)
     if payload.shape == ():
-        payload = np.asarray([payload.item()], dtype=dtype)
+        if _is_jax_tracing(payload):
+            import jax.numpy as jnp
+
+            payload = jnp.expand_dims(payload, 0)
+        else:
+            payload = _asarray([payload.item()], dtype=dtype)
     else:
         payload = payload[..., np.newaxis]
     if mv.storage_kind == "jax":
@@ -308,9 +343,14 @@ def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
 def _single_blade_mv(mv: MVArray, blade: int, values: np.ndarray) -> MVArray:
     dtype = np.result_type(mv.dtype, values.dtype)
     layout = MVLayout.sparse_pattern(mv.algebra, (blade,), name=mv.algebra.blade_name(blade))
-    payload = np.asarray(values, dtype=dtype)
+    payload = _asarray(values, dtype=dtype)
     if payload.shape == ():
-        payload = np.asarray([payload.item()], dtype=dtype)
+        if _is_jax_tracing(payload):
+            import jax.numpy as jnp
+
+            payload = jnp.expand_dims(payload, 0)
+        else:
+            payload = _asarray([payload.item()], dtype=dtype)
     else:
         payload = payload[..., np.newaxis]
     if mv.storage_kind == "jax":
@@ -444,7 +484,10 @@ def exp(mv: MVArray) -> MVArray:
     square = geometric_product(mv, mv)
     resolved_dtype = np.result_type(mv.dtype, np.float64)
     if square.layout.size == 0:
+        # Nilpotent case: exp(mv) = 1 + mv
         scalar_values = np.zeros(mv.batch_shape, dtype=resolved_dtype)
+        scalar_coefficients = np.ones(mv.batch_shape, dtype=resolved_dtype)
+        linear_coefficients = np.ones(mv.batch_shape, dtype=resolved_dtype)
     else:
         try:
             square_values = _require_scalar_output(square, name="mv * mv")
@@ -452,24 +495,43 @@ def exp(mv: MVArray) -> MVArray:
             if set(mv.grades) == {2} and mv.algebra.signature == (0, 1, 1, 1):
                 return _motor_exp_from_bivector(mv)
             raise exc
-        scalar_values = np.asarray(square_values, dtype=resolved_dtype)
 
-    positive_mask = scalar_values > 0.0
-    negative_mask = scalar_values < 0.0
-    zero_mask = np.isclose(scalar_values, 0.0)
+        if _is_jax_tracing(square_values):
+            import jax.numpy as jnp
 
-    roots = np.sqrt(np.abs(scalar_values))
-    scalar_coefficients = np.empty_like(roots, dtype=resolved_dtype)
-    linear_coefficients = np.empty_like(roots, dtype=resolved_dtype)
+            scalar_values = jnp.asarray(square_values, dtype=resolved_dtype)
+            positive_mask = scalar_values > 0.0
+            negative_mask = scalar_values < 0.0
+            zero_mask = jnp.isclose(scalar_values, 0.0)
+            roots = jnp.sqrt(jnp.abs(scalar_values))
 
-    scalar_coefficients[positive_mask] = np.cosh(roots[positive_mask])
-    linear_coefficients[positive_mask] = np.sinh(roots[positive_mask]) / roots[positive_mask]
+            scalar_coefficients = jnp.where(
+                positive_mask,
+                jnp.cosh(roots),
+                jnp.where(negative_mask, jnp.cos(roots), 1.0),
+            )
+            linear_coefficients = jnp.where(
+                positive_mask,
+                jnp.sinh(roots) / roots,
+                jnp.where(negative_mask, jnp.sin(roots) / roots, 1.0),
+            )
+        else:
+            scalar_values = np.asarray(square_values, dtype=resolved_dtype)
+            positive_mask = scalar_values > 0.0
+            negative_mask = scalar_values < 0.0
+            zero_mask = np.isclose(scalar_values, 0.0)
+            roots = np.sqrt(np.abs(scalar_values))
+            scalar_coefficients = np.empty_like(roots, dtype=resolved_dtype)
+            linear_coefficients = np.empty_like(roots, dtype=resolved_dtype)
 
-    scalar_coefficients[negative_mask] = np.cos(roots[negative_mask])
-    linear_coefficients[negative_mask] = np.sin(roots[negative_mask]) / roots[negative_mask]
+            scalar_coefficients[positive_mask] = np.cosh(roots[positive_mask])
+            linear_coefficients[positive_mask] = np.sinh(roots[positive_mask]) / roots[positive_mask]
 
-    scalar_coefficients[zero_mask] = 1.0
-    linear_coefficients[zero_mask] = 1.0
+            scalar_coefficients[negative_mask] = np.cos(roots[negative_mask])
+            linear_coefficients[negative_mask] = np.sin(roots[negative_mask]) / roots[negative_mask]
+
+            scalar_coefficients[zero_mask] = 1.0
+            linear_coefficients[zero_mask] = 1.0
 
     return _scalar_mv(mv, scalar_coefficients) + _row_scale_mv(mv, linear_coefficients)
 
@@ -671,18 +733,29 @@ def sandwich(actor: MVArray, target: MVArray) -> MVArray:
 
 
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
+    """
+    Extract and validate scalar component of a multivector.
+
+    In eager mode (including eager JAX), validates that all non-scalar components are zero.
+    In JAX tracing contexts (jit, vmap, etc.), skips validation to allow deferred evaluation.
+
+    This preserves AMSA semantics: algebraic operations require scalar inputs in eager mode;
+    only compiled contexts are allowed to defer validation for compiler efficiency.
+    """
     scalar_blade = 0
     resolved_dtype = np.result_type(mv.dtype, np.float64)
     
     if mv.layout.size == 0:
         raise ValueError(f"{name} is zero and therefore non-invertible.")
 
-    if mv.storage_kind == "jax":
-        # Skip concrete value checks for JAX to allow JIT tracing.
-        return mv.component(scalar_blade)
+    scalar_component = mv.component(scalar_blade)
 
-    scalar_value = np.asarray(mv.component(scalar_blade), dtype=resolved_dtype)
+    # In JAX tracing contexts, validation must be deferred (Tracer objects can't be inspected).
+    # In eager mode (dense, CSR, or eager JAX), validate immediately to preserve semantics.
+    if _is_jax_tracing(scalar_component):
+        return scalar_component
 
+    scalar_value = np.asarray(scalar_component, dtype=resolved_dtype)
     for index, blade in enumerate(mv.layout.blades):
         if blade == scalar_blade:
             continue
@@ -700,14 +773,15 @@ def inverse(mv: MVArray) -> MVArray:
     left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
     right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
 
-    if mv.storage_kind != "jax":
+    # In eager mode, validate algebraic requirements. In tracing contexts, defer to compiled kernel.
+    if not _is_jax_tracing(left_norm):
         if not np.allclose(left_norm, right_norm):
             raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
         if np.any(np.isclose(left_norm, 0.0)):
             raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
     if mv.storage_kind == "jax":
-        # Let JAX reciprocal handle zeros natively with inf/nan
+        # JAX path: use jnp.reciprocal for tracing contexts (infs/nans handled by compiler)
         import jax.numpy as jnp
 
         reciprocals = jnp.reciprocal(left_norm)

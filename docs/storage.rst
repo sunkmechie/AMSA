@@ -69,10 +69,10 @@ Conversion helpers
 Acceleration and Fusion
 -----------------------
 
-The JAX backend is fully integrated with XLA via ``jax.jit``. 
+The JAX backend provides partial XLA integration via ``jax.jit``. 
 
-- **JIT Compilation**: Binary operations (geometric, outer, inner products) are dynamically compiled into optimized XLA kernels.
-- **Trace Fusion**: ``MVArray`` and ``JAXStorage`` are registered as PyTree nodes. This allows you to apply ``@jax.jit`` to entire Python functions containing multiple AMSA operations. JAX will trace through the multivector objects and fuse the entire algebraic expression into a single optimized kernel.
+- **JIT Compilation** (Partial): Binary operations (geometric, outer, inner products) use dynamically compiled XLA kernels via cached execution plans. Other operators execute in Python.
+- **Trace Fusion via PyTree**: ``MVArray`` and ``JAXStorage`` are registered as PyTree nodes. When wrapped in ``@jax.jit``, JAX will trace through multivector objects and compose operations; higher-level Python functions still execute, but their control flow is captured by the trace.
 
 Performance Guide
 -----------------
