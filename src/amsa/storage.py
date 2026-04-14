@@ -360,7 +360,7 @@ def storage_component(storage: MVStorage, column: int) -> NDArray[Any]:
     if isinstance(storage, DenseStorage):
         return np.asarray(storage.array[..., column], dtype=storage.dtype)
     if isinstance(storage, JAXStorage):
-        return np.asarray(storage.array[..., column])
+        return storage.array[..., column]
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -479,6 +479,9 @@ def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVSt
 
 
 def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
+    if isinstance(storage, JAXStorage):
+        return JAXStorage(storage.array * scalar)
+
     scalar_array = np.asarray(scalar)
     result_dtype = np.dtype(np.result_type(storage.dtype, scalar_array.dtype))
     is_zero = bool(np.equal(scalar_array, 0).item())
@@ -486,8 +489,6 @@ def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * scalar
         return DenseStorage(values)
-    if isinstance(storage, JAXStorage):
-        return JAXStorage(storage.array * scalar)
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
     if is_zero:
@@ -504,6 +505,10 @@ def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
 
 
 def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
+    if isinstance(storage, JAXStorage):
+        import jax.numpy as jnp
+        return JAXStorage(storage.array * jnp.asarray(weights))
+
     weight_array = np.asarray(weights)
     if weight_array.ndim != 1:
         raise ValueError("weights must be a one-dimensional array.")
@@ -516,10 +521,6 @@ def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * resolved_weights
         return DenseStorage(values)
-    if isinstance(storage, JAXStorage):
-        import jax.numpy as jnp
-
-        return JAXStorage(storage.array * jnp.asarray(resolved_weights))
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -534,6 +535,10 @@ def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
 
 
 def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
+    if isinstance(storage, JAXStorage):
+        import jax.numpy as jnp
+        return JAXStorage(storage.array * jnp.asarray(factors)[..., jnp.newaxis])
+
     factor_array = np.asarray(factors)
     if factor_array.shape != storage.batch_shape:
         raise ValueError(
@@ -547,10 +552,6 @@ def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
     if isinstance(storage, DenseStorage):
         values = np.asarray(storage.array, dtype=result_dtype) * resolved_factors[..., np.newaxis]
         return DenseStorage(values)
-    if isinstance(storage, JAXStorage):
-        import jax.numpy as jnp
-
-        return JAXStorage(storage.array * jnp.asarray(resolved_factors)[..., jnp.newaxis])
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 
@@ -589,3 +590,16 @@ def sub_storage(lhs: MVStorage, rhs: MVStorage) -> MVStorage:
     if isinstance(lhs, DenseStorage) and isinstance(rhs, DenseStorage):
         return DenseStorage(lhs.array - rhs.array)
     return DenseStorage(lhs.as_dense() - rhs.as_dense())
+
+
+try:
+    import jax
+    from jax.tree_util import register_pytree_node
+
+    register_pytree_node(
+        JAXStorage,
+        lambda s: ((s.array,), None),
+        lambda aux, leaves: JAXStorage(leaves[0]),
+    )
+except ImportError:
+    pass

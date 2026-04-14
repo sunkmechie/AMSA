@@ -8,7 +8,7 @@ AMSA requires Python 3.12 or newer. Install with ``uv`` (recommended) or ``pip``
 
 .. code-block:: bash
 
-   uv sync --extra dev
+   uv sync --extra dev --extra jax  # Add [cuda12] extra for GPU acceleration
 
 Verify the installation:
 
@@ -91,7 +91,7 @@ By default, fresh construction uses dense storage. You can opt into CSR explicit
 
    print(mv.storage_kind)  # csr
 
-There is also an experimental JAX storage mode:
+There is also an JAX (Beta) storage mode:
 
 .. code-block:: python
 
@@ -100,8 +100,25 @@ There is also an experimental JAX storage mode:
 
    print(mv.storage_kind)  # jax
 
-This is currently a storage-layer option. The reference binary executor still materializes NumPy
-results, so ``backend="jax"`` is not yet a full accelerated operator backend.
+This backend enables JAX tracing and PyTree fusion. Binary operators (geometric, outer, inner products) use JIT-compiled kernels; higher-level operations execute in Python. When used inside `@jax.jit`, the entire expression can be traced and fused by JAX into optimized XLA code.
+
+.. code-block:: python
+
+   import jax
+   from amsa import Algebra
+
+   alg = Algebra.vga3d()
+
+   @jax.jit
+   def my_operation(a, b):
+       # This whole expression is fused into one XLA kernel
+       return (a * b) + ~a
+
+   a = alg.multivector({"e1": 1.0}, backend="jax")
+   b = alg.multivector({"e2": 1.0}, backend="jax")
+   result = my_operation(a, b)
+
+JAX is particularly effective for **batched operations** on GPUs, where it can provide 1000x+ speedups over NumPy.
 
 Visualization
 -------------

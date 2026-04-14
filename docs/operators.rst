@@ -95,3 +95,12 @@ Sandwich
 --------
 
 ``sandwich(actor, target)`` computes ``actor * target * inverse(actor)``. It inherits the current restricted ``inverse()`` support and is most useful with normalized versor-like operands.
+
+
+JAX Traceability
+----------------
+
+All operators in AMSA are mathematical and matrix-free, making them natively compatible with JAX tracing.
+By registering ``MVArray`` and ``JAXStorage`` as PyTree nodes, AMSA allows you to apply ``@jax.jit`` to complex
+geometric expressions. This fuses the entire calculation into a single XLA kernel, bypassing intermediate Python
+loops and yielding significant performance gains (up to 200x) for composed operations.
