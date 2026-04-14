@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import timeit
+
 import numpy as np
 
 try:
@@ -12,12 +13,12 @@ except ImportError:
 
 from amsa import Algebra
 from amsa.ops import (
-    sandwich,
+    add,
     geometric_product,
-    outer_product,
     inner_product,
     inverse,
-    add,
+    outer_product,
+    sandwich,
 )
 
 

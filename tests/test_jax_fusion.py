@@ -11,7 +11,7 @@ import pytest
 jax = pytest.importorskip("jax")
 
 from amsa import Algebra
-from amsa.ops import sandwich, inner_product, reverse
+from amsa.ops import inner_product, reverse, sandwich
 from tests._utils import assert_mv_allclose
 
 
