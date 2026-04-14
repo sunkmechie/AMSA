@@ -13,7 +13,7 @@ benchmarks/results/
 plan.md
 .codex
 tempo/
-
+ROBOTICS_VIZ_ROADMAP.md
 # Sphinx docs
 docs/_build/
 docs/.jupyter_cache/
