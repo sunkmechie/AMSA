@@ -141,6 +141,19 @@ class JAXStorage:
     ) -> JAXStorage:
         import jax.numpy as jnp
 
+        # Check for float64 vs available precision
+        if dtype == np.float64 or (isinstance(dtype, type) and issubclass(dtype, np.floating) and np.dtype(dtype).itemsize == 8):
+            try:
+                import jax
+                if not jax.config.jax_enable_x64:
+                    raise ValueError(
+                        "JAXStorage requires float64 support, but JAX_ENABLE_X64 is disabled. "
+                        "Set environment variable JAX_ENABLE_X64=1 or use dtype=np.float32. "
+                        "See https://jax.readthedocs.io/en/latest/notebooks/Common_Gotchas_in_JAX.html#double-precision"
+                    )
+            except (ImportError, AttributeError):
+                pass
+
         return cls(jnp.zeros(batch_shape + (width,), dtype=dtype))
 
     @classmethod
