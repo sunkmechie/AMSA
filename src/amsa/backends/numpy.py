@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""NumPy execution backend for AMSA IR."""
 
 from __future__ import annotations
 
@@ -174,10 +173,6 @@ def execute_sequence_ir(
     return env[ir.result]
 
 
-# ---------------------------------------------------------------------------
-# Minimal mv-like helpers for sequence execution — mirror ops.py semantics
-# ---------------------------------------------------------------------------
-
 
 def _union_layout(lhs: MVArray, rhs: MVArray) -> tuple[MVArray, MVLayout]:
     blades = tuple(sorted(set(lhs.layout.blades) | set(rhs.layout.blades)))
@@ -223,10 +218,6 @@ def _single_blade_mv(reference: MVArray, blade: int) -> MVArray:
     values = np.ones(reference.batch_shape + (1,), dtype=reference.dtype)
     return MVArray(algebra=reference.algebra, layout=layout, values=values)
 
-
-# ---------------------------------------------------------------------------
-# NumpyBackend — Executor implementation
-# ---------------------------------------------------------------------------
 
 
 class NumpyBackend:

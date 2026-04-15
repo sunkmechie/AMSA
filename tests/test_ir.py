@@ -110,6 +110,10 @@ class TestBuildProductIR:
 
 
 class TestBuildUnaryIR:
+    @pytest.fixture(autouse=True)
+    def _register_numpy(self):
+        register_backend("numpy", NumpyBackend())
+
     def test_reverse_signs(self):
         alg = Algebra.vga3d()
         blades = tuple(range(alg.spec.blade_count))
