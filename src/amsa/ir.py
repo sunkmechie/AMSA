@@ -507,7 +507,7 @@ def unregister_backend(name: str) -> None:
     """
     global _DEFAULT_BACKEND
     if name not in _BACKENDS:
-        raise KeyError(f"No backend registered under name {name!r}.")
+        raise KeyError(f"Backend {name!r} is not registered.")
     del _BACKENDS[name]
     if _DEFAULT_BACKEND == name:
         _DEFAULT_BACKEND = None
@@ -520,7 +520,7 @@ def set_default_backend(name: str) -> None:
     """
     global _DEFAULT_BACKEND
     if name not in _BACKENDS:
-        raise KeyError(f"No backend registered under name {name!r}.")
+        raise KeyError(f"Backend {name!r} is not registered.")
     _DEFAULT_BACKEND = name
 
 

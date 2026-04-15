@@ -18,10 +18,10 @@ from numbers import Number
 
 import numpy as np
 
+from amsa.ir import build_product_ir, get_backend
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
-from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
 from amsa.storage import project_storage, reweight_storage, row_scale_storage, scale_storage
 
@@ -206,7 +206,9 @@ def poincare_undual(mv: MVArray) -> MVArray:
 def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:
     ensure_compatible(lhs, rhs)
     plan = plan_binary_product(lhs.layout, rhs.layout, kind)
-    return execute_binary_plan(lhs, rhs, plan)
+    ir = build_product_ir(plan, lhs.storage_kind, rhs.storage_kind)
+    backend = get_backend()
+    return backend.execute_product(lhs, rhs, ir)  # type: ignore[no-any-return]
 
 
 def geometric_product(lhs: MVArray, rhs: MVArray) -> MVArray:
