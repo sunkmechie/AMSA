@@ -8,7 +8,7 @@ capture the computation graph of Clifford algebra operations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 from amsa.layouts import MVLayout
 from amsa.plans import OpKind, OpPlan
@@ -433,3 +433,123 @@ def _product_ir_layout_name(kind: OpKind) -> str:
         "right_contraction": "rc",
         "regressive": "rp",
     }[kind]
+
+
+class Executor(Protocol):
+    """Execution backend interface for IR-driven operations.
+
+    Each backend must implement three methods that accept IR descriptors
+    and return ``MVArray`` results.  The ``MVArray`` type is referenced
+    structurally to avoid a hard import cycle — implementers import it
+    from ``amsa.mv``.
+    """
+
+    def execute_product(
+        self,
+        lhs: Any,
+        rhs: Any,
+        ir: ProductIR,
+    ) -> Any: ...
+
+    def execute_unary(
+        self,
+        mv: Any,
+        ir: UnaryIR,
+    ) -> Any: ...
+
+    def execute_sequence(
+        self,
+        inputs: dict[str, Any],
+        ir: SequenceIR,
+    ) -> Any: ...
+
+
+_BACKENDS: dict[str, Executor] = {}
+_DEFAULT_BACKEND: str | None = None
+
+
+def register_backend(name: str, executor: Executor) -> None:
+    """Register an execution backend under the given *name*.
+
+    The first backend registered automatically becomes the default.
+    Subsequent registrations do not override the default.
+
+    Examples:
+
+        >>> from amsa.ir import register_backend, MyNumPyExecutor
+        >>> register_backend("numpy", MyNumPyExecutor())
+    """
+    global _DEFAULT_BACKEND
+    _BACKENDS[name] = executor
+    if _DEFAULT_BACKEND is None:
+        _DEFAULT_BACKEND = name
+
+
+def unregister_backend(name: str) -> None:
+    """Remove a previously registered backend.
+
+    Raises ``KeyError`` if *name* is not registered.
+    If the unregistered backend was the default, the default is cleared.
+    """
+    global _DEFAULT_BACKEND
+    if name not in _BACKENDS:
+        raise KeyError(f"No backend registered under name {name!r}.")
+    del _BACKENDS[name]
+    if _DEFAULT_BACKEND == name:
+        _DEFAULT_BACKEND = None
+
+
+def set_default_backend(name: str) -> None:
+    """Set the default backend.
+
+    Raises ``KeyError`` if *name* is not registered.
+    """
+    global _DEFAULT_BACKEND
+    if name not in _BACKENDS:
+        raise KeyError(f"No backend registered under name {name!r}.")
+    _DEFAULT_BACKEND = name
+
+
+def list_backends() -> tuple[str, ...]:
+    """Return the names of all registered backends."""
+    return tuple(sorted(_BACKENDS))
+
+
+def get_backend(name: str | None = None) -> Executor:
+    """Resolve an execution backend.
+
+    - If *name* is ``None``, returns the default backend.
+    - If *name* is specified, returns the backend registered under that name.
+
+    Raises ``KeyError`` if the requested backend is not found.
+    Raises ``RuntimeError`` if no default backend has been registered.
+    """
+    if name is not None:
+        if name not in _BACKENDS:
+            raise KeyError(
+                f"Backend {name!r} is not registered. "
+                f"Available: {list_backends()}."
+            )
+        return _BACKENDS[name]
+
+    if _DEFAULT_BACKEND is None:
+        raise RuntimeError(
+            "No default backend configured. "
+            "Register a backend with register_backend(name, executor)."
+        )
+    return _BACKENDS[_DEFAULT_BACKEND]
+
+
+def has_backend(name: str) -> bool:
+    """Check whether a backend is registered under *name*."""
+    return name in _BACKENDS
+
+
+def clear_backends() -> None:
+    """Remove all registered backends and clear the default.
+
+    Useful for test isolation.
+    """
+    global _DEFAULT_BACKEND
+    _BACKENDS.clear()
+    _DEFAULT_BACKEND = None
