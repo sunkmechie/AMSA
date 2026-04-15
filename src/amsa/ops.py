@@ -1,13 +1,27 @@
+# Copyright 2026 Surya Sunkara
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from __future__ import annotations
 
 from numbers import Number
 
 import numpy as np
 
+from amsa.ir import UnaryKind, build_product_ir, build_unary_ir, get_backend
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
-from amsa.reference import execute_binary_plan
 from amsa.specs import grade_of_blade
 from amsa.storage import project_storage, reweight_storage, row_scale_storage, scale_storage
 
@@ -63,34 +77,19 @@ def sub(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
 
 
 def reverse(mv: MVArray) -> MVArray:
-    signs = np.asarray(
-        [
-            (-1) ** ((blade.bit_count() * (blade.bit_count() - 1)) // 2)
-            for blade in mv.layout.blades
-        ],
-        dtype=mv.dtype,
-    )
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=reweight_storage(mv.storage, signs),
-    )
+    return _execute_unary(mv, "reverse")
 
 
 def involute(mv: MVArray) -> MVArray:
-    signs = np.asarray([(-1) ** blade.bit_count() for blade in mv.layout.blades], dtype=mv.dtype)
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=reweight_storage(mv.storage, signs),
-    )
+    return _execute_unary(mv, "involute")
 
 
 def conjugate(mv: MVArray) -> MVArray:
-    return reverse(involute(mv))
+    return _execute_unary(mv, "conjugate")
 
 
 def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
+    # This remains for public or internal checks, but builds into IR now.
     pseudoscalar = mv.algebra.pseudoscalar_blade
     coefficient, _ = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
     if coefficient == 0:
@@ -100,99 +99,34 @@ def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
     return 1.0 / float(coefficient)
 
 
-def _complement_layout(blades: tuple[int, ...], *, pseudoscalar: int) -> tuple[int, ...]:
-    return tuple(sorted(blade ^ pseudoscalar for blade in blades))
-
-
-def _pseudoscalar_transform(
-    mv: MVArray,
-    *,
-    inverse: bool,
-) -> MVArray:
-    pseudoscalar = mv.algebra.pseudoscalar_blade
-    inverse_scale = _pseudoscalar_inverse_scale(mv) if inverse else 1.0
-
-    target_blades = _complement_layout(mv.layout.blades, pseudoscalar=pseudoscalar)
-    if len(target_blades) == mv.algebra.blade_count:
-        layout = MVLayout.dense(mv.algebra)
-    else:
-        name = "dual" if inverse else "undual"
-        layout = MVLayout.sparse_pattern(mv.algebra, target_blades, name=name)
-
-    source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
-    projection_columns: list[int] = []
-    weights: list[float] = []
-    for target_blade in layout.blades:
-        source_blade = target_blade ^ pseudoscalar
-        source_column = source_index[source_blade]
-        coefficient, _ = mv.algebra.blade_product(source_blade, pseudoscalar)
-        projection_columns.append(source_column)
-        weights.append(inverse_scale * coefficient)
-
-    projected = project_storage(mv.storage, tuple(projection_columns))
-    transformed = reweight_storage(projected, np.asarray(weights, dtype=mv.dtype))
-    return MVArray(
-        algebra=mv.algebra,
-        layout=layout,
-        storage=transformed,
-    )
-
-
 def dual(mv: MVArray) -> MVArray:
-    return _pseudoscalar_transform(mv, inverse=True)
+    return _execute_unary(mv, "dual")
 
 
 def undual(mv: MVArray) -> MVArray:
-    return _pseudoscalar_transform(mv, inverse=False)
-
-
-def _poincare_transform(
-    mv: MVArray,
-    *,
-    inverse: bool,
-) -> MVArray:
-    pseudoscalar = mv.algebra.pseudoscalar_blade
-    target_blades = _complement_layout(mv.layout.blades, pseudoscalar=pseudoscalar)
-    if len(target_blades) == mv.algebra.blade_count:
-        layout = MVLayout.dense(mv.algebra)
-    else:
-        name = "poincare_undual" if inverse else "poincare_dual"
-        layout = MVLayout.sparse_pattern(mv.algebra, target_blades, name=name)
-
-    source_index = {blade: index for index, blade in enumerate(mv.layout.blades)}
-    projection_columns: list[int] = []
-    weights: list[int] = []
-    for target_blade in layout.blades:
-        source_blade = target_blade ^ pseudoscalar
-        source_column = source_index[source_blade]
-        lhs_blade, rhs_blade = (
-            (target_blade, source_blade) if inverse else (source_blade, target_blade)
-        )
-        coefficient, _ = mv.algebra.blade_product(lhs_blade, rhs_blade)
-        projection_columns.append(source_column)
-        weights.append(coefficient)
-
-    projected = project_storage(mv.storage, tuple(projection_columns))
-    transformed = reweight_storage(projected, np.asarray(weights, dtype=mv.dtype))
-    return MVArray(
-        algebra=mv.algebra,
-        layout=layout,
-        storage=transformed,
-    )
+    return _execute_unary(mv, "undual")
 
 
 def poincare_dual(mv: MVArray) -> MVArray:
-    return _poincare_transform(mv, inverse=False)
+    return _execute_unary(mv, "poincare_dual")
 
 
 def poincare_undual(mv: MVArray) -> MVArray:
-    return _poincare_transform(mv, inverse=True)
+    return _execute_unary(mv, "poincare_undual")
+
+
+def _execute_unary(mv: MVArray, kind: UnaryKind) -> MVArray:
+    ir = build_unary_ir(mv.layout.blades, mv.algebra, kind)
+    backend = get_backend()
+    return backend.execute_unary(mv, ir)  # type: ignore[no-any-return]
 
 
 def _execute_binary_product(lhs: MVArray, rhs: MVArray, kind: OpKind) -> MVArray:
     ensure_compatible(lhs, rhs)
     plan = plan_binary_product(lhs.layout, rhs.layout, kind)
-    return execute_binary_plan(lhs, rhs, plan)
+    ir = build_product_ir(plan, lhs.storage_kind, rhs.storage_kind)
+    backend = get_backend()
+    return backend.execute_product(lhs, rhs, ir)  # type: ignore[no-any-return]
 
 
 def geometric_product(lhs: MVArray, rhs: MVArray) -> MVArray:
