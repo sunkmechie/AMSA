@@ -39,6 +39,9 @@ torch = [
 bench = [
   "pytest-benchmark>=4.0",
 ]
+viz = [
+  "vispy>=0.14",
+]
 
 [tool.uv]
 default-groups = []
