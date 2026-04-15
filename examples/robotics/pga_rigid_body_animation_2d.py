@@ -15,11 +15,9 @@ Mathematical approach:
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 
 from amsa import Algebra
-from amsa.viz import to_point
+from amsa import viz
 
 def run_simulation(num_bodies=50):
     print(f"\n=== AMSA Real-time Rigid Body Swarm (N={num_bodies}) ===")
@@ -79,15 +77,22 @@ def run_simulation(num_bodies=50):
     })
     delta_motors = d_rotors * d_translators
     
-    # 4. Setup Plotting
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.set_xlim(-6, 6)
-    ax.set_ylim(-6, 6)
-    ax.set_aspect('equal')
-    ax.set_title(f"AMSA Real-time Swarm: {num_bodies} Rigid Bodies in PGA")
+    # 4. Setup Visualization
+    # viz.view() automatically creates the figure and axes (or VisPy scene)
+    # We force backend="mpl" here because this script uses FuncAnimation
+    ax = viz.view(motors, backend="mpl", title="AMSA 2D Swarm")
     
-    # Pre-create lines for each triangle
-    lines = [ax.plot([], [], 'b-', lw=1)[0] for _ in range(num_bodies)]
+    # We create the line objects (artists) for each body
+    # Since viz.view returned a matplotlib Axes, we can use it
+    lines = []
+    for i in range(num_bodies):
+        ln, = ax.plot([], [], 'o-', lw=2, markersize=4)
+        lines.append(ln)
+    
+    ax.set_xlim(-5, 5)
+    ax.set_ylim(-5, 5)
+    ax.set_aspect('equal')
+    ax.grid(True)
     
     state = {"motors": motors}
     
@@ -99,16 +104,13 @@ def run_simulation(num_bodies=50):
         state["motors"] = state["motors"].rigid_body_normalized()
         
         # C. Transform vertices: X' = M X M^-1
-        # motors has shape (N, 1), local_vertices has shape (3,) -> (N, 3)
         transformed = state["motors"].sandwich(local_vertices)
         
-        # D. Extract coordinates using amsa.viz adapter
-        # Point.position will have shape (N, 3, 2)
-        pos = to_point(transformed).position
+        # D. Extract coordinates using viz adapter
+        pos = viz.to_point(transformed).position
         
         # E. Update artists
         for i in range(num_bodies):
-            # Triangle vertices (close the loop)
             tx = [*pos[i, :, 0], pos[i, 0, 0]]
             ty = [*pos[i, :, 1], pos[i, 0, 1]]
             lines[i].set_data(tx, ty)
@@ -116,8 +118,9 @@ def run_simulation(num_bodies=50):
         return lines
 
     print("Starting animation...")
-    ani = FuncAnimation(fig, update, frames=200, interval=20, blit=True)
-    plt.show()
+    from matplotlib.animation import FuncAnimation
+    ani = FuncAnimation(ax.figure, update, frames=200, interval=20, blit=True)
+    viz.show()
 
 if __name__ == "__main__":
     run_simulation(60)
