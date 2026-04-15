@@ -10,10 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from amsa.plans import OpKind
+from amsa.layouts import MVLayout
+from amsa.plans import OpKind, OpPlan
+from amsa.specs import AlgebraSpec, grade_of_blade
 from amsa.storage import StorageKind
-
-
 
 UnaryKind = Literal[
     "reverse",
@@ -189,3 +189,247 @@ class SequenceIR:
     inputs: tuple[str, ...]
     steps: tuple[IRStep, ...]
     result: str
+
+
+
+def build_product_ir(
+    plan: OpPlan,
+    lhs_storage: StorageKind,
+    rhs_storage: StorageKind,
+) -> ProductIR:
+    """Lower an ``OpPlan`` to storage-aware ``ProductIR``.
+
+    Blade bit-patterns in ``plan.terms`` are translated to layout-local
+    column indices so that execution backends can operate directly on
+    storage without consulting layout metadata.
+    """
+    out_blade_to_col = {blade: idx for idx, blade in enumerate(plan.output_blades)}
+
+    terms = tuple(
+        TermIR(
+            lhs_col=term.lhs_index,
+            rhs_col=term.rhs_index,
+            out_col=out_blade_to_col[term.out_blade],
+            coefficient=term.coefficient,
+        )
+        for term in plan.terms
+    )
+
+    return ProductIR(
+        kind=plan.kind,
+        lhs_storage=lhs_storage,
+        rhs_storage=rhs_storage,
+        lhs_width=len(plan.lhs_blades),
+        rhs_width=len(plan.rhs_blades),
+        out_blades=plan.output_blades,
+        terms=terms,
+    )
+
+
+def _reverse_sign(blade: int) -> float:
+    """Sign factor for the reverse involution: ``(-1)^{g(g-1)/2}``."""
+    g = grade_of_blade(blade)
+    return float((-1) ** ((g * (g - 1)) // 2))
+
+
+def _involute_sign(blade: int) -> float:
+    """Sign factor for the grade involution: ``(-1)^g``."""
+    return float((-1) ** grade_of_blade(blade))
+
+
+def build_reverse_ir(blades: tuple[int, ...]) -> UnaryIR:
+    """Build ``UnaryIR`` for the reverse operation."""
+    return UnaryIR(
+        kind="reverse",
+        input_width=len(blades),
+        out_blades=blades,
+        weights=tuple(_reverse_sign(blade) for blade in blades),
+    )
+
+
+def build_involute_ir(blades: tuple[int, ...]) -> UnaryIR:
+    """Build ``UnaryIR`` for the involute operation."""
+    return UnaryIR(
+        kind="involute",
+        input_width=len(blades),
+        out_blades=blades,
+        weights=tuple(_involute_sign(blade) for blade in blades),
+    )
+
+
+def build_conjugate_ir(blades: tuple[int, ...]) -> UnaryIR:
+    """Build ``UnaryIR`` for the conjugate operation (reverse ∘ involute)."""
+    return UnaryIR(
+        kind="conjugate",
+        input_width=len(blades),
+        out_blades=blades,
+        weights=tuple(
+            _reverse_sign(blade) * _involute_sign(blade) for blade in blades
+        ),
+    )
+
+
+def _pseudoscalar_inverse_scale(algebra: AlgebraSpec) -> float:
+    """Return ``1 / (I * I)`` for the metric pseudoscalar."""
+    pseudoscalar = algebra.pseudoscalar_blade
+    coefficient, _ = algebra.blade_product(pseudoscalar, pseudoscalar)
+    if coefficient == 0:
+        raise ValueError(
+            "dual/undual require an invertible pseudoscalar; this algebra is degenerate."
+        )
+    return 1.0 / float(coefficient)
+
+
+def _build_pseudoscalar_ir(
+    blades: tuple[int, ...],
+    algebra: AlgebraSpec,
+    *,
+    kind: UnaryKind,
+    inverse: bool,
+) -> UnaryIR:
+    """Build ``UnaryIR`` for metric pseudoscalar dual/undual.
+
+    This mirrors ``ops._pseudoscalar_transform``: each output column is
+    read from the input column corresponding to ``target_blade ^ I``,
+    weighted by ``source_blade * I`` (scaled by pseudoscalar inverse for
+    the dual variant).
+    """
+    pseudoscalar = algebra.pseudoscalar_blade
+    inverse_scale = _pseudoscalar_inverse_scale(algebra) if inverse else 1.0
+
+    source_index = {blade: idx for idx, blade in enumerate(blades)}
+    out_blades = tuple(sorted(blade ^ pseudoscalar for blade in blades))
+
+    weights: list[float] = []
+    permutation: list[int] = []
+
+    for _out_col, target_blade in enumerate(out_blades):
+        source_blade = target_blade ^ pseudoscalar
+        source_column = source_index[source_blade]
+        coefficient, _ = algebra.blade_product(source_blade, pseudoscalar)
+        weights.append(inverse_scale * float(coefficient))
+        permutation.append(source_column)
+
+    return UnaryIR(
+        kind=kind,
+        input_width=len(blades),
+        out_blades=out_blades,
+        weights=tuple(weights),
+        permutation=tuple(permutation),
+    )
+
+
+def build_dual_ir(blades: tuple[int, ...], algebra: AlgebraSpec) -> UnaryIR:
+    """Build ``UnaryIR`` for the metric dual operation."""
+    return _build_pseudoscalar_ir(blades, algebra, kind="dual", inverse=True)
+
+
+def build_undual_ir(blades: tuple[int, ...], algebra: AlgebraSpec) -> UnaryIR:
+    """Build ``UnaryIR`` for the metric undual operation."""
+    return _build_pseudoscalar_ir(blades, algebra, kind="undual", inverse=False)
+
+
+def _build_poincare_ir(
+    blades: tuple[int, ...],
+    algebra: AlgebraSpec,
+    *,
+    kind: UnaryKind,
+    inverse: bool,
+) -> UnaryIR:
+    """Build ``UnaryIR`` for Poincare (metric-free) dual/undual.
+
+    This mirrors ``ops._poincare_transform``: each output column is read
+    from the input column corresponding to ``target_blade ^ I``, weighted
+    by the appropriate basis product with the pseudoscalar (no inverse
+    scaling — pure complement).
+    """
+    pseudoscalar = algebra.pseudoscalar_blade
+
+    source_index = {blade: idx for idx, blade in enumerate(blades)}
+    out_blades = tuple(sorted(blade ^ pseudoscalar for blade in blades))
+
+    weights: list[float] = []
+    permutation: list[int] = []
+
+    for _out_col, target_blade in enumerate(out_blades):
+        source_blade = target_blade ^ pseudoscalar
+        source_column = source_index[source_blade]
+        lhs_blade, rhs_blade = (
+            (target_blade, source_blade) if inverse else (source_blade, target_blade)
+        )
+        coefficient, _ = algebra.blade_product(lhs_blade, rhs_blade)
+        weights.append(float(coefficient))
+        permutation.append(source_column)
+
+    return UnaryIR(
+        kind=kind,
+        input_width=len(blades),
+        out_blades=out_blades,
+        weights=tuple(weights),
+        permutation=tuple(permutation),
+    )
+
+
+def build_poincare_dual_ir(blades: tuple[int, ...], algebra: AlgebraSpec) -> UnaryIR:
+    """Build ``UnaryIR`` for the Poincare dual operation."""
+    return _build_poincare_ir(blades, algebra, kind="poincare_dual", inverse=False)
+
+
+def build_poincare_undual_ir(blades: tuple[int, ...], algebra: AlgebraSpec) -> UnaryIR:
+    """Build ``UnaryIR`` for the Poincare undual operation."""
+    return _build_poincare_ir(blades, algebra, kind="poincare_undual", inverse=True)
+
+
+def build_unary_ir(
+    blades: tuple[int, ...],
+    algebra: AlgebraSpec,
+    kind: UnaryKind,
+) -> UnaryIR:
+    """Dispatch to the correct unary IR builder for *kind*.
+
+    This is the single entry point for ops-layer code: given a layout's
+    blade set and the algebra spec, produce the complete unary IR in one
+    call.
+    """
+    if kind == "reverse":
+        return build_reverse_ir(blades)
+    if kind == "involute":
+        return build_involute_ir(blades)
+    if kind == "conjugate":
+        return build_conjugate_ir(blades)
+    if kind == "dual":
+        return build_dual_ir(blades, algebra)
+    if kind == "undual":
+        return build_undual_ir(blades, algebra)
+    if kind == "poincare_dual":
+        return build_poincare_dual_ir(blades, algebra)
+    if kind == "poincare_undual":
+        return build_poincare_undual_ir(blades, algebra)
+    raise ValueError(f"Unknown UnaryKind: {kind!r}")
+
+
+
+def output_layout_from_product_ir(ir: ProductIR, algebra: AlgebraSpec) -> MVLayout:
+    """Return the ``MVLayout`` that matches a ``ProductIR``'s output blades."""
+    if len(ir.out_blades) == algebra.blade_count:
+        return MVLayout.dense(algebra)
+    return MVLayout.sparse_pattern(algebra, ir.out_blades, name=_product_ir_layout_name(ir.kind))
+
+
+def output_layout_from_unary_ir(ir: UnaryIR, algebra: AlgebraSpec) -> MVLayout:
+    """Return the ``MVLayout`` that matches a ``UnaryIR``'s output blades."""
+    if len(ir.out_blades) == algebra.blade_count:
+        return MVLayout.dense(algebra)
+    return MVLayout.sparse_pattern(algebra, ir.out_blades, name=ir.kind)
+
+
+def _product_ir_layout_name(kind: OpKind) -> str:
+    return {
+        "geometric": "gp",
+        "outer": "op",
+        "inner": "ip",
+        "scalar": "sp",
+        "left_contraction": "lc",
+        "right_contraction": "rc",
+        "regressive": "rp",
+    }[kind]
