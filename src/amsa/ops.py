@@ -23,7 +23,7 @@ from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.specs import grade_of_blade
-from amsa.storage import project_storage, reweight_storage, row_scale_storage, scale_storage
+from amsa.storage import row_scale_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:

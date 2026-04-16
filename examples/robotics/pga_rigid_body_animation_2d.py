@@ -16,8 +16,8 @@ Mathematical approach:
 
 import numpy as np
 
-from amsa import Algebra
-from amsa import viz
+from amsa import Algebra, viz
+
 
 def run_simulation(num_bodies=50):
     print(f"\n=== AMSA Real-time Rigid Body Swarm (N={num_bodies}) ===")
@@ -78,16 +78,20 @@ def run_simulation(num_bodies=50):
     delta_motors = d_rotors * d_translators
     
     # 4. Setup Visualization
-    # viz.view() automatically creates the figure and axes (or VisPy scene)
-    # We force backend="mpl" here because this script uses FuncAnimation
-    ax = viz.view(motors, backend="mpl", title="AMSA 2D Swarm")
+    # viz.view() now returns a Layer handle
+    master_layer = viz.view(motors, backend="mpl", title="AMSA 2D Swarm")
+    ax = master_layer.parent
     
-    # We create the line objects (artists) for each body
-    # Since viz.view returned a matplotlib Axes, we can use it
-    lines = []
+    # Transform vertices to initial state
+    init_transformed = motors.sandwich(local_vertices)
+    
+    # Create layers for each body
+    layers = []
     for i in range(num_bodies):
-        ln, = ax.plot([], [], 'o-', lw=2, markersize=4)
-        lines.append(ln)
+        # We plot each triangle segment
+        l = viz.plot(viz.to_point(init_transformed[i]), ax=ax, color='blue', lw=2)
+        # Note: viz.plot returns an artist, we'll wrap it in a Layer for updates
+        layers.append(viz.Layer(artist=l, primitive=viz.Point, backend="mpl", parent=ax))
     
     ax.set_xlim(-5, 5)
     ax.set_ylim(-5, 5)
@@ -100,22 +104,17 @@ def run_simulation(num_bodies=50):
         # A. Update motors: M = dM * M
         state["motors"] = delta_motors * state["motors"]
         
-        # B. Rigidly normalize to prevent drift over time
+        # B. Rigidly normalize
         state["motors"] = state["motors"].rigid_body_normalized()
         
-        # C. Transform vertices: X' = M X M^-1
+        # C. Transform vertices
         transformed = state["motors"].sandwich(local_vertices)
         
-        # D. Extract coordinates using viz adapter
-        pos = viz.to_point(transformed).position
-        
-        # E. Update artists
+        # D. Update layers via high-level API
         for i in range(num_bodies):
-            tx = [*pos[i, :, 0], pos[i, 0, 0]]
-            ty = [*pos[i, :, 1], pos[i, 0, 1]]
-            lines[i].set_data(tx, ty)
+            viz.update(layers[i], transformed[i])
         
-        return lines
+        return [l.artist for l in layers]
 
     print("Starting animation...")
     from matplotlib.animation import FuncAnimation

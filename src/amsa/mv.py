@@ -131,6 +131,26 @@ class MVArray:
             storage=build_storage_from_array(values, kind=backend),
         )
 
+    def __getitem__(self, key: Any) -> MVArray:
+        """Index or slice the multivector batch."""
+        from amsa.storage import DenseStorage
+        
+        if isinstance(self.storage, DenseStorage):
+            # Dense indexing is direct on the .array
+            new_array = self.storage.array[key]
+            # Ensure we keep the Clifford (width) dimension even if key is an integer
+            if new_array.ndim == 0:
+                 # This shouldn't happen if width is the last dim, 
+                 # but let's be safe.
+                 raise IndexError("Too many indices for multivector batch.")
+            return MVArray(self.algebra, self.layout, storage=DenseStorage(new_array))
+        
+        # Fallback for CSR or other storage: convert to dense for now
+        # TODO: Implement sparse-aware indexing in storage.py
+        dense_storage = self.with_storage("dense").storage
+        new_array = dense_storage.array[key]
+        return MVArray(self.algebra, self.layout, storage=DenseStorage(new_array))
+
     def copy(self) -> MVArray:
         return MVArray(algebra=self.algebra, layout=self.layout, storage=self.storage.copy())
 

@@ -42,6 +42,18 @@ class Line(VizPrimitive):
 
 
 @dataclass
+class LineSegments(VizPrimitive):
+    """
+    A collection of line segments or a continuous path.
+    
+    positions: array of shape (N, D) representing vertex coordinates.
+    connect: 'segments' for independent (p1-p2, p3-p4) or 'strip' for (p1-p2-p3).
+    """
+    positions: np.ndarray
+    connect: str = "segments"
+
+
+@dataclass
 class Plane(VizPrimitive):
     """
     A 2D plane in 3D (or D-dimensional) space.

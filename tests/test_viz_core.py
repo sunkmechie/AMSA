@@ -1,11 +1,12 @@
 # Copyright 2026 Surya Sunkara
 # SPDX-License-Identifier: Apache-2.0
 
-import pytest
 import numpy as np
-from amsa import Algebra
-from amsa import viz
+import pytest
+
+from amsa import Algebra, viz
 from amsa.viz.primitives import Point
+
 
 def test_backend_resolution_logic():
     from amsa.viz import core
@@ -22,20 +23,22 @@ def test_backend_resolution_logic():
 def test_view_dispatch_returns_correct_types():
     alg = Algebra.pga2d()
     mv = alg.multivector({"e01": 1.0, "e12": 1.0})
-    
+
     # Force MPL for test stability
     viz.use_backend("mpl")
     from matplotlib.axes import Axes
-    ax = viz.view(mv)
-    assert isinstance(ax, Axes)
+    layer = viz.view(mv)
+    assert isinstance(layer, viz.Layer)
+    assert isinstance(layer.parent, Axes)
     
     # If vispy is present, we could test it too
     try:
         import vispy
         viz.use_backend("vispy")
         from amsa.viz.backends.vispy import AMSAScene
-        scene = viz.view(mv)
-        assert isinstance(scene, AMSAScene)
+        layer = viz.view(mv)
+        assert isinstance(layer, viz.Layer)
+        assert layer.backend == "vispy"
     except ImportError:
         pass
 
@@ -71,7 +74,7 @@ def test_vispy_plot_requires_scene():
         import vispy
         viz.use_backend("vispy")
         p = Point(position=np.array([0, 0]))
-        with pytest.raises(RuntimeError, match="requires an AMSAScene"):
+        with pytest.raises(RuntimeError, match="requires a parent view"):
             viz.plot(p)
     except ImportError:
         pass
