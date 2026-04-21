@@ -8,32 +8,30 @@ Topic: Robot trilateration
 Algebra: 2D Projective Geometric Algebra (PGA)
 
 Robots can estimate their position by measuring
-distances to known landmarks (beacons).
+distances to known landmark beacons.
 
 This example demonstrates triangulation using
 three beacon points.
 """
+
+import matplotlib.pyplot as plt
 import numpy as np
 
 from amsa import Algebra
+from amsa.viz.adapters import to_circle, to_point
+from amsa.viz.backends import mpl
 
 print("\n=== Robot Trilateration ===")
 
 alg = Algebra.pga2d()
 
-# --------------------------------------------------
 # beacon locations
-# --------------------------------------------------
-
 b1 = alg.multivector({"e01": 0.0, "e02": 0.0, "e12": 1.0})
 b2 = alg.multivector({"e01": 6.0, "e02": 0.0, "e12": 1.0})
 b3 = alg.multivector({"e01": 3.0, "e02": 5.0, "e12": 1.0})
 
 # robot location (unknown in real case)
 robot = alg.multivector({"e01": 3.0, "e02": 2.0, "e12": 1.0})
-
-# compute distances (simulated sensor readings)
-
 
 
 def dist(p, q):
@@ -54,31 +52,29 @@ print("b3:", round(d3, 3))
 print("\nActual robot position:")
 print(robot.component("e01"), robot.component("e02"))
 
-try:
-    import matplotlib.pyplot as plt
+# Visualization using the matplotlib backend
+fig, ax = plt.subplots(figsize=(6, 6))
 
-    from amsa.viz.adapters import to_point
-    from amsa.viz.backends import mpl
+# Plot beacons and robot
+mpl.plot(ax, to_point(b1, color="blue", label="Beacon 1"), size=100)
+mpl.plot(ax, to_point(b2, color="blue", label="Beacon 2"), size=100)
+mpl.plot(ax, to_point(b3, color="blue", label="Beacon 3"), size=100)
+mpl.plot(ax, to_point(robot, color="red", label="Robot"), size=100)
 
-    fig, ax = plt.subplots(figsize=(6, 6))
+# Plot distance circles
+for b, r in [(b1, d1), (b2, d2), (b3, d3)]:
+    pt = to_point(b)
+    mpl.plot(
+        ax,
+        to_circle(pt.position, r, color="blue", label=None),
+        linestyle="--",
+        alpha=0.5,
+    )
 
-    mpl.plot(ax, to_point(b1, color="blue", label="Beacon 1"))
-    mpl.plot(ax, to_point(b2, color="blue", label="Beacon 2"))
-    mpl.plot(ax, to_point(b3, color="blue", label="Beacon 3"))
-    mpl.plot(ax, to_point(robot, color="red", label="Robot"))
+ax.set_aspect("equal", "box")
+ax.set_title("Robot Trilateration Example")
+ax.grid(True)
+ax.legend()
 
-    # Plot distance circles
-    for b, r in [(b1, d1), (b2, d2), (b3, d3)]:
-        pt = to_point(b)
-        circle = plt.Circle(pt.position, r, color="blue", fill=False, linestyle="--", alpha=0.5)
-        ax.add_patch(circle)
-
-    ax.set_aspect("equal", "box")
-    ax.set_title("Robot Trilateration Example")
-    ax.grid(True)
-    ax.legend()
-    
-    print("\nDisplaying visualization plot...")
-    mpl.show()
-except ImportError:
-    print("\nSkipping visualization... matplotlib or amsa.viz is not available.")
+print("\nDisplaying visualization plot...")
+mpl.show()

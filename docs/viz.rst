@@ -14,7 +14,8 @@ Current structure
 
 - ``amsa.viz.primitives`` — neutral visualization dataclasses such as ``Point`` and ``Rotor``
 - ``amsa.viz.adapters`` — multivector-to-primitive adapters, currently focused on PGA points
-- ``amsa.viz.backends.mpl`` — optional matplotlib backend for plotting primitives
+- ``amsa.viz.backends.mpl`` — optional matplotlib backend for 2D plotting
+- ``amsa.viz.backends.vispy`` — optional VisPy backend for 3D interactive scenes
 
 Current API
 -----------
@@ -26,10 +27,18 @@ Current API
 - ``Rotor``
 - ``VizPrimitive``
 
-The current matplotlib backend provides:
+The current backend modules provide:
 
-- ``plot(ax, primitive, **kwargs)``
+- ``plot(target, primitive, **kwargs)``
 - ``show()``
+
+Matplotlib backends expect an ``Axes``. VisPy backends expect a scene parent or view.
+
+Install the visualization extra to use either backend:
+
+.. code-block:: bash
+
+   uv sync --extra viz
 
 Point extraction
 ----------------

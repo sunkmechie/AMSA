@@ -64,3 +64,28 @@ Run from the repo root with:
 - Keep public semantics stable unless the change explicitly targets API behavior.
 - Do not use Git commands as part of automated repo analysis workflows unless explicitly requested by the user.
 - Keep documentation aligned with the current implementation stage; do not claim execution support beyond what exists.
+
+## Visualization
+
+AMSA provides adapters and primitives for visualization, but does NOT provide a unified visualization facade. Different visualization needs use different tools.
+
+### Adapters and Primitives
+
+- `amsa.viz.adapters`: Convert multivectors to geometric data
+  - `to_point(mv)` → `Point` primitive
+  - `to_line(mv)` → `Line` primitive
+  - `to_line_segments(mv)` → `LineSegments` primitive
+  - `to_rotor(mv)` → `Rotor` primitive
+  - `to_circle(center, radius)` → `Circle` primitive
+
+- `amsa.viz.primitives`: Geometric primitives for visualization
+  - `Point`, `Line`, `LineSegments`, `Plane`, `Rotor`, `Circle`, `VizPrimitive`
+
+### Backend Selection
+
+Users should import visualization backends directly based on their needs:
+
+- **2D plots**: `import matplotlib.pyplot as plt`
+- **3D interactive**: `from vispy import scene`
+
+Do NOT attempt to create a unified facade that wraps both matplotlib and vispy. They are fundamentally different systems (plotting vs scene graph), and hiding this difference creates confusion. The adapters convert multivectors to data/primitives, but users must choose and use the appropriate backend themselves.

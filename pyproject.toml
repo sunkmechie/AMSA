@@ -13,12 +13,29 @@ authors = [
   { name = "Surya" },
 ]
 dependencies = [
-  "matplotlib>=3.10.8",
   "numpy>=1.26",
   "typing-extensions>=4.12",
 ]
 
 [project.optional-dependencies]
+# --- Visualization Tools ---
+viz = [
+  "matplotlib>=3.10.8",
+  "vispy>=0.14",
+  "glfw"
+]
+
+# --- JAX Support ---
+jax = [
+  "jax>=0.4.30",
+]
+
+# --- Core/Acceleration Tools (Triton) ---
+accel = [
+  "triton>=3.0",
+]
+
+# --- Development & Research Tools ---
 dev = [
   "mypy>=1.10",
   "pytest>=8.3",
@@ -27,15 +44,7 @@ dev = [
   "sphinx>=7.0",
   "myst-nb>=1.0",
 ]
-accel = [
-  "triton>=3.0",
-]
-jax = [
-  "jax>=0.4.30",
-]
-torch = [
-  "torch>=2.4",
-]
+
 bench = [
   "pytest-benchmark>=4.0",
 ]

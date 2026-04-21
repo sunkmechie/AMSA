@@ -8,7 +8,7 @@ AMSA requires Python 3.12 or newer. Install with ``uv`` (recommended) or ``pip``
 
 .. code-block:: bash
 
-   uv sync --extra dev
+   uv sync --extra dev --extra viz
 
 Verify the installation:
 
@@ -96,6 +96,9 @@ Visualization
 
 AMSA includes a lightweight ``amsa.viz`` layer for converting selected multivectors into
 plot-friendly primitives.
+
+For 2D plots, AMSA exposes a matplotlib backend under ``amsa.viz.backends.mpl``.
+For 3D interactive scenes, use ``amsa.viz.backends.vispy``.
 
 .. code-block:: python
 

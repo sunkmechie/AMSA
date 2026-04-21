@@ -87,7 +87,7 @@ You can also browse the source directly:
 - `docs/layouts.rst` — `MVLayout` and sparse support
 - `docs/storage.rst` — dense and CSR backends
 - `docs/operators.rst` — product semantics, duality, and normalization
-- `docs/viz.rst` — visualization adapters, primitives, and matplotlib backend
+- `docs/viz.rst` — visualization adapters, primitives, and optional matplotlib/VisPy backends
 - `docs/examples.rst` — index of runnable example scripts
 - `docs/probes.rst` — visual debugger probe (`amsa_lab`)
 
@@ -132,7 +132,7 @@ AMSA's development has been made possible and was inspired by the following open
 - lazy basis-product tables and on-demand Cayley tables via `AlgebraSpec`
 - dense/CSR conversion
 - dense and CSR-backed input execution in the reference backend
-- neutral visualization primitives and point adapters in `amsa.viz`
+- neutral visualization primitives, point adapters, and backend modules in `amsa.viz`
 
 
 ## Development
@@ -140,7 +140,7 @@ AMSA's development has been made possible and was inspired by the following open
 Install and verify with `uv`:
 
 ```bash
-uv sync --extra dev
+uv sync --extra dev --extra viz
 uv run pytest -q
 uv run ruff check .
 uv run mypy
@@ -208,5 +208,5 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 
 Visualization note:
 - `amsa.viz` is now a lightweight in-package visualization layer
-- it provides neutral primitives, point adapters for PGA points, and an optional matplotlib backend
+- it provides neutral primitives, point adapters for PGA points, and optional matplotlib/VisPy backends
 - the richer operator-plan debugger still lives separately in `probes/amsa_lab.py`

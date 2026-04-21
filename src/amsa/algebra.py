@@ -217,15 +217,18 @@ class Algebra:
         data: MVArray | Mapping[int | str, Any] | Any,
         *,
         layout: MVLayout | None = None,
+        batch_shape: tuple[int, ...] | None = None,
+        dtype: np.dtype[Any] | type[np.float64] | None = None,
         backend: StorageRequest = "auto",
     ) -> MVArray:
         if isinstance(data, MVArray):
             if data.algebra != self.spec:
                 raise ValueError("Cannot import a multivector from a different algebra.")
             requested_kind = resolve_storage_kind(backend, auto_kind=data.storage_kind)
-            if layout is None:
-                return data.with_storage(requested_kind)
-            return data.to_layout(layout).with_storage(requested_kind)
+            res = data
+            if layout is not None:
+                res = res.to_layout(layout)
+            return res.with_storage(requested_kind)
 
         if isinstance(data, Mapping):
             normalized = {
@@ -240,12 +243,16 @@ class Algebra:
 
             values_list = list(normalized.values())
             if values_list:
-                batch_shape = np.broadcast_shapes(*(value.shape for value in values_list))
-                dtype = np.result_type(*(value.dtype for value in values_list))
+                auto_batch_shape = np.broadcast_shapes(*(value.shape for value in values_list))
+                auto_dtype = np.result_type(*(value.dtype for value in values_list))
             else:
-                batch_shape = ()
-                dtype = np.dtype(np.float64)
-            result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
+                auto_batch_shape = ()
+                auto_dtype = np.dtype(np.float64)
+            
+            final_batch_shape = batch_shape if batch_shape is not None else auto_batch_shape
+            final_dtype = dtype if dtype is not None else auto_dtype
+            
+            result = np.zeros(final_batch_shape + (layout.size,), dtype=final_dtype)
             blade_to_index = {blade: idx for idx, blade in enumerate(layout.blades)}
 
             for blade, value in normalized.items():
@@ -257,12 +264,24 @@ class Algebra:
                         f"in layout {layout.name}."
                     )
                     raise ValueError(message) from exc
-                result[..., index] = np.broadcast_to(value, batch_shape)
+                
+                # Robust broadcasting: if value is (N,) and batch_shape is (N, 1),
+                # manually expand it to align.
+                v_arr = value
+                if v_arr.ndim < len(final_batch_shape):
+                    # Try to see if it's a simple prefix match
+                    if v_arr.shape == final_batch_shape[:v_arr.ndim]:
+                         # Add trailing dimensions
+                         for _ in range(len(final_batch_shape) - v_arr.ndim):
+                             v_arr = v_arr[..., np.newaxis]
+                
+                result[..., index] = np.broadcast_to(v_arr, final_batch_shape)
             return MVArray.from_array(self.spec, layout, result, backend=backend)
 
         array = np.asarray(data)
         if layout is None:
             layout = self.dense_layout()
+        # Arrays carry their own batch shape and dtype.
         return MVArray.from_array(self.spec, layout, array, backend=backend)
 
     def scalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:
