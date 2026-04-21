@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "amsa"
+name = "amsa-ga"
 version = "0.1.0b0"
 description = "Clifford algebra library with primitives for robotics, engineering, and science."
 readme = "README.md"
