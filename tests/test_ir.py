@@ -9,7 +9,9 @@ import pytest
 from amsa import Algebra
 from amsa.backends.numpy import NumpyBackend
 from amsa.ir import (
+    IRStep,
     ProductIR,
+    SequenceIR,
     build_product_ir,
     build_unary_ir,
     clear_backends,
@@ -535,6 +537,62 @@ class TestNumpyBackendExecution:
         result = backend.execute_product(b, t, ir)
 
         assert result.layout.size == 0
+
+    def test_sequence_execution_supports_add_scale_and_row_scale(self):
+        alg = Algebra.vga2d()
+        lhs = alg.vector([[1.0, 2.0], [3.0, 4.0]])
+        rhs = alg.vector([[5.0, 6.0], [7.0, 8.0]])
+        backend = get_backend("numpy")
+
+        add_ir = SequenceIR(
+            name="add",
+            inputs=("lhs", "rhs"),
+            steps=(
+                IRStep(
+                    kind="add",
+                    operands=("lhs", "rhs"),
+                    ir=None,
+                    output="sum",
+                ),
+            ),
+            result="sum",
+        )
+        added = backend.execute_sequence({"lhs": lhs, "rhs": rhs}, add_ir)
+        np.testing.assert_allclose(added.values, (lhs + rhs).values)
+
+        scale_ir = SequenceIR(
+            name="scale",
+            inputs=("input",),
+            steps=(
+                IRStep(
+                    kind="scale",
+                    operands=("input",),
+                    ir=None,
+                    output="scaled",
+                    metadata={"factor": 2.0},
+                ),
+            ),
+            result="scaled",
+        )
+        scaled = backend.execute_sequence({"input": lhs}, scale_ir)
+        np.testing.assert_allclose(scaled.values, (2.0 * lhs).values)
+
+        row_scale_ir = SequenceIR(
+            name="row_scale",
+            inputs=("input",),
+            steps=(
+                IRStep(
+                    kind="row_scale",
+                    operands=("input",),
+                    ir=None,
+                    output="scaled",
+                    metadata={"scales": np.array([2.0, 3.0])},
+                ),
+            ),
+            result="scaled",
+        )
+        row_scaled = backend.execute_sequence({"input": lhs}, row_scale_ir)
+        np.testing.assert_allclose(row_scaled.values, np.array([[2.0, 4.0], [9.0, 12.0]]))
 
 class TestEndToEndOps:
     """Verify that public ops route through the IR backend correctly."""

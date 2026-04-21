@@ -15,15 +15,15 @@
 from __future__ import annotations
 
 from numbers import Number
+from typing import Any, cast
 
 import numpy as np
 
-from amsa.ir import UnaryKind, build_product_ir, build_unary_ir, get_backend
+from amsa.ir import IRStep, SequenceIR, UnaryKind, build_product_ir, build_unary_ir, get_backend
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.plans import OpKind, plan_binary_product
 from amsa.specs import grade_of_blade
-from amsa.storage import row_scale_storage, scale_storage
 
 
 def ensure_compatible(lhs: MVArray, rhs: MVArray) -> None:
@@ -46,7 +46,45 @@ def _coerce_operand(reference: MVArray, operand: MVArray | Number) -> MVArray:
 
 
 def neg(mv: MVArray) -> MVArray:
-    return MVArray(algebra=mv.algebra, layout=mv.layout, storage=scale_storage(mv.storage, -1))
+    return scale(mv, -1)
+
+
+def scale(mv: MVArray, factor: Any) -> MVArray:
+    backend = get_backend()
+    ir = SequenceIR(
+        name="scale",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="output",
+                metadata={"factor": factor},
+            ),
+        ),
+        result="output",
+    )
+    return cast(MVArray, backend.execute_sequence({"input": mv}, ir))
+
+
+def row_scale(mv: MVArray, factors: Any) -> MVArray:
+    backend = get_backend()
+    ir = SequenceIR(
+        name="row_scale",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="row_scale",
+                operands=("input",),
+                ir=None,
+                output="output",
+                metadata={"scales": factors},
+            ),
+        ),
+        result="output",
+    )
+    return cast(MVArray, backend.execute_sequence({"input": mv}, ir))
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray | Number) -> tuple[MVArray, MVLayout]:
@@ -64,16 +102,48 @@ def add(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    values = lhs_projected.values + rhs_projected.values
-    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
+    backend = get_backend()
+    ir = SequenceIR(
+        name="add",
+        inputs=("lhs", "rhs"),
+        steps=(
+            IRStep(
+                kind="add",
+                operands=("lhs", "rhs"),
+                ir=None,
+                output="output",
+            ),
+        ),
+        result="output",
+    )
+    return cast(
+        MVArray,
+        backend.execute_sequence({"lhs": lhs_projected, "rhs": rhs_projected}, ir),
+    )
 
 
 def sub(lhs: MVArray, rhs: MVArray | Number) -> MVArray:
     rhs_mv, layout = _union_layout(lhs, rhs)
     lhs_projected = lhs.to_layout(layout)
     rhs_projected = rhs_mv.to_layout(layout)
-    values = lhs_projected.values - rhs_projected.values
-    return MVArray(algebra=lhs.algebra, layout=layout, values=values)
+    backend = get_backend()
+    ir = SequenceIR(
+        name="sub",
+        inputs=("lhs", "rhs"),
+        steps=(
+            IRStep(
+                kind="sub",
+                operands=("lhs", "rhs"),
+                ir=None,
+                output="output",
+            ),
+        ),
+        result="output",
+    )
+    return cast(
+        MVArray,
+        backend.execute_sequence({"lhs": lhs_projected, "rhs": rhs_projected}, ir),
+    )
 
 
 def reverse(mv: MVArray) -> MVArray:
@@ -148,21 +218,13 @@ def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
 def commutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     ensure_compatible(lhs, rhs)
     result = geometric_product(lhs, rhs) - geometric_product(rhs, lhs)
-    return MVArray(
-        algebra=result.algebra,
-        layout=result.layout,
-        storage=scale_storage(result.storage, 0.5),
-    )
+    return scale(result, 0.5)
 
 
 def anticommutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     ensure_compatible(lhs, rhs)
     result = geometric_product(lhs, rhs) + geometric_product(rhs, lhs)
-    return MVArray(
-        algebra=result.algebra,
-        layout=result.layout,
-        storage=scale_storage(result.storage, 0.5),
-    )
+    return scale(result, 0.5)
 
 
 def _require_degenerate_algebra(mv: MVArray, *, name: str) -> int:
@@ -231,11 +293,7 @@ def _single_blade_mv(mv: MVArray, blade: int, values: np.ndarray) -> MVArray:
 
 
 def _row_scale_mv(mv: MVArray, scales: np.ndarray) -> MVArray:
-    return MVArray(
-        algebra=mv.algebra,
-        layout=mv.layout,
-        storage=row_scale_storage(mv.storage, scales),
-    )
+    return row_scale(mv, scales)
 
 
 def _require_study_output(mv: MVArray, *, name: str) -> tuple[np.ndarray, np.ndarray]:
@@ -613,11 +671,7 @@ def inverse(mv: MVArray) -> MVArray:
         raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
     reciprocals = np.reciprocal(left_norm)
-    return MVArray(
-        algebra=mv.algebra,
-        layout=reversed_mv.layout,
-        storage=row_scale_storage(reversed_mv.storage, reciprocals),
-    )
+    return row_scale(reversed_mv, reciprocals)
 
 
 def divide(lhs: MVArray | Number, rhs: MVArray | Number) -> MVArray:
@@ -628,11 +682,7 @@ def divide(lhs: MVArray | Number, rhs: MVArray | Number) -> MVArray:
             rhs_array = np.asarray(rhs)
             if bool(np.equal(rhs_array, 0).item()):
                 raise ZeroDivisionError("Division by zero scalar.")
-            return MVArray(
-                algebra=lhs.algebra,
-                layout=lhs.layout,
-                storage=scale_storage(lhs.storage, np.reciprocal(rhs_array)),
-            )
+            return scale(lhs, np.reciprocal(rhs_array))
         raise TypeError(f"Unsupported operand type: {type(rhs)!r}")
 
     if isinstance(lhs, Number) and isinstance(rhs, MVArray):

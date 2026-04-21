@@ -31,7 +31,6 @@ from amsa.storage import (
     build_zero_storage,
     convert_storage_kind,
     project_storage,
-    scale_storage,
     storage_component,
     to_dense_storage,
 )
@@ -420,20 +419,16 @@ class MVArray:
 
             return geometric_product(self, other)
         if isinstance(other, Number):
-            return MVArray(
-                algebra=self.algebra,
-                layout=self.layout,
-                storage=scale_storage(self.storage, other),
-            )
+            from amsa.ops import scale
+
+            return scale(self, other)
         return NotImplemented
 
     def __rmul__(self, other: Number) -> MVArray:
         if isinstance(other, Number):
-            return MVArray(
-                algebra=self.algebra,
-                layout=self.layout,
-                storage=scale_storage(self.storage, other),
-            )
+            from amsa.ops import scale
+
+            return scale(self, other)
         return NotImplemented
 
     def __xor__(self, other: MVArray) -> MVArray:
