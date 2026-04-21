@@ -1,24 +1,23 @@
 Changelog
 =========
 
-0.1.0 (2026-04-04)
-------------------
+For full release notes, see the project's `CHANGELOG.md <https://github.com/amsa/amsa/blob/main/CHANGELOG.md>`_ on GitHub.
 
-Initial release.
+0.1.0b0 (2026-04-21)
+--------------------
+
+Beta release.
 
 - Portable algebra core based on bit-pattern blade identifiers
-- Lazy numeric basis-product tables for small-basis algebras (≤512 blades)
-- Dense, grade-packed, and sparse layout descriptors
+- VGA (2D/3D) and PGA (2D/3D) presets via ``Algebra.from_name()``
 - Dense and CSR storage backends behind a shared storage contract
 - Reference multivector array type with batch broadcasting
 - Cached operator plans for binary products
-- Storage-aware binary execution consuming dense or CSR inputs
-- Explicit constructor-level backend selection (``backend="auto" | "dense" | "csr"``)
-- Public API covering geometric, outer, inner, scalar, left/right contraction, and regressive products
-- Commutator and anticommutator products plus robotics-oriented motor exp/log support
-- Reverse, involute, conjugate, metric dual/undual, and Poincaré dual/undual
-- Reverse-based norm, normalization, sandwich, and restricted inverse
-- PGA-specific bulk/weight split, duals, and normalization helpers, including motor-oriented rigid-body normalization
-- In-package visualization layer (``amsa.viz``) with PGA point adapters and optional matplotlib/VisPy backends
+- Products: geometric, outer, inner, scalar, commutator, anticommutator, left/right contraction, regressive, sandwich
+- Unary: reverse, involute, conjugate, dual/undual, poincare_dual/undual, inverse
+- Exp/log: ``exp()``, ``motor_exp()``, ``motor_log()`` for robotics motor slices
+- Norms: ``norm_squared``, ``norm``, ``normalize``, plus bulk/weight variants and ``rigid_body_normalize``
+- Projection: ``grade()``, ``project_grades()``, ``component()``
+- In-package visualization layer (``amsa.viz``) with geometric primitives and optional matplotlib/VisPy backends
 - Visual debugger probe (``amsa_lab.py``) that traces plans to interactive HTML
 - Comprehensive test suite with dense and CSR coverage

@@ -28,9 +28,9 @@ Planes
 Robotics
 --------
 
-- ``examples/robotics/pga_circle_motion_2d.py`` — 2D PGA motor stepping
 - ``examples/robotics/pga_corridor_corner_2d.py`` — wall intersection via regressive product
 - ``examples/robotics/pga_rigid_body_trajectory_2d.py`` — repeated motor application
+- ``examples/robotics/pga3d_kinematic_chain.py`` — 3D PGA kinematic chain
 - ``examples/robotics/planar_heading_rotor.py`` — VGA rotor heading update
 - ``examples/robotics/ray_plane_reflection_3d.py`` — sandwich reflection in VGA3d
 - ``examples/robotics/robot_rotation_comparison_2d.py`` — rotor vs matrix/quaternion comparison
