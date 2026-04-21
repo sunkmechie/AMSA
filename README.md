@@ -1,6 +1,8 @@
 # AMSA
 
-AMSA is still under active development and is now in Beta 0.1.0
+AMSA is a Clifford algebra library for high-performance numerical computation in robotics, engineering, and science.
+
+**Beta on PyPI:** `uv pip install amsa-ga==0.1.0b0`
 
 ## Table of Contents
 
@@ -18,6 +20,18 @@ AMSA is still under active development and is now in Beta 0.1.0
 ## What is AMSA?
 
 AMSA (Advanced Multivector Symbolic Architecture Engine) is a Clifford algebra library focused on high-performance numerical computation for robotics, engineering, and science.
+
+## Installation
+
+```bash
+uv pip install amsa-ga==0.1.0b0
+```
+
+Or with visualization extras:
+
+```bash
+uv pip install amsa-ga[viz]==0.1.0b0
+```
 
 ## Package Layout
 
@@ -62,7 +76,7 @@ print(mv.grade(1, 3).values)     # [1.0, 3.0]
 print((2.0 - mv).as_dense().values)
 ```
 
-Scalar construction is intentionally explicit:
+Scalar construction:
 
 ```python
 from amsa import Algebra
@@ -138,7 +152,7 @@ AMSA's development has been made possible and was inspired by the following open
 
 ## Development
 
-Install and verify with `uv`:
+For local development after cloning the repository:
 
 ```bash
 uv sync --extra dev --extra viz
