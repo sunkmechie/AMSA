@@ -1,6 +1,6 @@
 # AMSA
 
-AMSA is still under active development and doesn't have a stable implementation yet.
+AMSA is still under active development and is now in Beta 0.1.0
 
 ## Table of Contents
 
@@ -13,6 +13,7 @@ AMSA is still under active development and doesn't have a stable implementation 
 7. [What Works Today](#what-works-today)
 8. [Development](#development)
 9. [Current Operations](#current-operations)
+10. [Notes](#notes)
 
 ## What is AMSA?
 
@@ -74,7 +75,7 @@ Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 
 ## Documentation
 
-Full documentation is in `docs/` as Sphinx reStructuredText files:
+Full documentation is in `docs/` 
 
 ```bash
 uv run sphinx-build docs docs/_build
@@ -165,6 +166,8 @@ uv run sphinx-build docs docs/_build
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
 | Presets | `vga`, `vga2d`, `vga3d`, `pga2d`, `pga3d`, `Algebra.from_name(...)` |
 
+## Notes
+
 `dual()` / `undual()` currently use the metric pseudoscalar transform, while
 `poincare_dual()` / `poincare_undual()` use the metric-free basis complement.
 That makes the Poincare pair available on degenerate algebras such as the PGA presets.
@@ -195,8 +198,6 @@ Today it supports:
 - PGA2d motor-like even multivectors after rigid-body normalization
 - PGA3d unit-motor style multivectors with scalar, bivector, and optional pseudoscalar terms
 
-Small future-reference benchmarks now live in `benchmarks/`, starting with:
-- `benchmarks/motor_ops.py`
 
 For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `bulk()` and `weight()` split components by whether they carry the null basis factor
@@ -207,6 +208,6 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
   even grade-`0/2` multivectors without pretending to be a universal projective normalization
 
 Visualization note:
-- `amsa.viz` is now a lightweight in-package visualization layer
-- it provides neutral primitives, point adapters for PGA points, and optional matplotlib/VisPy backends
-- the richer operator-plan debugger still lives separately in `probes/amsa_lab.py`
+- `amsa.viz`provides neutral primitives, point adapters for PGA points, and optional matplotlib/VisPy backends
+
+

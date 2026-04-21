@@ -28,9 +28,9 @@ print("\n=== Rigid Body Trajectory (PGA Motor) ===")
 
 alg = Algebra.pga2d()
 
-# --------------------------------------------------
+
 # motion parameters
-# --------------------------------------------------
+
 
 theta = np.deg2rad(10)
 tx = 0.5
@@ -38,9 +38,9 @@ ty = 0.0
 
 steps = 20
 
-# --------------------------------------------------
+
 # rotor (rotation)
-# --------------------------------------------------
+
 
 rotor = alg.multivector(
     {
@@ -49,9 +49,8 @@ rotor = alg.multivector(
     }
 ).normalized()
 
-# --------------------------------------------------
+
 # translator
-# --------------------------------------------------
 
 translator = alg.multivector(
     {
@@ -64,9 +63,9 @@ translator = alg.multivector(
 # motor = translation * rotation
 motor = translator * rotor
 
-# --------------------------------------------------
+
 # starting point
-# --------------------------------------------------
+
 
 point = alg.multivector(
     {

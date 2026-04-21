@@ -24,4 +24,3 @@ tmp*
 
 # Legacy prerelease doc (superseded by docs/)
 documentation/prerelease.md
-.qwen/

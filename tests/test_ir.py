@@ -1,6 +1,3 @@
-
-"""Tests for the IR layer and NumPy backend."""
-
 from __future__ import annotations
 
 import numpy as np

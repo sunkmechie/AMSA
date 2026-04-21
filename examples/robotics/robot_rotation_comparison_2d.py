@@ -34,9 +34,9 @@ v = np.array([1.0, 0.0])
 
 print("\nOriginal vector:", v)
 
-# --------------------------------------------------
+
 # Matrix rotation
-# --------------------------------------------------
+
 
 R = np.array(
     [
@@ -50,9 +50,9 @@ v_matrix = R @ v
 print("\nMatrix rotation:")
 print(v_matrix)
 
-# --------------------------------------------------
+
 # Quaternion rotation (2D embedded in Z rotation)
-# --------------------------------------------------
+
 
 x, y = v
 
@@ -66,9 +66,8 @@ v_quat = np.array(
 print("\nQuaternion rotation:")
 print(v_quat)
 
-# --------------------------------------------------
 # Geometric algebra rotor
-# --------------------------------------------------
+
 
 alg = Algebra.vga2d()
 
@@ -88,9 +87,7 @@ v_ga = rotated.grade(1).as_dense().values[1:3]
 print("\nGeometric algebra rotor:")
 print(v_ga)
 
-# --------------------------------------------------
-# agreement check
-# --------------------------------------------------
+
 
 print("\nAgreement checks:")
 

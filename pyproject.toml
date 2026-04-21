@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amsa"
-version = "0.1.0"
-description = "High-performance Clifford algebra primitives for robotics, engineering, and science."
+version = "0.1.0b0"
+description = "Clifford algebra library with primitives for robotics, engineering, and science."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache 2.0" }
