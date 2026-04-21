@@ -7,95 +7,107 @@ AMSA 3D Showcase: PGA3D Kinematic Chain
 
 import numpy as np
 
-import amsa
-from amsa import viz
 from amsa.algebra import Algebra
+from amsa.viz.adapters import to_line, to_line_segments, to_rotor
+from amsa.viz.backends import vispy as vback
 
 
 def run_3d_arm():
     print("\n=== AMSA 3D Robot Arm (PGA3D) ===")
-    
+
     # 1. Setup Algebra (PGA 3D)
     alg = Algebra.pga3d()
-    
+
     # 2. Define Local Linkage points
-    # Points in PGA3D: P = w*e123 - x*e023 + y*e013 - z*e012
     p_base = alg.multivector({"e123": 1.0})
-    p_elbow_local = alg.multivector({"e123": 1.0, "e012": -2.0}) # 2 units in Z
-    p_wrist_local = alg.multivector({"e123": 1.0, "e012": -2.0, "e013": 2.0}) # +2 in Y
-    
-    # 3. Setup Visualization
-    # Use viz.view() to start the scene with the arm segments
-    # This automatically selects the best backend (VisPy for 3D)
-    arm_pts = alg.multivector(np.stack([
-        p_base.as_dense().values, 
-        p_elbow_local.as_dense().values, 
-        p_wrist_local.as_dense().values
-    ]))
-    arm_primitive = viz.to_line_segments(arm_pts, color="cyan", connect="strip")
-    arm_layer = viz.view(arm_primitive, title="AMSA 3D Robot Arm", width=5, backend="vispy")
-    
-    # Get the view/axes for subsequent plotting
-    view = arm_layer.parent
-    
-    # Add joint frames and guides via viz.plot() facade
-    # The facade returns Layer objects which are used for updates
-    frame1_layer = viz.plot(viz.to_rotor(alg.multivector({"e": 1.0})), parent=view)
-    frame2_layer = viz.plot(viz.to_rotor(alg.multivector({"e": 1.0})), parent=view)
-    
-    # Joint Axes (Visual guides)
-    axis1 = alg.multivector({"e12": 1.0}) # Z
-    axis2_local = alg.multivector({"e13": -1.0}) # Y (e31)
-    axis1_layer = viz.plot(viz.to_line(axis1, color="red"), parent=view)
-    axis2_layer = viz.plot(viz.to_line(axis1, color="green"), parent=view) # Will be updated
-    
-    # 4. Animation logic
+    p_elbow_local = alg.multivector({"e123": 1.0, "e012": -2.0})
+    p_wrist_local = alg.multivector({"e123": 1.0, "e012": -2.0, "e013": 2.0})
+
+    # 3. Setup Visualization with VisPy
+    from vispy import scene
+
+    canvas = scene.SceneCanvas(title="AMSA 3D Robot Arm", keys="interactive", show=True)
+    view = canvas.central_widget.add_view()
+    view.camera = "turntable"
+    view.camera.distance = 15
+
+    # Create arm line segments
+    arm_pts = alg.multivector(
+        np.stack(
+            [
+                p_base.as_dense().values,
+                p_elbow_local.as_dense().values,
+                p_wrist_local.as_dense().values,
+            ]
+        )
+    )
+    arm_primitive = to_line_segments(arm_pts, color="cyan", connect="strip")
+    arm_line = vback.plot(view.scene, arm_primitive, color="cyan")
+
+    # Add joint frames
+    frame1 = vback.plot(view.scene, to_rotor(alg.multivector({"e": 1.0})))
+
+    frame2 = vback.plot(view.scene, to_rotor(alg.multivector({"e": 1.0})))
+
+    # Add axes
+    axis1 = to_line(alg.multivector({"e12": 1.0}), color="red")
+    vback.plot(view.scene, axis1, color="red", scale=1000)
+
+    axis2_line = vback.plot(view.scene, axis1, color="green", scale=1000)
+
+    # 4. Animation
     state = {"time": 0.0}
-    
+
     def update(event):
         t = state["time"]
-        
-        # --- Kinematics ---
-        # Joint 1: Base rotation (Z-axis)
-        m1 = (axis1 * (t * 0.5 / 2.0)).exp()
-        
-        # Joint 2: Shoulder rotation (Y-axis, relative to m1)
-        elbow_trans = alg.multivector({"e": 1.0, "e03": -1.0}) 
+
+        m1 = (alg.multivector({"e12": 1.0}) * (t * 0.5 / 2.0)).exp()
+
+        elbow_trans = alg.multivector({"e": 1.0, "e03": -1.0})
+        axis2_local = alg.multivector({"e13": -1.0})
         axis2_world = m1.sandwich(elbow_trans.sandwich(axis2_local))
-        
+
         m2_local = (axis2_world * (np.sin(t) * 1.0 / 2.0)).exp()
         m2_total = m2_local * m1
-        
-        # Calculate world-space points
+
         base = p_base
         elbow = m1.sandwich(p_elbow_local)
         wrist = m2_total.sandwich(p_wrist_local)
-        
-        # Combine points into a batch for update
-        arm_pts = alg.multivector(np.stack([
-            base.as_dense().values, 
-            elbow.as_dense().values, 
-            wrist.as_dense().values
-        ]))
-        
-        # --- Update Visuals via amsa.vizFacade ---
-        viz.update(arm_layer, arm_pts)
-        viz.update(frame1_layer, m1)
-        viz.update(frame2_layer, m2_total)
-        viz.update(axis2_layer, axis2_world)
-        
+
+        arm_pts = alg.multivector(
+            np.stack([base.as_dense().values, elbow.as_dense().values, wrist.as_dense().values])
+        )
+        arm_primitive = to_line_segments(arm_pts, color="cyan", connect="strip")
+        arm_line.set_data(pos=arm_primitive.positions)
+
+        # Update frames
+        r1 = to_rotor(m1)
+        mat1 = r1.matrix.T
+        mat1_4 = np.eye(4)
+        mat1_4[:3, :3] = mat1
+        frame1.transform.matrix = mat1_4
+
+        r2 = to_rotor(m2_total)
+        mat2 = r2.matrix.T
+        mat2_4 = np.eye(4)
+        mat2_4[:3, :3] = mat2
+        frame2.transform.matrix = mat2_4
+
+        # Update axis2
+        axis2 = to_line(axis2_world, color="green")
+        p2 = axis2.origin
+        d2 = axis2.direction / np.linalg.norm(axis2.direction)
+        axis2_line.set_data(pos=np.stack([p2 - d2 * 1000, p2 + d2 * 1000]))
+
         state["time"] += 0.03
 
-    # 5. Start Animation Loop
-    if hasattr(view, "camera"): # VisPy Camera setup
-        view.camera = "turntable"
-        view.camera.distance = 15
-        
-        from vispy import app
-        timer = app.Timer(interval=1/60.0, connect=update, start=True)
-        
+    from vispy import app
+
+    app.Timer(interval=1 / 60.0, connect=update, start=True)
+
     print("Starting animation...")
-    viz.show()
+    app.run()
+
 
 if __name__ == "__main__":
     run_3d_arm()

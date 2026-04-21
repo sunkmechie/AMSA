@@ -43,4 +43,5 @@ All examples can be run directly:
 
    uv run python examples/geometry/triangle_area_2d.py
 
-Some robotics examples optionally use ``amsa.viz`` plus matplotlib for plotting.
+Some robotics examples use ``amsa.viz.backends.mpl`` for 2D plots and
+``amsa.viz.backends.vispy`` for 3D interactive scenes.

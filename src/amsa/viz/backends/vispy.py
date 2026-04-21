@@ -1,246 +1,231 @@
-# Copyright 2026 Surya Sunkara
-# SPDX-License-Identifier: Apache-2.0
-
-"""
-VisPy backend for AMSA high-performance visualization.
-"""
-
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 
+from amsa.viz.primitives import Circle, Line, LineSegments, Plane, Point, Rotor, VizPrimitive
+
 try:
-    import vispy
-    from vispy import scene
-except ImportError as exc:
-    raise ImportError(
-        "vispy is required for amsa.viz.backends.vispy. "
-        "Install it via `pip install 'amsa[viz]'`."
+    from vispy import app, scene  # type: ignore[import-untyped]
+    from vispy.visuals.transforms import MatrixTransform  # type: ignore[import-untyped]
+except ModuleNotFoundError as exc:  # pragma: no cover - exercised only when vispy is absent
+    raise ModuleNotFoundError(
+        "amsa.viz.backends.vispy requires vispy. Install AMSA with the `viz` extra."
     ) from exc
 
-from amsa.mv import MVArray
-from amsa.viz.adapters import to_point
-from amsa.viz.primitives import (
-    Line,
-    LineSegments,
-    Plane,
-    Point,
-    Rotor,
-    VizPrimitive,
-)
 
-if TYPE_CHECKING:
-    from amsa.viz.core import Layer
+def show(*args: Any, **kwargs: Any) -> Any:
+    return app.run(*args, **kwargs)
 
-def _prepare_vispy_pos(mv: MVArray | Point | np.ndarray) -> np.ndarray:
-    """Prepare multivector, Point, or raw coordinate data for VisPy visuals."""
-    if isinstance(mv, np.ndarray):
-        pos = mv
-    elif isinstance(mv, MVArray):
-        pos = to_point(mv).position
-    else:
-        # Assume it's a primitive with a .position attribute (like Point)
-        pos = mv.position
-        
-    # Ensure we are at least 2D (batch dimension)
-    if pos.ndim == 1:
-        pos = pos[np.newaxis, :]
-        
-    # Handle batch shapes (..., D) by flattening to (N, D)
-    if pos.ndim > 2:
-        pos = pos.reshape(-1, pos.shape[-1])
-    
-    # In 2D, expand to (x, y, 0) for VisPy's 3D coordinate system
-    if pos.shape[-1] == 2:
-        z = np.zeros((pos.shape[0], 1), dtype=pos.dtype)
-        pos = np.concatenate([pos, z], axis=-1)
-    return pos
 
-def plot(view: scene.widgets.ViewBox, primitive: VizPrimitive, **kwargs: Any) -> scene.visuals.Visual:
-    """
-    Plots a viz primitive onto a VisPy ViewBox.
-    """
+def plot(parent: Any, primitive: VizPrimitive, **kwargs: Any) -> Any:
     if isinstance(primitive, Point):
-        pos = _prepare_vispy_pos(primitive)
-        markers = scene.visuals.Markers()
-        markers.set_data(
-            pos,
-            edge_color=kwargs.get("edge_color", None),
-            face_color=kwargs.get("color", primitive.color or "white"),
-            size=kwargs.get("size", 5),
-        )
-        markers.parent = view.scene
-        return markers
-
-    if isinstance(primitive, LineSegments):
-        pos = _prepare_vispy_pos(primitive.positions)
-        line = scene.visuals.Line(
-            pos=pos,
-            color=kwargs.get("color", primitive.color or "white"),
-            width=kwargs.get("width", 2),
-            connect=primitive.connect
-        )
-        line.parent = view.scene
-        return line
-
+        return _plot_point(parent, primitive, **kwargs)
     if isinstance(primitive, Line):
-        # For infinite lines in 3D, draw a very long segment
-        p = primitive.origin
-        d = primitive.direction
-        d_norm = d / np.linalg.norm(d, axis=-1, keepdims=True)
-        p1 = p - d_norm * 1000
-        p2 = p + d_norm * 1000
-        pos = np.stack([p1, p2], axis=-2)
-        
-        line = scene.visuals.Line(
-            pos=_prepare_vispy_pos(pos),
-            color=kwargs.get("color", primitive.color or "white"),
-            width=kwargs.get("width", 1)
-        )
-        line.parent = view.scene
-        return line
-
-    if isinstance(primitive, Rotor):
-        # XYZAxis visual for frames
-        axis = scene.visuals.XYZAxis(width=2)
-        axis.parent = view.scene
-        
-        # We need to apply the transform (origin + matrix)
-        # VisPy MatrixTransform takes a 4x4
-        mat = np.eye(4)
-        mat[:3, :3] = primitive.matrix.T # VisPy uses column-major/transposed convention usually
-        mat[:3, 3] = primitive.origin
-        axis.transform = scene.transforms.MatrixTransform(mat)
-        return axis
-
+        return _plot_line(parent, primitive, **kwargs)
+    if isinstance(primitive, LineSegments):
+        return _plot_line_segments(parent, primitive, **kwargs)
     if isinstance(primitive, Plane):
-        # We represent the infinite plane as a large finite plane for visualization
-        # VisPy's Plane visual defaults to XY plane (normal z)
-        plane = scene.visuals.Plane(width=100, height=100, color=kwargs.get("color", "blue"), alpha=0.3)
-        plane.parent = view.scene
-        
-        # Calculate transform from XY to the target normal
-        # origin + normal
-        n = primitive.normal
-        o = primitive.origin
-        
-        # Simple alignment: calculate rotation from (0,0,1) to n
-        n_unit = n / np.linalg.norm(n, axis=-1, keepdims=True)
-        z_axis = np.array([0, 0, 1])
-        
-        # Cross product and angle
-        cross = np.cross(z_axis, n_unit)
-        cross_norm = np.linalg.norm(cross)
-        
-        mat = np.eye(4)
-        if cross_norm > 1e-6:
-            # Rodrigues-like rotation
-            angle = np.arccos(np.dot(z_axis, n_unit))
-            c = np.cos(angle)
-            s = np.sin(angle)
-            t = 1 - c
-            u, v, w = cross / cross_norm
-            rot = np.array([
-                [t*u*u + c,   t*u*v - s*w, t*u*w + s*v],
-                [t*u*v + s*w, t*v*v + c,   t*v*w - s*u],
-                [t*u*w - s*v, t*v*w + s*u, t*w*w + c]
-            ])
-            mat[:3, :3] = rot
-        
-        mat[:3, 3] = o
-        plane.transform = scene.transforms.MatrixTransform(mat)
-        return plane
+        return _plot_plane(parent, primitive, **kwargs)
+    if isinstance(primitive, Circle):
+        return _plot_circle(parent, primitive, **kwargs)
+    if isinstance(primitive, Rotor):
+        return _plot_rotor(parent, primitive, **kwargs)
 
-    raise NotImplementedError(f"Plotting for {type(primitive)} is not implemented yet in VisPy.")
+    raise TypeError(f"Unsupported primitive type: {type(primitive)!r}")
 
-def update_layer(layer: Layer, mv: MVArray | np.ndarray) -> None:
-    """
-    Efficiently update a VisPy visual with new multivector data or raw positions.
-    """
-    if layer.primitive == Point:
-        pos = _prepare_vispy_pos(mv)
-        layer.artist.set_data(pos=pos)
-    elif layer.primitive == LineSegments:
-        from amsa.viz.adapters import to_line_segments
-        # Extract and interleave segments via the adapter
-        prim = to_line_segments(mv)
-        pos = _prepare_vispy_pos(prim.positions)
-        layer.artist.set_data(pos=pos)
-    elif layer.primitive == Rotor:
-        from amsa.viz.adapters import to_rotor
-        prim = to_rotor(mv)
-        mat = np.eye(4)
-        mat[:3, :3] = prim.matrix.T
-        mat[:3, 3] = prim.origin
-        layer.artist.transform.matrix = mat
-    elif layer.primitive == Plane:
-        from amsa.viz.adapters import to_plane
-        prim = to_plane(mv)
-        # Re-calculate and update matrix as above...
-        # (For brevity in update, we'll implement the matrix update logic here too)
-        n = prim.normal
-        o = prim.origin
-        n_unit = n / np.linalg.norm(n, axis=-1, keepdims=True)
-        z_axis = np.array([0, 0, 1])
-        cross = np.cross(z_axis, n_unit)
-        cross_norm = np.linalg.norm(cross)
-        mat = np.eye(4)
-        if cross_norm > 1e-6:
-            angle = np.arccos(np.clip(np.dot(z_axis, n_unit), -1, 1))
-            c = np.cos(angle)
-            s = np.sin(angle)
-            t = 1 - c
-            u, v, w = cross / cross_norm
-            rot = np.array([
-                [t*u*u+c, t*u*v-s*w, t*u*w+s*v],
-                [t*u*v+s*w, t*v*v+c, t*v*w-s*u],
-                [t*u*w-s*v, t*v*w+s*u, t*w*w+c]
-            ])
-            mat[:3, :3] = rot
-        mat[:3, 3] = o
-        layer.artist.transform.matrix = mat
-    elif layer.primitive == Line:
-        from amsa.viz.adapters import to_line
-        prim = to_line(mv)
-        p = prim.origin
-        d = prim.direction
-        d_norm = d / np.linalg.norm(d, axis=-1, keepdims=True)
-        p1 = p - d_norm * 1000
-        p2 = p + d_norm * 1000
-        pos = np.stack([p1, p2], axis=-2)
-        layer.artist.set_data(pos=_prepare_vispy_pos(pos))
 
-class AMSAScene:
-    """
-    High-level interactive scene for AMSA multivector visualization.
-    """
-    def __init__(self, title: str = "AMSA Visualization", keys: str = "interactive") -> None:
-        self.canvas = scene.SceneCanvas(title=title, keys=keys, show=True)
-        self.view = self.canvas.central_widget.add_view()
-        self.view.camera = "arcball" # Default to 3D orbit
-        self.visuals: list[scene.visuals.Visual] = []
+def _effective_color(primitive: VizPrimitive, kwargs: dict[str, Any]) -> Any:
+    color = kwargs.pop("color", None)
+    return primitive.color if color is None else color
 
-    def add(self, primitive: VizPrimitive, **kwargs: Any) -> Layer:
-        """Add a viz primitive to the scene."""
-        from amsa.viz.core import Layer
-        visual = plot(self.view, primitive, **kwargs)
-        self.visuals.append(visual)
-        return Layer(artist=visual, primitive=type(primitive), backend="vispy", parent=self.view)
 
-    def set_camera(self, kind: str = "turntable") -> None:
-        """Set the camera type (e.g. 'turntable', 'arcball', 'panzoom')."""
-        self.view.camera = kind
+def _coerce_points(values: np.ndarray) -> np.ndarray:
+    pts = np.asarray(values, dtype=float)
+    if pts.ndim == 1:
+        return pts.reshape(1, -1)
+    if pts.ndim > 2:
+        return pts.reshape(-1, pts.shape[-1])
+    return pts
 
-    def show(self) -> None:
-        """Run the application."""
-        import vispy.app
-        vispy.app.run()
 
-def show() -> None:
-    """
-    Global convenience wrapper to start the VisPy event loop.
-    """
-    import vispy.app
-    vispy.app.run()
+def _line_segment(origin: np.ndarray, direction: np.ndarray, scale: float) -> np.ndarray:
+    direction_norm = np.linalg.norm(direction)
+    if direction_norm == 0:
+        return np.stack([origin, origin], axis=0)
+    delta = direction / direction_norm * scale
+    return np.stack([origin - delta, origin + delta], axis=0)
+
+
+def _flatten_batches(values: np.ndarray) -> np.ndarray:
+    if values.ndim == 2:
+        return values.reshape(1, *values.shape)
+    return values.reshape(-1, *values.shape[-2:])
+
+
+def _plot_point(parent: Any, primitive: Point, **kwargs: Any) -> Any:
+    color = _effective_color(primitive, kwargs)
+    label = kwargs.pop("label", primitive.label)
+    size = kwargs.pop("size", 8)
+    symbol = kwargs.pop("symbol", "o")
+    coords = _coerce_points(primitive.position)
+    markers = scene.visuals.Markers(parent=parent)
+    markers.set_data(
+        coords,
+        face_color=color,
+        edge_color=color,
+        size=size,
+        symbol=symbol,
+        **kwargs,
+    )
+    if label is not None:
+        markers.set_gl_state(depth_test=True)
+    return markers
+
+
+def _plot_line(parent: Any, primitive: Line, **kwargs: Any) -> Any:
+    color = _effective_color(primitive, kwargs)
+    scale = float(kwargs.pop("scale", 1.0))
+    connect = kwargs.pop("connect", "strip")
+    width = kwargs.pop("width", 2.0)
+    origins = np.asarray(primitive.origin, dtype=float)
+    directions = np.asarray(primitive.direction, dtype=float)
+    if origins.ndim == 1:
+        origins = origins.reshape(1, -1)
+        directions = directions.reshape(1, -1)
+
+    visuals: list[Any] = []
+    for origin, direction in zip(origins, directions, strict=True):
+        segment = _line_segment(origin, direction, scale)
+        visual = scene.visuals.Line(
+            pos=segment,
+            color=color,
+            width=width,
+            connect=connect,
+            parent=parent,
+        )
+        visuals.append(visual)
+    return visuals[0] if len(visuals) == 1 else visuals
+
+
+def _plot_line_segments(parent: Any, primitive: LineSegments, **kwargs: Any) -> Any:
+    color = _effective_color(primitive, kwargs)
+    connect = primitive.connect
+    width = kwargs.pop("width", 2.0)
+    positions = np.asarray(primitive.positions, dtype=float)
+    batches = _flatten_batches(positions)
+    visuals: list[Any] = []
+    for batch in batches:
+        visual = scene.visuals.Line(
+            pos=batch,
+            color=color,
+            width=width,
+            connect=connect,
+            parent=parent,
+            **kwargs,
+        )
+        visuals.append(visual)
+    return visuals[0] if len(visuals) == 1 else visuals
+
+
+def _plane_basis(normal: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    unit = np.asarray(normal, dtype=float)
+    norm = np.linalg.norm(unit)
+    if norm == 0:
+        raise ValueError("Plane normal cannot be zero.")
+    unit = unit / norm
+
+    if unit.shape[-1] == 2:
+        tangent = np.array([unit[1], -unit[0]])
+        return tangent, np.zeros_like(tangent)
+
+    basis = np.array([1.0, 0.0, 0.0])
+    if abs(np.dot(unit, basis)) > 0.9:
+        basis = np.array([0.0, 1.0, 0.0])
+    u = np.cross(unit, basis)
+    u = u / np.linalg.norm(u)
+    v = np.cross(unit, u)
+    return u, v
+
+
+def _plot_plane(parent: Any, primitive: Plane, **kwargs: Any) -> Any:
+    color = _effective_color(primitive, kwargs)
+    scale = float(kwargs.pop("scale", 1.0))
+    origin = np.asarray(primitive.origin, dtype=float)
+    normal = np.asarray(primitive.normal, dtype=float)
+
+    if origin.shape[-1] == 2:
+        tangent = np.array([normal[1], -normal[0]], dtype=float)
+        return _plot_line(
+            parent,
+            Line(origin=origin, direction=tangent, color=color),
+            scale=scale,
+            **kwargs,
+        )
+
+    u, v = _plane_basis(normal)
+    if np.allclose(v, 0.0):
+        return _plot_line(
+            parent,
+            Line(origin=origin, direction=u, color=color),
+            scale=scale,
+            **kwargs,
+        )
+
+    corners = np.array(
+        [
+            origin - scale * u - scale * v,
+            origin + scale * u - scale * v,
+            origin + scale * u + scale * v,
+            origin - scale * u + scale * v,
+        ]
+    )
+    return scene.visuals.Line(
+        pos=np.vstack([corners, corners[0]]),
+        color=color,
+        connect="strip",
+        parent=parent,
+    )
+
+
+def _plot_circle(parent: Any, primitive: Circle, **kwargs: Any) -> Any:
+    color = _effective_color(primitive, kwargs)
+    center = np.asarray(primitive.center, dtype=float)
+    if center.shape[-1] != 2:
+        raise ValueError("VisPy circle plotting currently expects 2D centers.")
+
+    segments = int(kwargs.pop("segments", 128))
+    angles = np.linspace(0.0, 2.0 * np.pi, segments + 1)
+    points = np.column_stack(
+        [
+            center[0] + primitive.radius * np.cos(angles),
+            center[1] + primitive.radius * np.sin(angles),
+        ]
+    )
+    return scene.visuals.Line(
+        pos=points,
+        color=color,
+        connect="strip",
+        parent=parent,
+        **kwargs,
+    )
+
+
+def _plot_rotor(parent: Any, primitive: Rotor, **kwargs: Any) -> Any:
+    scale = float(kwargs.pop("scale", 1.0))
+    origin = np.asarray(primitive.origin, dtype=float)
+    matrix = np.asarray(primitive.matrix, dtype=float)
+    if matrix.shape[-2:] != (origin.shape[-1], origin.shape[-1]):
+        raise ValueError("Rotor matrix must be square and match the origin dimension.")
+
+    axis = scene.visuals.XYZAxis(parent=parent, width=kwargs.pop("width", 2))
+    transform = MatrixTransform()
+    matrix4 = np.eye(4)
+    dim = origin.shape[-1]
+    matrix4[:dim, :dim] = matrix
+    matrix4[:dim, 3] = origin
+    matrix4[:dim, :dim] *= scale
+    transform.matrix = matrix4
+    axis.transform = transform
+    return axis

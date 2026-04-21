@@ -147,9 +147,9 @@ class MVArray:
         
         # Fallback for CSR or other storage: convert to dense for now
         # TODO: Implement sparse-aware indexing in storage.py
-        dense_storage = self.with_storage("dense").storage
-        new_array = dense_storage.array[key]
-        return MVArray(self.algebra, self.layout, storage=DenseStorage(new_array))
+        dense_storage = self.with_storage("dense").storage.as_dense()
+        new_array = dense_storage[key]
+        return MVArray(self.algebra, self.layout, storage=DenseStorage.from_array(new_array))
 
     def copy(self) -> MVArray:
         return MVArray(algebra=self.algebra, layout=self.layout, storage=self.storage.copy())

@@ -20,8 +20,6 @@ name = "amsa"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "glfw" },
-    { name = "matplotlib" },
     { name = "numpy" },
     { name = "typing-extensions" },
 ]
@@ -46,15 +44,15 @@ jax = [
 ]
 viz = [
     { name = "glfw" },
+    { name = "matplotlib" },
     { name = "vispy" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "glfw", specifier = ">=2.10.0" },
     { name = "glfw", marker = "extra == 'viz'" },
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.4.30" },
-    { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "myst-nb", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "numpy", specifier = ">=1.26" },

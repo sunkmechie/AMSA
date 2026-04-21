@@ -281,7 +281,7 @@ class Algebra:
         array = np.asarray(data)
         if layout is None:
             layout = self.dense_layout()
-        # If array is provided directly, we ignore batch_shape/dtype as they are intrinsic to the array
+        # Arrays carry their own batch shape and dtype.
         return MVArray.from_array(self.spec, layout, array, backend=backend)
 
     def scalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:

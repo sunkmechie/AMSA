@@ -19,6 +19,6 @@ Initial release.
 - Reverse, involute, conjugate, metric dual/undual, and Poincaré dual/undual
 - Reverse-based norm, normalization, sandwich, and restricted inverse
 - PGA-specific bulk/weight split, duals, and normalization helpers, including motor-oriented rigid-body normalization
-- In-package visualization layer (``amsa.viz``) with PGA point adapters and matplotlib backend
+- In-package visualization layer (``amsa.viz``) with PGA point adapters and optional matplotlib/VisPy backends
 - Visual debugger probe (``amsa_lab.py``) that traces plans to interactive HTML
 - Comprehensive test suite with dense and CSR coverage
