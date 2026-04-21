@@ -1,5 +1,7 @@
 # AMSA
 
+![PyPI](https://img.shields.io/pypi/v/amsa-ga)
+
 AMSA is a Clifford algebra library for high-performance numerical computation in robotics, engineering, and science.
 
 **Beta on PyPI:** `uv pip install amsa-ga==0.1.0b0`
