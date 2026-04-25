@@ -16,7 +16,7 @@ wheels = [
 ]
 
 [[package]]
-name = "amsa"
+name = "amsa-ga"
 version = "0.1.0b0"
 source = { editable = "." }
 dependencies = [

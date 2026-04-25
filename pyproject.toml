@@ -13,6 +13,13 @@ authors = [
   { name = "Surya Sunkara" },
 ]
 keywords = ["clifford", "geometric-algebra", "robotics", "pga", "multivector"]
+
+dependencies = [
+  "numpy>=1.26",
+  "typing-extensions>=4.12",
+]
+
+
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Science/Research",
@@ -28,10 +35,7 @@ Homepage = "https://github.com/sunkmechie/AMSA"
 Repository = "https://github.com/sunkmechie/AMSA"
 Issues = "https://github.com/sunkmechie/AMSA/issues"
 
-dependencies = [
-  "numpy>=1.26",
-  "typing-extensions>=4.12",
-]
+
 
 [project.optional-dependencies]
 # --- Visualization Tools ---
