@@ -38,11 +38,17 @@ switch devices.
 JAX backend
 -----------
 
-To use the JAX backend for GPU execution, install the JAX extra:
+To use the JAX backend for CPU execution, install the JAX extra:
 
 .. code-block:: bash
 
    uv pip install amsa-ga[jax]
+
+For GPU execution (CUDA), install JAX with CUDA support:
+
+.. code-block:: bash
+
+   uv pip install "jax[cuda13]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 Then select GPU execution:
 
