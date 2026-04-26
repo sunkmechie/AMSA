@@ -577,3 +577,41 @@ def clear_backends() -> None:
     global _DEFAULT_BACKEND
     _BACKENDS.clear()
     _DEFAULT_BACKEND = None
+
+
+_DEVICE_BACKENDS: dict[str, str] = {
+    "cpu": "numpy",
+    "gpu": "jax",
+}
+
+
+def init(use: str = "cpu") -> None:
+    """Initialize AMSA with a specific device backend.
+
+    Args:
+        use: Device type - "cpu" (NumPy) or "gpu" (JAX, when available).
+
+    Raises:
+        ValueError: If device is not supported or backend not registered.
+    """
+    if use not in _DEVICE_BACKENDS:
+        raise ValueError(
+            f"Unsupported device: {use!r}. Supported: {list(_DEVICE_BACKENDS)}"
+        )
+    backend_name = _DEVICE_BACKENDS[use]
+    if not has_backend(backend_name):
+        raise ValueError(
+            f"Backend {backend_name!r} for device {use!r} is not available. "
+            f"Available backends: {list_backends()}."
+        )
+    set_default_backend(backend_name)
+
+
+def get_device() -> str:
+    """Return the current device in use."""
+    backend = get_backend()
+    backend_name = type(backend).__name__.lower()
+    for device, name in _DEVICE_BACKENDS.items():
+        if backend_name.startswith(name):
+            return device
+    return "cpu"
