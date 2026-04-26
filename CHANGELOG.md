@@ -3,6 +3,29 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-04-26
+
+### Added
+
+- **JAX Backend**: Full JAX backend implementation with dense storage parity
+- **Device Selection**: `amsa.init(use="cpu")` and `amsa.init(use="gpu")` for backend selection
+- **Backend Registry**: Pluggable backend system via `amsa.ir.register_backend()`
+- **JAX GPU Support**: CUDA installation instructions for GPU execution
+- **Backend Benchmarks**: NumPy vs JAX performance comparison script
+- **Storage/Backend Separation**: `StorageDescriptor` and `BackendPayload` protocols for backend-agnostic storage
+
+### Changed
+
+- JAX moved to optional dependencies (`amsa-ga[jax]`)
+- NumPy is now a backend, not embedded in storage classes
+- All coefficient execution routes through IR layer
+- Backend selection affects coefficient execution only, not algebra semantics
+
+### Fixed
+
+- JAX x64 enabled to avoid float64 truncation warnings
+- Conditional JAX backend registration for graceful degradation
+
 ## [0.1.0b0] - 2026-04-21
 
 ### Added
