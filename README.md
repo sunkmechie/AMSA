@@ -108,6 +108,27 @@ amsa.init(use="cpu")
 print(amsa.get_device())  # "cpu"
 ```
 
+**JAX Installation:**
+
+For CPU execution:
+
+```bash
+uv pip install amsa-ga[jax]
+```
+
+For GPU execution (CUDA), install JAX with CUDA support:
+
+```bash
+uv pip install "jax[cuda13]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+```
+
+Then select GPU execution:
+
+```python
+import amsa
+amsa.init(use="gpu")
+```
+
 See the documentation for details on execution backends.
 
 ## Documentation

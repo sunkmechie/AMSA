@@ -35,6 +35,35 @@ The NumPy backend is registered and set as the default on import, so most
 users do not need to call ``amsa.init()`` unless they want to explicitly
 switch devices.
 
+JAX backend
+-----------
+
+To use the JAX backend for CPU execution, install the JAX extra:
+
+.. code-block:: bash
+
+   uv pip install amsa-ga[jax]
+
+For GPU execution (CUDA), install JAX with CUDA support:
+
+.. code-block:: bash
+
+   uv pip install "jax[cuda13]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+Then select GPU execution:
+
+.. code-block:: python
+
+   import amsa
+   amsa.init(use="gpu")
+
+**JAX-specific notes:**
+
+- JAX uses functional array updates (``.at[].set()``) instead of in-place mutations
+- The JAX backend currently supports dense storage only; CSR support is planned for a future release
+- JAX may truncate float64 to float32 by default. Enable float64 with the ``JAX_ENABLE_X64=1`` environment variable or ``jax.config.update("jax_enable_x64", True)`` in your code
+- JIT compilation can be enabled on individual backend functions for performance, but is not enabled by default to maintain debugging tractability
+
 Important notes
 ---------------
 
