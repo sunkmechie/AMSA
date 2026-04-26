@@ -118,14 +118,62 @@ def execute_sequence_ir(
     This is the IR-native counterpart to the Python-level composition in
     ``ops.py``.  Backends that support fusion may compile the entire
     sequence into a single kernel; the NumPy backend executes faithfully
-    step-by-step.
+    step-by-step, with optional fusion support for common patterns.
     """
     env: dict[str, Any] = dict(inputs)
 
-    for step in ir.steps:
+    i = 0
+    while i < len(ir.steps):
+        step = ir.steps[i]
         operands = tuple(env[name] for name in step.operands)
         result: Any
 
+        # Check for fusion opportunities
+        if step.fusion == "scale_product" and i + 1 < len(ir.steps):
+            # Fuse scale + binary_product
+            next_step = ir.steps[i + 1]
+            if next_step.kind == "binary_product":
+                meta = step.metadata or {}
+                factor = meta.get("factor", 1.0)
+                lhs = cast(MVArray, operands[0])
+                # Get the RHS from the next step's operands
+                rhs_name = next_step.operands[1]
+                rhs = env[rhs_name]
+                assert isinstance(next_step.ir, ProductIR)
+                result = _execute_fused_scale_product(lhs, rhs, next_step.ir, factor)
+                env[next_step.output] = result
+                i += 2  # Skip both steps
+                continue
+
+        if step.fusion == "unary_product" and i + 1 < len(ir.steps):
+            # Fuse unary + binary_product
+            next_step = ir.steps[i + 1]
+            if next_step.kind == "binary_product":
+                assert isinstance(step.ir, UnaryIR)
+                assert isinstance(next_step.ir, ProductIR)
+                mv = cast(MVArray, operands[0])
+                rhs_name = next_step.operands[1]
+                rhs = env[rhs_name]
+                result = _execute_fused_unary_product(mv, rhs, step.ir, next_step.ir)
+                env[next_step.output] = result
+                i += 2  # Skip both steps
+                continue
+
+        if step.fusion == "elementwise_chain" and i + 1 < len(ir.steps):
+            # Fuse elementwise chain
+            next_step = ir.steps[i + 1]
+            if next_step.kind == "elementwise":
+                meta1 = step.metadata or {}
+                meta2 = next_step.metadata or {}
+                result = _execute_fused_elementwise_chain(
+                    tuple(np.asarray(operand) for operand in operands),
+                    (meta1, meta2),
+                )
+                env[next_step.output] = result
+                i += 2  # Skip both steps
+                continue
+
+        # Non-fused execution path
         if step.kind == "binary_product":
             assert isinstance(step.ir, ProductIR)
             result = execute_product_ir(
@@ -446,6 +494,122 @@ def _extract_scalar(mv: MVArray) -> MVArray:
     else:
         value = value[..., np.newaxis]
     return MVArray(algebra=mv.algebra, layout=scalar_layout, values=value)
+
+
+def _execute_fused_scale_product(
+    lhs: MVArray,
+    rhs: MVArray,
+    ir: ProductIR,
+    factor: float,
+) -> MVArray:
+    """Execute fused scale + binary_product in a single pass.
+
+    This avoids an intermediate allocation by scaling the LHS coefficients
+    during the product computation.
+    """
+    batch_shape = np.broadcast_shapes(lhs.batch_shape, rhs.batch_shape)
+
+    # Gather the minimal set of columns from each operand.
+    lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in ir.terms))
+    rhs_columns = tuple(dict.fromkeys(term.rhs_col for term in ir.terms))
+    lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)
+    rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
+    lhs_col_index = {col: i for i, col in enumerate(lhs_columns)}
+    rhs_col_index = {col: i for i, col in enumerate(rhs_columns)}
+
+    layout = output_layout_from_product_ir(ir, lhs.algebra)
+    dtype = np.result_type(lhs.dtype, rhs.dtype)
+    result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
+
+    # Apply scale factor during accumulation
+    for term in ir.terms:
+        result[..., term.out_col] += (
+            term.coefficient
+            * factor
+            * lhs_values[..., lhs_col_index[term.lhs_col]]
+            * rhs_values[..., rhs_col_index[term.rhs_col]]
+        )
+
+    return MVArray(algebra=lhs.algebra, layout=layout, values=result)
+
+
+def _execute_fused_unary_product(
+    mv: MVArray,
+    rhs: MVArray,
+    unary_ir: UnaryIR,
+    product_ir: ProductIR,
+) -> MVArray:
+    """Execute fused unary + binary_product in a single pass.
+
+    This applies the unary transformation (weights/permutation) during
+    the product computation to avoid an intermediate allocation.
+    """
+    batch_shape = np.broadcast_shapes(mv.batch_shape, rhs.batch_shape)
+
+    # Gather columns for RHS
+    rhs_columns = tuple(dict.fromkeys(term.rhs_col for term in product_ir.terms))
+    rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
+    rhs_col_index = {col: i for i, col in enumerate(rhs_columns)}
+
+    # For LHS, we need to apply unary transformation
+    if unary_ir.is_permutation:
+        assert unary_ir.permutation is not None
+        # Gather columns from permuted sources
+        lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in product_ir.terms))
+        # Map LHS columns through permutation
+        permuted_columns = tuple(unary_ir.permutation[col] for col in lhs_columns)
+        lhs_values = gather_storage_columns(mv.storage, permuted_columns, batch_shape=batch_shape)
+        # Apply weights
+        weights = np.asarray(unary_ir.weights, dtype=mv.dtype)
+        lhs_values = lhs_values * weights[np.array(lhs_columns)]
+    else:
+        # Pure weight case
+        lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in product_ir.terms))
+        lhs_values = gather_storage_columns(mv.storage, lhs_columns, batch_shape=batch_shape)
+        weights = np.asarray(unary_ir.weights, dtype=mv.dtype)
+        lhs_values = lhs_values * weights[np.array(lhs_columns)]
+
+    lhs_col_index = {col: i for i, col in enumerate(lhs_columns)}
+
+    layout = output_layout_from_product_ir(product_ir, mv.algebra)
+    dtype = np.result_type(mv.dtype, rhs.dtype)
+    result = np.zeros(batch_shape + (layout.size,), dtype=dtype)
+
+    for term in product_ir.terms:
+        result[..., term.out_col] += (
+            term.coefficient
+            * lhs_values[..., lhs_col_index[term.lhs_col]]
+            * rhs_values[..., rhs_col_index[term.rhs_col]]
+        )
+
+    return MVArray(algebra=mv.algebra, layout=layout, values=result)
+
+
+def _execute_fused_elementwise_chain(
+    operands: tuple[np.ndarray, ...],
+    metadatas: tuple[dict[str, object], ...],
+) -> np.ndarray:
+    """Execute fused elementwise chain in a single pass.
+
+    This combines multiple elementwise operations to avoid intermediate arrays.
+    """
+    result = operands[0]
+
+    for meta in metadatas:
+        func = meta.get("function", "identity")
+        if func == "abs":
+            result = np.abs(result)
+        elif func == "sqrt":
+            result = np.sqrt(result)
+        elif func == "sqrt_abs":
+            result = np.sqrt(np.abs(result))
+        elif func == "reciprocal":
+            result = 1.0 / result
+        else:
+            # Fallback to identity for unknown functions
+            pass
+
+    return result
 
 
 def _scalar_mv_from_array(reference: MVArray, values: np.ndarray) -> MVArray:
