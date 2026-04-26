@@ -6,10 +6,7 @@ import timeit
 from collections.abc import Callable
 from dataclasses import dataclass
 
-import numpy as np
-
-from amsa import Algebra, geometric_product, reverse, dual, poincare_dual, normalize
-from amsa.storage import to_csr_storage, to_dense_storage
+from amsa import Algebra, dual, geometric_product, normalize, poincare_dual, reverse
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +36,9 @@ def build_cases() -> list[BenchCase]:
     pga3d = Algebra.pga3d()
 
     # Dense multivectors
-    vga3d_dense = vga3d.multivector({"e1": 1.0, "e2": 2.0, "e3": 3.0, "e12": 0.5, "e23": 0.5, "e13": 0.5})
+    vga3d_dense = vga3d.multivector(
+        {"e1": 1.0, "e2": 2.0, "e3": 3.0, "e12": 0.5, "e23": 0.5, "e13": 0.5}
+    )
     pga3d_dense = pga3d.multivector({"e1": 1.0, "e2": 2.0, "e3": 3.0, "e0": 4.0})
 
     # CSR multivectors (sparse support)

@@ -36,11 +36,13 @@ from amsa.storage import (
 
 
 def test_dense_to_csr_preserves_coefficients() -> None:
-    """Dense to CSR conversion must preserve all coefficient values."""
-    dense = DenseStorage.from_array(np.array([[1.0, 0.0, 3.0], [0.0, 5.0, 0.0]]))
+    """Converting dense to CSR must preserve all coefficient values."""
+    dense = DenseStorage.from_array(
+        np.array([[1.0, 0.0, -2.0], [0.0, 0.0, 0.0], [3.5, 0.0, 0.0], [0.0, 4.0, 5.0]])
+    )
     csr = to_csr_storage(dense)
-    recovered = to_dense_storage(csr)
-    np.testing.assert_array_equal(recovered.array, dense.array)
+    
+    np.testing.assert_array_equal(csr.as_dense(), dense.as_dense())
 
 
 def test_csr_to_dense_preserves_coefficients() -> None:
@@ -54,7 +56,7 @@ def test_csr_to_dense_preserves_coefficients() -> None:
     )
     dense = to_dense_storage(csr)
     expected = np.array([[1.0, 0.0, 3.0], [0.0, 5.0, 0.0]])
-    np.testing.assert_array_equal(dense.array, expected)
+    np.testing.assert_array_equal(dense.as_dense(), expected)
 
 
 def test_csr_to_csr_is_copy() -> None:
@@ -67,9 +69,7 @@ def test_csr_to_csr_is_copy() -> None:
         width=2,
     )
     csr_copy = to_csr_storage(csr)
-    np.testing.assert_array_equal(csr_copy.data, csr.data)
-    np.testing.assert_array_equal(csr_copy.indices, csr.indices)
-    np.testing.assert_array_equal(csr_copy.indptr, csr.indptr)
+    np.testing.assert_array_equal(csr_copy.as_dense(), csr.as_dense())
     assert csr_copy is not csr
 
 
@@ -77,7 +77,7 @@ def test_dense_to_dense_is_copy() -> None:
     """Dense to dense conversion must return a deep copy."""
     dense = DenseStorage.from_array(np.array([1.0, 2.0, 3.0]))
     dense_copy = to_dense_storage(dense)
-    np.testing.assert_array_equal(dense_copy.array, dense.array)
+    np.testing.assert_array_equal(dense_copy.as_dense(), dense.as_dense())
     assert dense_copy is not dense
 
 
@@ -86,7 +86,7 @@ def test_scale_dense_storage() -> None:
     dense = DenseStorage.from_array(np.array([[1.0, 2.0], [3.0, 4.0]]))
     scaled = scale_storage(dense, 2.0)
     expected = np.array([[2.0, 4.0], [6.0, 8.0]])
-    np.testing.assert_array_equal(scaled.array, expected)
+    np.testing.assert_array_equal(scaled.as_dense(), expected)
 
 
 def test_scale_csr_storage() -> None:
@@ -99,8 +99,8 @@ def test_scale_csr_storage() -> None:
         width=3,
     )
     scaled = scale_storage(csr, 2.0)
-    expected_data = np.array([2.0, 4.0, 6.0])
-    np.testing.assert_array_equal(scaled.data, expected_data)
+    expected = np.array([[2.0, 4.0, 0.0], [0.0, 0.0, 6.0]])
+    np.testing.assert_array_equal(scaled.as_dense(), expected)
 
 
 def test_scale_by_zero_returns_zero_csr() -> None:
@@ -113,8 +113,8 @@ def test_scale_by_zero_returns_zero_csr() -> None:
         width=2,
     )
     scaled = scale_storage(csr, 0.0)
-    assert scaled.data.size == 0
-    assert scaled.indices.size == 0
+    expected = np.array([0.0, 0.0])
+    np.testing.assert_array_equal(scaled.as_dense(), expected)
     assert scaled.width == 2
 
 
@@ -123,7 +123,7 @@ def test_reweight_dense_storage() -> None:
     dense = DenseStorage.from_array(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
     weighted = reweight_storage(dense, np.array([2.0, 3.0, 4.0]))
     expected = np.array([[2.0, 6.0, 12.0], [8.0, 15.0, 24.0]])
-    np.testing.assert_array_equal(weighted.array, expected)
+    np.testing.assert_array_equal(weighted.as_dense(), expected)
 
 
 def test_reweight_csr_storage() -> None:
@@ -136,8 +136,8 @@ def test_reweight_csr_storage() -> None:
         width=3,
     )
     weighted = reweight_storage(csr, np.array([2.0, 3.0, 4.0]))
-    expected_data = np.array([2.0, 12.0, 15.0])  # 1*2, 3*4, 5*3
-    np.testing.assert_array_equal(weighted.data, expected_data)
+    expected = np.array([[2.0, 0.0, 12.0], [0.0, 15.0, 0.0]])  # 1*2, 3*4, 5*3
+    np.testing.assert_array_equal(weighted.as_dense(), expected)
 
 
 def test_row_scale_dense_storage() -> None:
@@ -145,7 +145,7 @@ def test_row_scale_dense_storage() -> None:
     dense = DenseStorage.from_array(np.array([[1.0, 2.0], [3.0, 4.0]]))
     scaled = row_scale_storage(dense, np.array([2.0, 3.0]))
     expected = np.array([[2.0, 4.0], [9.0, 12.0]])
-    np.testing.assert_array_equal(scaled.array, expected)
+    np.testing.assert_array_equal(scaled.as_dense(), expected)
 
 
 def test_row_scale_csr_storage() -> None:
@@ -158,8 +158,8 @@ def test_row_scale_csr_storage() -> None:
         width=2,
     )
     scaled = row_scale_storage(csr, np.array([2.0, 3.0]))
-    expected_data = np.array([2.0, 4.0, 9.0, 12.0])
-    np.testing.assert_array_equal(scaled.data, expected_data)
+    expected = np.array([[2.0, 4.0], [9.0, 12.0]])
+    np.testing.assert_array_equal(scaled.as_dense(), expected)
 
 
 def test_project_dense_storage() -> None:
@@ -167,7 +167,7 @@ def test_project_dense_storage() -> None:
     dense = DenseStorage.from_array(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]))
     projected = project_storage(dense, (2, 0))  # Select columns 2, 0
     expected = np.array([[3.0, 1.0], [6.0, 4.0]])
-    np.testing.assert_array_equal(projected.array, expected)
+    np.testing.assert_array_equal(projected.as_dense(), expected)
 
 
 def test_project_dense_storage_with_none() -> None:
@@ -175,7 +175,7 @@ def test_project_dense_storage_with_none() -> None:
     dense = DenseStorage.from_array(np.array([[1.0, 2.0, 3.0]]))
     projected = project_storage(dense, (0, None, 2))  # Select col 0, zero, col 2
     expected = np.array([[1.0, 0.0, 3.0]])
-    np.testing.assert_array_equal(projected.array, expected)
+    np.testing.assert_array_equal(projected.as_dense(), expected)
 
 
 def test_project_csr_storage() -> None:
@@ -189,8 +189,8 @@ def test_project_csr_storage() -> None:
     )
     projected = project_storage(csr, (2, 0))  # Select columns 2, 0
     assert projected.width == 2
-    expected_data = np.array([3.0, 1.0])
-    np.testing.assert_array_equal(projected.data, expected_data)
+    expected = np.array([[3.0, 1.0], [0.0, 0.0]])
+    np.testing.assert_array_equal(projected.as_dense(), expected)
 
 
 def test_project_csr_storage_with_none() -> None:
@@ -204,10 +204,8 @@ def test_project_csr_storage_with_none() -> None:
     )
     projected = project_storage(csr, (0, None, 2))
     assert projected.width == 3
-    expected_data = np.array([1.0, 3.0])
-    expected_indices = np.array([0, 2])
-    np.testing.assert_array_equal(projected.data, expected_data)
-    np.testing.assert_array_equal(projected.indices, expected_indices)
+    expected = np.array([1.0, 0.0, 3.0])
+    np.testing.assert_array_equal(projected.as_dense(), expected)
 
 
 def test_storage_component_dense() -> None:
