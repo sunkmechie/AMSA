@@ -36,8 +36,93 @@ def _normalize_batch_shape(batch_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(normalized)
 
 
+def _validate_csr_arrays(
+    data_array: NDArray[Any],
+    index_array: NDArray[Any],
+    indptr_array: NDArray[Any],
+    width_value: int,
+) -> None:
+    """Validate basic CSR array structure and dimensions."""
+    if data_array.ndim != 1:
+        raise ValueError("CSR data must be a one-dimensional array.")
+    if index_array.ndim != 1:
+        raise ValueError("CSR indices must be a one-dimensional array.")
+    if indptr_array.ndim != 1:
+        raise ValueError("CSR indptr must be a one-dimensional array.")
+    if data_array.shape != index_array.shape:
+        raise ValueError("CSR data and indices must have the same shape.")
+    if indptr_array.size == 0:
+        raise ValueError("CSR indptr must include at least the starting offset.")
+    if width_value < 0:
+        raise ValueError("CSR width must be non-negative.")
+
+
+def _validate_csr_indptr(
+    indptr_array: NDArray[Any],
+    row_count: int,
+    data_size: int,
+) -> None:
+    """Validate CSR indptr structure and consistency with data."""
+    if indptr_array.size != row_count + 1:
+        raise ValueError("CSR indptr length must match flattened row_count + 1.")
+    if int(indptr_array[0]) != 0:
+        raise ValueError("CSR indptr must start at 0.")
+    if np.any(indptr_array[1:] < indptr_array[:-1]):
+        raise ValueError("CSR indptr must be nondecreasing.")
+    if int(indptr_array[-1]) != data_size:
+        raise ValueError("CSR indptr must end at the number of stored values.")
+
+
+def _validate_csr_indices(
+    index_array: NDArray[Any],
+    width_value: int,
+    data_size: int,
+) -> None:
+    """Validate CSR index bounds."""
+    if data_size and (np.any(index_array < 0) or np.any(index_array >= width_value)):
+        raise ValueError("CSR indices must be between 0 and width - 1.")
+
+
+def _validate_csr_row_ordering(
+    index_array: NDArray[Any],
+    indptr_array: NDArray[Any],
+    row_count: int,
+) -> None:
+    """Validate that indices within each row are strictly increasing."""
+    for row in range(row_count):
+        start = int(indptr_array[row])
+        stop = int(indptr_array[row + 1])
+        row_indices = index_array[start:stop]
+        if np.any(row_indices[1:] <= row_indices[:-1]):
+            raise ValueError("CSR row indices must be strictly increasing.")
+
+
 class MVStorage(Protocol):
-    """Structural interface implemented by concrete storage backends."""
+    """Structural interface implemented by concrete storage backends.
+
+    Storage backends represent coefficient arrays for multivector batches.
+    They are backend-agnostic descriptors that separate coefficient
+    representation from algebraic semantics.
+
+    Contract for storage implementations:
+    - ``kind``: Storage backend identifier ("dense" or "csr").
+    - ``batch_shape``: Shape of the multivector batch (all dimensions except the last).
+    - ``dtype``: NumPy dtype of coefficient values.
+    - ``width``: Number of coefficient slots (last dimension size).
+    - ``as_dense()``: Materialize as a dense array with shape (batch_shape + (width,)).
+    - ``copy()``: Return a deep copy of the storage.
+
+    Storage backends must preserve:
+    - Coefficient values across conversions
+    - Batch broadcasting semantics
+    - Dtype promotion rules
+    - Zero-support behavior (empty layouts return zeros on component access)
+
+    Storage backends are NOT responsible for:
+    - Algebraic blade identity or ordering (handled by layouts)
+    - Product planning or execution (handled by plans/IR/backends)
+    - Geometric interpretation (handled by algebra/ops layers)
+    """
 
     @property
     def kind(self) -> StorageKind: ...
@@ -141,37 +226,12 @@ class CSRStorage:
         normalized_batch_shape = _normalize_batch_shape(batch_shape)
         width_value = index(width)
 
-        if width_value < 0:
-            raise ValueError("CSR width must be non-negative.")
-        if data_array.ndim != 1:
-            raise ValueError("CSR data must be a one-dimensional array.")
-        if index_array.ndim != 1:
-            raise ValueError("CSR indices must be a one-dimensional array.")
-        if indptr_array.ndim != 1:
-            raise ValueError("CSR indptr must be a one-dimensional array.")
-        if data_array.shape != index_array.shape:
-            raise ValueError("CSR data and indices must have the same shape.")
-        if indptr_array.size == 0:
-            raise ValueError("CSR indptr must include at least the starting offset.")
+        _validate_csr_arrays(data_array, index_array, indptr_array, width_value)
 
         row_count = int(prod(normalized_batch_shape))
-        if indptr_array.size != row_count + 1:
-            raise ValueError("CSR indptr length must match flattened row_count + 1.")
-        if int(indptr_array[0]) != 0:
-            raise ValueError("CSR indptr must start at 0.")
-        if np.any(indptr_array[1:] < indptr_array[:-1]):
-            raise ValueError("CSR indptr must be nondecreasing.")
-        if int(indptr_array[-1]) != data_array.size:
-            raise ValueError("CSR indptr must end at the number of stored values.")
-        if data_array.size and (np.any(index_array < 0) or np.any(index_array >= width_value)):
-            raise ValueError("CSR indices must be between 0 and width - 1.")
-
-        for row in range(row_count):
-            start = int(indptr_array[row])
-            stop = int(indptr_array[row + 1])
-            row_indices = index_array[start:stop]
-            if np.any(row_indices[1:] <= row_indices[:-1]):
-                raise ValueError("CSR row indices must be strictly increasing.")
+        _validate_csr_indptr(indptr_array, row_count, data_array.size)
+        _validate_csr_indices(index_array, width_value, data_array.size)
+        _validate_csr_row_ordering(index_array, indptr_array, row_count)
 
         object.__setattr__(self, "data", data_array)
         object.__setattr__(self, "indices", index_array)
