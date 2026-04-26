@@ -91,6 +91,22 @@ By default, fresh construction uses dense storage. You can opt into CSR explicit
 
    print(mv.storage_kind)  # csr
 
+Execution backends
+------------------
+
+AMSA uses CPU (NumPy) execution by default. You can select the device:
+
+.. code-block:: python
+
+   import amsa
+   
+   amsa.init(use="cpu")  # NumPy backend (default)
+   # amsa.init(use="gpu")  # JAX backend (requires amsa-ga[jax])
+   
+   print(amsa.get_device())  # "cpu"
+
+See :doc:`backends` for more details on execution backends.
+
 Visualization
 -------------
 

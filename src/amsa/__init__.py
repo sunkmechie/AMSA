@@ -16,7 +16,7 @@ from amsa.algebra import Algebra
 
 # Register the NumPy IR backend as the default execution engine.
 from amsa.backends.numpy import NumpyBackend
-from amsa.ir import register_backend
+from amsa.ir import get_device, init, register_backend
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.ops import (
@@ -64,12 +64,15 @@ from amsa.ops import (
 from amsa.specs import AlgebraSpec, grade_of_blade, pga2d, pga3d, vga, vga2d, vga3d
 
 register_backend("numpy", NumpyBackend())
+init(use="cpu")
 
 __all__ = [
     "Algebra",
     "AlgebraSpec",
     "MVArray",
     "MVLayout",
+    "get_device",
+    "init",
     "add",
     "anticommutator_product",
     "bulk",

@@ -13,6 +13,7 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    algebra
    layouts
    storage
+   backends
    operators
    viz
    examples
