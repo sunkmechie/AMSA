@@ -64,6 +64,14 @@ from amsa.ops import (
 from amsa.specs import AlgebraSpec, grade_of_blade, pga2d, pga3d, vga, vga2d, vga3d
 
 register_backend("numpy", NumpyBackend())
+
+# Register JAX backend if available
+try:
+    from amsa.backends.jax import JAXBackend
+    register_backend("jax", JAXBackend())
+except ImportError:
+    pass  # JAX not installed
+
 init(use="cpu")
 
 __all__ = [
