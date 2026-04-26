@@ -43,6 +43,8 @@ uv pip install amsa-ga[viz]==0.1.0b0
 - `src/amsa/mv.py`: storage-backed multivector array type
 - `src/amsa/plans.py`: cached operator plans
 - `src/amsa/reference.py`: reference execution of plans
+- `src/amsa/ir.py`: IR definitions and backend registry
+- `src/amsa/backends/`: execution backend implementations
 - `src/amsa/ops.py`: public operator layer
 - `src/amsa/algebra.py`: user-facing algebra handle and constructors
 - `src/amsa/viz/`: visualization adapters, neutral primitives, and optional backends
@@ -89,6 +91,25 @@ s = alg.scalar(1.0)
 
 Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
 
+## Execution Backends
+
+AMSA supports pluggable execution backends for coefficient computation. Backends are selected by device type:
+
+```python
+import amsa
+
+# CPU execution (NumPy) - default
+amsa.init(use="cpu")
+
+# GPU execution (JAX) - requires amsa-ga[jax] extra
+# amsa.init(use="gpu")
+
+# Check current device
+print(amsa.get_device())  # "cpu"
+```
+
+See the documentation for details on execution backends.
+
 ## Documentation
 
 Full documentation is in `docs/` 
@@ -103,6 +124,7 @@ You can also browse the source directly:
 - `docs/algebra.rst` — `AlgebraSpec`, presets, and blade products
 - `docs/layouts.rst` — `MVLayout` and sparse support
 - `docs/storage.rst` — dense and CSR backends
+- `docs/backends.rst` — execution backend selection (CPU/GPU)
 - `docs/operators.rst` — product semantics, duality, and normalization
 - `docs/viz.rst` — visualization adapters, primitives, and optional matplotlib/VisPy backends
 - `docs/examples.rst` — index of runnable example scripts
