@@ -10,7 +10,6 @@ dist/
 *.egg-info/
 benchmarks/.results/
 benchmarks/results/
-plan.md
 plans.md
 .codex
 tempo/

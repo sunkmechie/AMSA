@@ -72,19 +72,183 @@ def row_scale(mv: MVArray, factors: Any) -> MVArray:
     backend = get_backend()
     ir = SequenceIR(
         name="row_scale",
-        inputs=("input",),
+        inputs=("input", "scales"),
         steps=(
             IRStep(
                 kind="row_scale",
-                operands=("input",),
+                operands=("input", "scales"),
                 ir=None,
                 output="output",
-                metadata={"scales": factors},
             ),
         ),
         result="output",
     )
-    return cast(MVArray, backend.execute_sequence({"input": mv}, ir))
+    return cast(MVArray, backend.execute_sequence({"input": mv, "scales": factors}, ir))
+
+
+def _execute_sequence_value(inputs: dict[str, Any], ir: SequenceIR) -> Any:
+    return get_backend().execute_sequence(inputs, ir)
+
+
+def _component_values(mv: MVArray, blade: int) -> np.ndarray:
+    ir = SequenceIR(
+        name="component",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="component",
+                operands=("input",),
+                ir=None,
+                output="values",
+                metadata={"blade": blade},
+            ),
+        ),
+        result="values",
+    )
+    return cast(np.ndarray, _execute_sequence_value({"input": mv}, ir))
+
+
+def _elementwise_values(function: str, values: Any) -> np.ndarray:
+    ir = SequenceIR(
+        name=function,
+        inputs=("values",),
+        steps=(
+            IRStep(
+                kind="elementwise",
+                operands=("values",),
+                ir=None,
+                output="result",
+                metadata={"function": function},
+            ),
+        ),
+        result="result",
+    )
+    return cast(np.ndarray, _execute_sequence_value({"values": values}, ir))
+
+
+def _predicate(function: str, *values: Any) -> bool:
+    inputs = tuple(f"value_{index}" for index in range(len(values)))
+    ir = SequenceIR(
+        name=function,
+        inputs=inputs,
+        steps=(
+            IRStep(
+                kind="predicate",
+                operands=inputs,
+                ir=None,
+                output="result",
+                metadata={"function": function},
+            ),
+        ),
+        result="result",
+    )
+    return cast(bool, _execute_sequence_value(dict(zip(inputs, values, strict=True)), ir))
+
+
+def _exp_coefficients(scalar_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    ir = SequenceIR(
+        name="exp_coefficients",
+        inputs=("scalar_values",),
+        steps=(
+            IRStep(
+                kind="exp_coefficients",
+                operands=("scalar_values",),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+    return cast(
+        tuple[np.ndarray, np.ndarray],
+        _execute_sequence_value({"scalar_values": scalar_values}, ir),
+    )
+
+
+def _motor_exp_coefficients(
+    scalar_part: np.ndarray,
+    pseudoscalar_part: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ir = SequenceIR(
+        name="motor_exp_coefficients",
+        inputs=("scalar_part", "pseudoscalar_part"),
+        steps=(
+            IRStep(
+                kind="motor_exp_coefficients",
+                operands=("scalar_part", "pseudoscalar_part"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+    return cast(
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        _execute_sequence_value(
+            {
+                "scalar_part": scalar_part,
+                "pseudoscalar_part": pseudoscalar_part,
+            },
+            ir,
+        ),
+    )
+
+
+def _simple_bivector_log_coefficients(
+    scalar_values: np.ndarray,
+    square_values: np.ndarray,
+) -> np.ndarray:
+    ir = SequenceIR(
+        name="simple_bivector_log_coefficients",
+        inputs=("scalar_values", "square_values"),
+        steps=(
+            IRStep(
+                kind="simple_bivector_log_coefficients",
+                operands=("scalar_values", "square_values"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+    return cast(
+        np.ndarray,
+        _execute_sequence_value(
+            {"scalar_values": scalar_values, "square_values": square_values},
+            ir,
+        ),
+    )
+
+
+def _pga3d_motor_log_coefficients(
+    scalar_values: np.ndarray,
+    pseudoscalar_values: np.ndarray,
+    sine_values: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    ir = SequenceIR(
+        name="pga3d_motor_log_coefficients",
+        inputs=("scalar_values", "pseudoscalar_values", "sine_values"),
+        steps=(
+            IRStep(
+                kind="pga3d_motor_log_coefficients",
+                operands=("scalar_values", "pseudoscalar_values", "sine_values"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+    return cast(
+        tuple[np.ndarray, np.ndarray],
+        _execute_sequence_value(
+            {
+                "scalar_values": scalar_values,
+                "pseudoscalar_values": pseudoscalar_values,
+                "sine_values": sine_values,
+            },
+            ir,
+        ),
+    )
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray | Number) -> tuple[MVArray, MVLayout]:
@@ -271,25 +435,56 @@ def norm_squared(mv: MVArray) -> MVArray:
 
 
 def _scalar_mv(mv: MVArray, values: np.ndarray) -> MVArray:
-    dtype = np.result_type(mv.dtype, values.dtype)
-    scalar_layout = MVLayout.grade(mv.algebra, 0)
-    payload = np.asarray(values, dtype=dtype)
-    if payload.shape == ():
-        payload = np.asarray([payload.item()], dtype=dtype)
-    else:
-        payload = payload[..., np.newaxis]
-    return MVArray(algebra=mv.algebra, layout=scalar_layout, values=payload)
+    ir = SequenceIR(
+        name="scalar_mv_from_array",
+        inputs=("reference", "values"),
+        steps=(
+            IRStep(
+                kind="scalar_mv_from_array",
+                operands=("reference", "values"),
+                ir=None,
+                output="result",
+            ),
+        ),
+        result="result",
+    )
+    return cast(MVArray, _execute_sequence_value({"reference": mv, "values": values}, ir))
 
 
 def _single_blade_mv(mv: MVArray, blade: int, values: np.ndarray) -> MVArray:
-    dtype = np.result_type(mv.dtype, values.dtype)
-    layout = MVLayout.sparse_pattern(mv.algebra, (blade,), name=mv.algebra.blade_name(blade))
-    payload = np.asarray(values, dtype=dtype)
-    if payload.shape == ():
-        payload = np.asarray([payload.item()], dtype=dtype)
-    else:
-        payload = payload[..., np.newaxis]
-    return MVArray(algebra=mv.algebra, layout=layout, values=payload)
+    ir = SequenceIR(
+        name="single_blade_mv_from_array",
+        inputs=("reference", "values"),
+        steps=(
+            IRStep(
+                kind="single_blade_mv_from_array",
+                operands=("reference", "values"),
+                ir=None,
+                output="result",
+                metadata={"blade": blade},
+            ),
+        ),
+        result="result",
+    )
+    return cast(MVArray, _execute_sequence_value({"reference": mv, "values": values}, ir))
+
+
+def _unit_blade_mv(mv: MVArray, blade: int) -> MVArray:
+    ir = SequenceIR(
+        name="single_blade_mv",
+        inputs=("reference",),
+        steps=(
+            IRStep(
+                kind="single_blade_mv",
+                operands=("reference",),
+                ir=None,
+                output="result",
+                metadata={"blade": blade},
+            ),
+        ),
+        result="result",
+    )
+    return cast(MVArray, _execute_sequence_value({"reference": mv}, ir))
 
 
 def _row_scale_mv(mv: MVArray, scales: np.ndarray) -> MVArray:
@@ -299,18 +494,16 @@ def _row_scale_mv(mv: MVArray, scales: np.ndarray) -> MVArray:
 def _require_study_output(mv: MVArray, *, name: str) -> tuple[np.ndarray, np.ndarray]:
     pseudoscalar_blade = mv.algebra.pseudoscalar_blade
     resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_value = np.asarray(mv.component(0), dtype=resolved_dtype)
-    pseudoscalar_value = np.asarray(mv.component(pseudoscalar_blade), dtype=resolved_dtype)
+    scalar_value = np.asarray(_component_values(mv, 0), dtype=resolved_dtype)
+    pseudoscalar_value = np.asarray(
+        _component_values(mv, pseudoscalar_blade), dtype=resolved_dtype
+    )
 
-    if mv.layout.size == 0:
-        zeros = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-        return zeros, zeros
-
-    for index, blade in enumerate(mv.layout.blades):
+    for blade in mv.layout.blades:
         if blade in (0, pseudoscalar_blade):
             continue
-        component = np.asarray(mv.values[..., index], dtype=resolved_dtype)
-        if np.any(~np.isclose(component, 0.0)):
+        component = np.asarray(_component_values(mv, blade), dtype=resolved_dtype)
+        if not _predicate("allclose_zero", component):
             raise ValueError(f"{name} must be scalar + pseudoscalar valued for this operation.")
 
     return scalar_value, pseudoscalar_value
@@ -322,7 +515,7 @@ def _study_value_mv(
     pseudoscalar_values: np.ndarray,
 ) -> MVArray:
     result = _scalar_mv(mv, scalar_values)
-    if np.any(~np.isclose(pseudoscalar_values, 0.0)):
+    if not _predicate("allclose_zero", pseudoscalar_values):
         result = result + _single_blade_mv(mv, mv.algebra.pseudoscalar_blade, pseudoscalar_values)
     return result
 
@@ -333,7 +526,7 @@ def _study_times_mv(
     pseudoscalar_values: np.ndarray,
 ) -> MVArray:
     result = _row_scale_mv(mv, scalar_values)
-    if np.any(~np.isclose(pseudoscalar_values, 0.0)):
+    if not _predicate("allclose_zero", pseudoscalar_values):
         pseudoscalar = _single_blade_mv(mv, mv.algebra.pseudoscalar_blade, pseudoscalar_values)
         result = result + geometric_product(pseudoscalar, mv)
     return result
@@ -342,15 +535,15 @@ def _study_times_mv(
 def norm(mv: MVArray) -> MVArray:
     normsq = norm_squared(mv)
     normsq_values = _require_scalar_output(normsq, name="norm_squared(mv)")
-    magnitudes = np.sqrt(np.abs(normsq_values))
+    magnitudes = _elementwise_values("sqrt_abs", normsq_values)
     return _scalar_mv(mv, magnitudes)
 
 
 def normalize(mv: MVArray) -> MVArray:
     magnitudes = _require_scalar_output(norm(mv), name="norm(mv)")
-    if np.any(np.isclose(magnitudes, 0.0)):
+    if _predicate("any_close_zero", magnitudes):
         raise ValueError("normalize() is undefined for zero-magnitude multivectors.")
-    reciprocals = np.reciprocal(magnitudes)
+    reciprocals = _elementwise_values("reciprocal", magnitudes)
     return _row_scale_mv(mv, reciprocals)
 
 
@@ -362,46 +555,10 @@ def _motor_exp_from_bivector(mv: MVArray) -> MVArray:
 
     square = geometric_product(mv, mv)
     scalar_part, pseudoscalar_part = _require_study_output(square, name="mv * mv")
-    resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_part = np.asarray(scalar_part, dtype=resolved_dtype)
-    pseudoscalar_part = np.asarray(pseudoscalar_part, dtype=resolved_dtype)
-
-    scalar_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-    pseudo_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-    linear_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-    dual_linear_coeff = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-
-    zero_mask = np.isclose(scalar_part, 0.0)
-    circular_mask = scalar_part < 0.0
-    hyperbolic_mask = scalar_part > 0.0
-
-    if np.any(zero_mask):
-        scalar_coeff[zero_mask] = 1.0
-        linear_coeff[zero_mask] = 1.0
-        pseudo_coeff[zero_mask] = 0.5 * pseudoscalar_part[zero_mask]
-        dual_linear_coeff[zero_mask] = pseudoscalar_part[zero_mask] / 6.0
-
-    if np.any(circular_mask):
-        roots = np.sqrt(-scalar_part[circular_mask])
-        delta = -pseudoscalar_part[circular_mask] / (2.0 * roots)
-        sinc = np.sin(roots) / roots
-        dsinc = (roots * np.cos(roots) - np.sin(roots)) / (roots * roots)
-
-        scalar_coeff[circular_mask] = np.cos(roots)
-        pseudo_coeff[circular_mask] = -delta * np.sin(roots)
-        linear_coeff[circular_mask] = sinc
-        dual_linear_coeff[circular_mask] = delta * dsinc
-
-    if np.any(hyperbolic_mask):
-        roots = np.sqrt(scalar_part[hyperbolic_mask])
-        delta = pseudoscalar_part[hyperbolic_mask] / (2.0 * roots)
-        sinhc = np.sinh(roots) / roots
-        dsinhc = (roots * np.cosh(roots) - np.sinh(roots)) / (roots * roots)
-
-        scalar_coeff[hyperbolic_mask] = np.cosh(roots)
-        pseudo_coeff[hyperbolic_mask] = delta * np.sinh(roots)
-        linear_coeff[hyperbolic_mask] = sinhc
-        dual_linear_coeff[hyperbolic_mask] = delta * dsinhc
+    scalar_coeff, pseudo_coeff, linear_coeff, dual_linear_coeff = _motor_exp_coefficients(
+        scalar_part,
+        pseudoscalar_part,
+    )
 
     return _study_value_mv(mv, scalar_coeff, pseudo_coeff) + _study_times_mv(
         mv,
@@ -410,36 +567,25 @@ def _motor_exp_from_bivector(mv: MVArray) -> MVArray:
     )
 
 
+def _scalar_output_or_zero(mv: MVArray, *, name: str) -> np.ndarray:
+    if mv.layout.size == 0:
+        return np.asarray(
+            _component_values(mv, 0),
+            dtype=np.result_type(mv.dtype, np.float64),
+        )
+    return _require_scalar_output(mv, name=name)
+
+
 def exp(mv: MVArray) -> MVArray:
     square = geometric_product(mv, mv)
-    resolved_dtype = np.result_type(mv.dtype, np.float64)
-    if square.layout.size == 0:
-        scalar_values = np.zeros(mv.batch_shape, dtype=resolved_dtype)
-    else:
-        try:
-            square_values = _require_scalar_output(square, name="mv * mv")
-        except ValueError as exc:
-            if set(mv.grades) == {2} and mv.algebra.signature == (0, 1, 1, 1):
-                return _motor_exp_from_bivector(mv)
-            raise exc
-        scalar_values = np.asarray(square_values, dtype=resolved_dtype)
+    try:
+        scalar_values = _scalar_output_or_zero(square, name="mv * mv")
+    except ValueError as exc:
+        if set(mv.grades) == {2} and mv.algebra.signature == (0, 1, 1, 1):
+            return _motor_exp_from_bivector(mv)
+        raise exc
 
-    positive_mask = scalar_values > 0.0
-    negative_mask = scalar_values < 0.0
-    zero_mask = np.isclose(scalar_values, 0.0)
-
-    roots = np.sqrt(np.abs(scalar_values))
-    scalar_coefficients = np.empty_like(roots, dtype=resolved_dtype)
-    linear_coefficients = np.empty_like(roots, dtype=resolved_dtype)
-
-    scalar_coefficients[positive_mask] = np.cosh(roots[positive_mask])
-    linear_coefficients[positive_mask] = np.sinh(roots[positive_mask]) / roots[positive_mask]
-
-    scalar_coefficients[negative_mask] = np.cos(roots[negative_mask])
-    linear_coefficients[negative_mask] = np.sin(roots[negative_mask]) / roots[negative_mask]
-
-    scalar_coefficients[zero_mask] = 1.0
-    linear_coefficients[zero_mask] = 1.0
+    scalar_coefficients, linear_coefficients = _exp_coefficients(scalar_values)
 
     return _scalar_mv(mv, scalar_coefficients) + _row_scale_mv(mv, linear_coefficients)
 
@@ -451,8 +597,10 @@ def motor_exp(mv: MVArray) -> MVArray:
 def _simple_bivector_log(mv: MVArray) -> MVArray:
     scalar_values = _require_scalar_output(project_grades(mv, 0), name="grade_0(mv)")
     bivector = project_grades(mv, 2)
-    if bivector.layout.size == 0 or np.allclose(bivector.values, 0.0):
-        if np.any(scalar_values < 0.0):
+    if bivector.layout.size == 0 or _predicate(
+        "allclose_zero", _coefficient_magnitude_squared(bivector)
+    ):
+        if _predicate("any_negative", scalar_values):
             raise ValueError(
                 "motor_log() is undefined on the principal branch for negative scalars."
             )
@@ -460,27 +608,7 @@ def _simple_bivector_log(mv: MVArray) -> MVArray:
 
     square = geometric_product(bivector, bivector)
     square_values = _require_scalar_output(square, name="grade_2(mv) * grade_2(mv)")
-    resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_values = np.asarray(scalar_values, dtype=resolved_dtype)
-    square_values = np.asarray(square_values, dtype=resolved_dtype)
-    roots = np.sqrt(np.abs(square_values))
-    coefficients = np.zeros_like(roots, dtype=resolved_dtype)
-
-    circular_mask = square_values < 0.0
-    hyperbolic_mask = square_values > 0.0
-    null_mask = np.isclose(square_values, 0.0)
-
-    if np.any(circular_mask):
-        coefficients[circular_mask] = (
-            np.arctan2(roots[circular_mask], scalar_values[circular_mask]) / roots[circular_mask]
-        )
-    if np.any(hyperbolic_mask):
-        coefficients[hyperbolic_mask] = (
-            np.arctanh(roots[hyperbolic_mask] / scalar_values[hyperbolic_mask])
-            / roots[hyperbolic_mask]
-        )
-    if np.any(null_mask):
-        coefficients[null_mask] = np.reciprocal(scalar_values[null_mask])
+    coefficients = _simple_bivector_log_coefficients(scalar_values, square_values)
 
     return _row_scale_mv(bivector, coefficients)
 
@@ -492,10 +620,13 @@ def _motor_log_pga3d(mv: MVArray) -> MVArray:
             "motor_log() currently requires a PGA3d motor-like multivector with grades 0, 2, and 4."
         )
 
-    scalar_values = np.asarray(motor.component(0), dtype=np.result_type(motor.dtype, np.float64))
+    scalar_values = np.asarray(
+        _component_values(motor, 0),
+        dtype=np.result_type(motor.dtype, np.float64),
+    )
     pseudoscalar_blade = motor.algebra.pseudoscalar_blade
     pseudoscalar_values = np.asarray(
-        motor.component(pseudoscalar_blade),
+        _component_values(motor, pseudoscalar_blade),
         dtype=np.result_type(motor.dtype, np.float64),
     )
     bivector = project_grades(motor, 2)
@@ -503,53 +634,28 @@ def _motor_log_pga3d(mv: MVArray) -> MVArray:
     sine_values = _require_scalar_output(bulk_norm(moment_part), name="bulk_norm(grade_2(mv))")
     sine_values = np.asarray(sine_values, dtype=np.result_type(motor.dtype, np.float64))
 
-    if bivector.layout.size == 0 or np.allclose(bivector.values, 0.0):
+    if bivector.layout.size == 0 or _predicate(
+        "allclose_zero", _coefficient_magnitude_squared(bivector)
+    ):
         return MVArray.zeros(
             motor.algebra,
             MVLayout.grade(motor.algebra, 2),
             batch_shape=motor.batch_shape,
         )
 
-    zero_mask = np.isclose(sine_values, 0.0)
-    nonzero_mask = ~zero_mask
-
-    if np.any(zero_mask & ~np.isclose(scalar_values, 1.0)):
+    if _predicate("pga3d_motor_log_pi_singular", sine_values, scalar_values):
         raise ValueError("motor_log() does not support the pi-rotation singular branch yet.")
 
-    if np.all(zero_mask):
+    if _predicate("allclose_zero", sine_values):
         return bivector
 
-    phi_values = np.zeros_like(sine_values)
-    phi_values[nonzero_mask] = np.arctan2(sine_values[nonzero_mask], scalar_values[nonzero_mask])
-
-    distance_values = np.zeros_like(sine_values)
-    distance_values[nonzero_mask] = -pseudoscalar_values[nonzero_mask] / sine_values[nonzero_mask]
-
-    alpha_values = np.zeros_like(sine_values)
-    beta_values = np.zeros_like(sine_values)
-    alpha_values[nonzero_mask] = phi_values[nonzero_mask] / sine_values[nonzero_mask]
-    beta_values[nonzero_mask] = (
-        distance_values[nonzero_mask]
-        * (
-            1.0
-            - (
-                phi_values[nonzero_mask]
-                * scalar_values[nonzero_mask]
-                / sine_values[nonzero_mask]
-            )
-        )
-        / sine_values[nonzero_mask]
-    )
-
-    pseudoscalar_values = np.ones(
-        motor.batch_shape if motor.batch_shape else (),
-        dtype=np.result_type(motor.dtype, np.float64),
-    )
-    pseudoscalar = _single_blade_mv(
-        motor,
-        pseudoscalar_blade,
+    alpha_values, beta_values = _pga3d_motor_log_coefficients(
+        scalar_values,
         pseudoscalar_values,
+        sine_values,
     )
+
+    pseudoscalar = _unit_blade_mv(motor, pseudoscalar_blade)
     pseudoscalar_times_bivector = project_grades(geometric_product(pseudoscalar, bivector), 2)
 
     return _row_scale_mv(bivector, alpha_values) + _row_scale_mv(
@@ -569,21 +675,30 @@ def motor_log(mv: MVArray) -> MVArray:
 def bulk_norm_squared(mv: MVArray) -> MVArray:
     bulk_mv = bulk(mv)
     if bulk_mv.layout.size == 0:
-        zeros = np.zeros(mv.batch_shape, dtype=np.result_type(mv.dtype, np.float64))
-        return _scalar_mv(mv, zeros)
+        return _scalar_mv(mv, _component_values(bulk_mv, 0))
     return norm_squared(bulk_mv)
 
 
 def bulk_norm(mv: MVArray) -> MVArray:
     bulksq = _require_scalar_output(bulk_norm_squared(mv), name="bulk_norm_squared(mv)")
-    return _scalar_mv(mv, np.sqrt(np.abs(bulksq)))
+    return _scalar_mv(mv, _elementwise_values("sqrt_abs", bulksq))
 
 
 def _coefficient_magnitude_squared(mv: MVArray) -> np.ndarray:
-    values = np.asarray(mv.values, dtype=np.result_type(mv.dtype, np.float64))
-    if values.shape[-1] == 0:
-        return np.zeros(mv.batch_shape, dtype=values.dtype)
-    return np.asarray(np.sum(values * values, axis=-1), dtype=values.dtype)
+    ir = SequenceIR(
+        name="coefficient_norm_squared",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="coefficient_norm_squared",
+                operands=("input",),
+                ir=None,
+                output="result",
+            ),
+        ),
+        result="result",
+    )
+    return cast(np.ndarray, _execute_sequence_value({"input": mv}, ir))
 
 
 def weight_norm_squared(mv: MVArray) -> MVArray:
@@ -593,22 +708,22 @@ def weight_norm_squared(mv: MVArray) -> MVArray:
 
 def weight_norm(mv: MVArray) -> MVArray:
     weightsq = _require_scalar_output(weight_norm_squared(mv), name="weight_norm_squared(mv)")
-    return _scalar_mv(mv, np.sqrt(weightsq))
+    return _scalar_mv(mv, _elementwise_values("sqrt", weightsq))
 
 
 def bulk_normalize(mv: MVArray) -> MVArray:
     magnitudes = _require_scalar_output(bulk_norm(mv), name="bulk_norm(mv)")
-    if np.any(np.isclose(magnitudes, 0.0)):
+    if _predicate("any_close_zero", magnitudes):
         raise ValueError("bulk_normalize() is undefined for zero bulk magnitude.")
-    reciprocals = np.reciprocal(magnitudes)
+    reciprocals = _elementwise_values("reciprocal", magnitudes)
     return _row_scale_mv(mv, reciprocals)
 
 
 def unitize(mv: MVArray) -> MVArray:
     magnitudes = _require_scalar_output(weight_norm(mv), name="weight_norm(mv)")
-    if np.any(np.isclose(magnitudes, 0.0)):
+    if _predicate("any_close_zero", magnitudes):
         raise ValueError("unitize() is undefined for zero weight magnitude.")
-    reciprocals = np.reciprocal(magnitudes)
+    reciprocals = _elementwise_values("reciprocal", magnitudes)
     return _row_scale_mv(mv, reciprocals)
 
 
@@ -643,16 +758,16 @@ def sandwich(actor: MVArray, target: MVArray) -> MVArray:
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
     scalar_blade = 0
     resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_value = np.asarray(mv.component(scalar_blade), dtype=resolved_dtype)
+    scalar_value = np.asarray(_component_values(mv, scalar_blade), dtype=resolved_dtype)
 
     if mv.layout.size == 0:
         raise ValueError(f"{name} is zero and therefore non-invertible.")
 
-    for index, blade in enumerate(mv.layout.blades):
+    for blade in mv.layout.blades:
         if blade == scalar_blade:
             continue
-        component = np.asarray(mv.values[..., index], dtype=resolved_dtype)
-        if np.any(~np.isclose(component, 0.0)):
+        component = np.asarray(_component_values(mv, blade), dtype=resolved_dtype)
+        if not _predicate("allclose_zero", component):
             raise ValueError(f"{name} must be scalar-valued for this operation.")
 
     return scalar_value
@@ -665,12 +780,12 @@ def inverse(mv: MVArray) -> MVArray:
     left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
     right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
 
-    if not np.allclose(left_norm, right_norm):
+    if not _predicate("allclose", left_norm, right_norm):
         raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
-    if np.any(np.isclose(left_norm, 0.0)):
+    if _predicate("any_close_zero", left_norm):
         raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
-    reciprocals = np.reciprocal(left_norm)
+    reciprocals = _elementwise_values("reciprocal", left_norm)
     return row_scale(reversed_mv, reciprocals)
 
 
@@ -680,9 +795,9 @@ def divide(lhs: MVArray | Number, rhs: MVArray | Number) -> MVArray:
             return geometric_product(lhs, inverse(rhs))
         if isinstance(rhs, Number):
             rhs_array = np.asarray(rhs)
-            if bool(np.equal(rhs_array, 0).item()):
+            if _predicate("any_close_zero", rhs_array):
                 raise ZeroDivisionError("Division by zero scalar.")
-            return scale(lhs, np.reciprocal(rhs_array))
+            return scale(lhs, _elementwise_values("reciprocal", rhs_array))
         raise TypeError(f"Unsupported operand type: {type(rhs)!r}")
 
     if isinstance(lhs, Number) and isinstance(rhs, MVArray):

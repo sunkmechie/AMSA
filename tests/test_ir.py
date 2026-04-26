@@ -23,6 +23,8 @@ from amsa.ir import (
 )
 from amsa.plans import plan_binary_product
 
+from ._utils import assert_allclose
+
 
 @pytest.fixture(autouse=True)
 def _clean_backends():
@@ -590,6 +592,215 @@ class TestNumpyBackendExecution:
         )
         row_scaled = backend.execute_sequence({"input": lhs}, row_scale_ir)
         np.testing.assert_allclose(row_scaled.values, np.array([[2.0, 4.0], [9.0, 12.0]]))
+
+    def test_sequence_execution_supports_scalar_primitives(self):
+        alg = Algebra.vga2d()
+        mv = alg.multivector({"e": np.array([4.0, 9.0]), "e1": np.array([3.0, 4.0])})
+        backend = get_backend("numpy")
+
+        ir = SequenceIR(
+            name="scalar_primitives",
+            inputs=("input",),
+            steps=(
+                IRStep(
+                    kind="component",
+                    operands=("input",),
+                    ir=None,
+                    output="scalar_values",
+                    metadata={"blade": 0},
+                ),
+                IRStep(
+                    kind="elementwise",
+                    operands=("scalar_values",),
+                    ir=None,
+                    output="roots",
+                    metadata={"function": "sqrt"},
+                ),
+                IRStep(
+                    kind="scalar_mv_from_array",
+                    operands=("input", "roots"),
+                    ir=None,
+                    output="result",
+                ),
+            ),
+            result="result",
+        )
+
+        result = backend.execute_sequence({"input": mv}, ir)
+
+        assert result.layout.blades == (0,)
+        assert_allclose(result.values, np.array([[2.0], [3.0]]))
+
+    def test_sequence_execution_supports_coefficient_reduction_and_blade_construction(self):
+        alg = Algebra.vga2d()
+        mv = alg.vector([[3.0, 4.0], [5.0, 12.0]])
+        backend = get_backend("numpy")
+
+        ir = SequenceIR(
+            name="coefficient_reduction",
+            inputs=("input",),
+            steps=(
+                IRStep(
+                    kind="coefficient_norm_squared",
+                    operands=("input",),
+                    ir=None,
+                    output="squares",
+                ),
+                IRStep(
+                    kind="elementwise",
+                    operands=("squares",),
+                    ir=None,
+                    output="magnitudes",
+                    metadata={"function": "sqrt"},
+                ),
+                IRStep(
+                    kind="single_blade_mv_from_array",
+                    operands=("input", "magnitudes"),
+                    ir=None,
+                    output="result",
+                    metadata={"blade": 1},
+                ),
+            ),
+            result="result",
+        )
+
+        result = backend.execute_sequence({"input": mv}, ir)
+
+        assert result.layout.blades == (1,)
+        assert_allclose(result.values, np.array([[5.0], [13.0]]))
+
+    def test_sequence_execution_supports_exp_coefficient_kernel(self):
+        backend = get_backend("numpy")
+        scalars = np.array([1.0, -1.0, 0.0])
+        ir = SequenceIR(
+            name="exp_coefficients",
+            inputs=("scalars",),
+            steps=(
+                IRStep(
+                    kind="exp_coefficients",
+                    operands=("scalars",),
+                    ir=None,
+                    output="coefficients",
+                ),
+            ),
+            result="coefficients",
+        )
+
+        scalar_coeff, linear_coeff = backend.execute_sequence({"scalars": scalars}, ir)
+
+        assert_allclose(
+            scalar_coeff,
+            np.array([np.cosh(1.0), np.cos(1.0), 1.0]),
+        )
+        assert_allclose(
+            linear_coeff,
+            np.array([np.sinh(1.0), np.sin(1.0), 1.0]),
+        )
+
+    def test_sequence_execution_supports_motor_exp_coefficient_kernel(self):
+        backend = get_backend("numpy")
+        ir = SequenceIR(
+            name="motor_exp_coefficients",
+            inputs=("scalar", "pseudoscalar"),
+            steps=(
+                IRStep(
+                    kind="motor_exp_coefficients",
+                    operands=("scalar", "pseudoscalar"),
+                    ir=None,
+                    output="coefficients",
+                ),
+            ),
+            result="coefficients",
+        )
+
+        scalar, pseudo, linear, dual_linear = backend.execute_sequence(
+            {
+                "scalar": np.array([0.0, -0.09]),
+                "pseudoscalar": np.array([0.6, -0.12]),
+            },
+            ir,
+        )
+
+        assert_allclose(scalar[0], 1.0)
+        assert_allclose(pseudo[0], 0.3)
+        assert_allclose(linear[0], 1.0)
+        assert_allclose(dual_linear[0], 0.1, tol=1e-15)
+        assert_allclose(scalar[1], np.cos(0.3), tol=1e-15)
+        assert_allclose(linear[1], np.sin(0.3) / 0.3, tol=1e-15)
+
+    def test_sequence_execution_supports_predicate_kernel(self):
+        backend = get_backend("numpy")
+        ir = SequenceIR(
+            name="predicate",
+            inputs=("lhs", "rhs"),
+            steps=(
+                IRStep(
+                    kind="predicate",
+                    operands=("lhs", "rhs"),
+                    ir=None,
+                    output="result",
+                    metadata={"function": "allclose"},
+                ),
+            ),
+            result="result",
+        )
+
+        assert backend.execute_sequence(
+            {"lhs": np.array([1.0, 2.0]), "rhs": np.array([1.0, 2.0])},
+            ir,
+        )
+
+    def test_sequence_execution_supports_motor_log_coefficient_kernels(self):
+        backend = get_backend("numpy")
+
+        simple_ir = SequenceIR(
+            name="simple_bivector_log_coefficients",
+            inputs=("scalar", "square"),
+            steps=(
+                IRStep(
+                    kind="simple_bivector_log_coefficients",
+                    operands=("scalar", "square"),
+                    ir=None,
+                    output="coefficients",
+                ),
+            ),
+            result="coefficients",
+        )
+        simple = backend.execute_sequence(
+            {"scalar": np.array([1.0, 2.0]), "square": np.array([0.0, -1.0])},
+            simple_ir,
+        )
+        assert_allclose(simple, np.array([1.0, np.arctan2(1.0, 2.0)]))
+
+        pga3d_ir = SequenceIR(
+            name="pga3d_motor_log_coefficients",
+            inputs=("scalar", "pseudoscalar", "sine"),
+            steps=(
+                IRStep(
+                    kind="pga3d_motor_log_coefficients",
+                    operands=("scalar", "pseudoscalar", "sine"),
+                    ir=None,
+                    output="coefficients",
+                ),
+            ),
+            result="coefficients",
+        )
+        alpha, beta = backend.execute_sequence(
+            {
+                "scalar": np.array([1.0, np.cos(0.3)]),
+                "pseudoscalar": np.array([0.0, -0.2 * np.sin(0.3)]),
+                "sine": np.array([0.0, np.sin(0.3)]),
+            },
+            pga3d_ir,
+        )
+
+        assert_allclose(alpha[0], 0.0)
+        assert_allclose(beta[0], 0.0)
+        assert_allclose(alpha[1], 0.3 / np.sin(0.3))
+        assert_allclose(
+            beta[1],
+            0.2 * (1.0 - (0.3 * np.cos(0.3) / np.sin(0.3))) / np.sin(0.3),
+        )
 
 class TestEndToEndOps:
     """Verify that public ops route through the IR backend correctly."""
