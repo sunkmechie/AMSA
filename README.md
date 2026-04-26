@@ -4,7 +4,7 @@
 
 AMSA is a Clifford algebra library for high-performance numerical computation in robotics, engineering, and science.
 
-**Beta on PyPI:** `uv pip install amsa-ga==0.1.0b0`
+**Install:** `uv pip install amsa-ga`
 
 ## Table of Contents
 
@@ -26,13 +26,19 @@ AMSA (Advanced Multivector Symbolic Architecture Engine) is a Clifford algebra l
 ## Installation
 
 ```bash
-uv pip install amsa-ga==0.1.0b0
+uv pip install amsa-ga
+```
+
+For JAX GPU support:
+
+```bash
+uv pip install "jax[cuda13]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 
 Or with visualization extras:
 
 ```bash
-uv pip install amsa-ga[viz]==0.1.0b0
+uv pip install amsa-ga[viz]
 ```
 
 ## Package Layout
