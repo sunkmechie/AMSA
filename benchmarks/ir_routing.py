@@ -6,7 +6,7 @@ import timeit
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from amsa import Algebra, geometric_product, outer_product, reverse, dual, poincare_dual
+from amsa import Algebra, dual, geometric_product, outer_product, poincare_dual, reverse
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +35,6 @@ def build_cases() -> list[BenchCase]:
     """
     vga2d = Algebra.vga2d()
     vga3d = Algebra.vga3d()
-    pga2d = Algebra.pga2d()
     pga3d = Algebra.pga3d()
 
     # Binary products
