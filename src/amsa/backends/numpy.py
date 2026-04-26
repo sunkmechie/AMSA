@@ -272,9 +272,10 @@ def execute_sequence_ir(
                 np.asarray(operands[1]),
             )
         else:
-            raise ValueError(f"Unknown sequence step kind: {step.kind!r}")
+            raise ValueError(f"Unknown step kind: {step.kind}")
 
         env[step.output] = result
+        i += 1
 
     return env[ir.result]
 
