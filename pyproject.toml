@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "amsa-ga"
-version = "0.2.0"
+version = "0.2.1"
 description = "Clifford algebra library with primitives for robotics, engineering, and science."
 readme = "README.md"
 requires-python = ">=3.12"
