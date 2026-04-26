@@ -17,10 +17,11 @@ import pytest
 
 jax = pytest.importorskip("jax")
 
-import amsa
-from amsa.ir import clear_backends, get_backend, init, register_backend
-from amsa.backends.numpy import NumpyBackend
-from amsa.backends.jax import JAXBackend
+import amsa  # noqa: E402
+from amsa.backends.jax import JAXBackend  # noqa: E402
+from amsa.backends.numpy import NumpyBackend  # noqa: E402
+from amsa.ir import clear_backends, init, register_backend  # noqa: E402
+from tests._utils import assert_allclose  # noqa: E402
 
 
 def test_jax_backend_registration():
@@ -53,7 +54,7 @@ def test_jax_backend_basic_operations():
     jax_values = np.asarray(jax_result.values)
     numpy_values = np.asarray(numpy_result.values)
     
-    np.testing.assert_allclose(jax_values, numpy_values, rtol=1e-5)
+    assert_allclose(jax_values, numpy_values, rtol=1e-5)
 
 
 def test_jax_backend_addition():
@@ -74,7 +75,7 @@ def test_jax_backend_addition():
     v2 = alg2.vector([3.0, 4.0])
     jax_result = u2 + v2
     
-    np.testing.assert_allclose(
+    assert_allclose(
         np.asarray(jax_result.values),
         np.asarray(numpy_result.values),
         rtol=1e-5
@@ -99,7 +100,7 @@ def test_jax_backend_outer_product():
     v2 = alg2.vector([0.0, 1.0])
     jax_result = u2 ^ v2
     
-    np.testing.assert_allclose(
+    assert_allclose(
         np.asarray(jax_result.values),
         np.asarray(numpy_result.values),
         rtol=1e-5
@@ -122,8 +123,37 @@ def test_jax_backend_scalar_operations():
     mv2 = alg2.vector([1.0, 2.0])
     jax_result = 2.0 * mv2
     
-    np.testing.assert_allclose(
+    assert_allclose(
         np.asarray(jax_result.values),
         np.asarray(numpy_result.values),
         rtol=1e-5
     )
+
+
+def test_device_selection_with_jax():
+    """Test that amsa.init(use="gpu") selects JAX backend."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    
+    init(use="gpu")
+    from amsa.ir import get_device
+    assert get_device() == "gpu"
+    
+    # Verify operations work with GPU selection
+    alg = amsa.Algebra.vga2d()
+    u = alg.vector([1.0, 2.0])
+    v = alg.vector([3.0, -4.0])
+    result = u * v
+    assert result is not None
+
+
+def test_device_selection_cpu_fallback():
+    """Test that amsa.init(use="cpu") selects NumPy backend."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    
+    init(use="cpu")
+    from amsa.ir import get_device
+    assert get_device() == "cpu"

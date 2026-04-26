@@ -108,6 +108,14 @@ amsa.init(use="cpu")
 print(amsa.get_device())  # "cpu"
 ```
 
+**JAX Installation:**
+
+For GPU execution, install the JAX extra:
+
+```bash
+uv pip install amsa-ga[jax]
+```
+
 See the documentation for details on execution backends.
 
 ## Documentation

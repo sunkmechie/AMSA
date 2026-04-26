@@ -19,11 +19,11 @@ from typing import Any, cast
 
 try:
     import jax.numpy as jnp
-except ImportError:
+except ImportError as err:
     raise ImportError(
         "JAX is required for the JAX backend. "
         "Install with: uv pip install amsa-ga[jax]"
-    )
+    ) from err
 
 from amsa.ir import (
     ProductIR,
