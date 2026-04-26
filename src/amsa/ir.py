@@ -177,6 +177,7 @@ class IRStep:
             steps to consume.
         metadata: Optional opaque dict for backend-specific hints
             (e.g., ``{"function": "sqrt"}`` for elementwise ops).
+        fusion: Optional fusion kind if this step is part of a fusible sequence.
     """
 
     kind: SequenceStepKind
@@ -184,6 +185,7 @@ class IRStep:
     ir: ProductIR | UnaryIR | None
     output: str
     metadata: dict[str, object] | None = None
+    fusion: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
