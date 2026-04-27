@@ -115,6 +115,22 @@ class ProductIR:
         """Number of columns in the output layout."""
         return len(self.out_blades)
 
+    def show(self, algebra: AlgebraSpec) -> str:
+        """Display ProductIR in human-readable format with blade names."""
+        lines = [f"ProductIR({self.kind})"]
+        lines.append(f"  LHS storage: {self.lhs_storage}, width: {self.lhs_width}")
+        lines.append(f"  RHS storage: {self.rhs_storage}, width: {self.rhs_width}")
+        out_names = ", ".join(algebra.blade_name(b) for b in self.out_blades)
+        lines.append(f"  Output blades: {out_names}")
+        lines.append(f"  Terms ({len(self.terms)}):")
+        for term in self.terms:
+            coeff_str = f"{term.coefficient:+d}" if term.coefficient != 1 else "+"
+            lines.append(
+                f"    {coeff_str} col[{term.lhs_col}] * col[{term.rhs_col}] -> "
+                f"col[{term.out_col}]"
+            )
+        return "\n".join(lines)
+
 
 
 @dataclass(frozen=True, slots=True)

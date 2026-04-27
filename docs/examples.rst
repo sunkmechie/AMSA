@@ -15,6 +15,14 @@ Geometry
 - ``examples/geometry/signed_volume_3d.py`` — scalar triple product
 - ``examples/geometry/orientation_batch_2d.py`` — batched orientation tests
 
+Inspection
+----------
+
+- ``examples/inspection/mvarray_display.py`` — MVArray human-readable display
+- ``examples/inspection/plan_inspection.py`` — OpPlan structure inspection
+- ``examples/inspection/ir_inspection.py`` — ProductIR execution inspection
+- ``examples/inspection/cayley_table.py`` — Cayley table algebra inspection
+
 Kernels
 -------
 

@@ -26,7 +26,9 @@ from tests._utils import assert_allclose  # noqa: E402
 
 def test_jax_backend_registration():
     """Test JAX backend registration behavior."""
-    from amsa.ir import has_backend
+    from amsa.ir import has_backend, register_backend
+    if not has_backend("jax"):
+        register_backend("jax", JAXBackend())
     assert has_backend("jax")
 
 

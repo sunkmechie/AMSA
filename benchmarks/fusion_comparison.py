@@ -41,6 +41,7 @@ def _summarize(case: BenchCase, *, number: int, repeat: int) -> str:
 def build_scale_product_cases() -> list[BenchCase]:
     """Build benchmark cases for scale + product fusion."""
     import numpy as np
+
     from amsa.backends.numpy import _execute_fused_scale_product, execute_product_ir, scale_storage
     from amsa.ir import ProductIR, TermIR
     from amsa.layouts import MVLayout
@@ -98,6 +99,7 @@ def build_scale_product_cases() -> list[BenchCase]:
 def build_elementwise_chain_cases() -> list[BenchCase]:
     """Build benchmark cases for elementwise chain fusion."""
     import numpy as np
+
     from amsa.backends.numpy import _execute_fused_elementwise_chain
 
     # Small array
@@ -121,6 +123,7 @@ def build_elementwise_chain_cases() -> list[BenchCase]:
 def build_large_batch_cases() -> list[BenchCase]:
     """Build benchmark cases for large batch operations."""
     import numpy as np
+
     from amsa.backends.numpy import _execute_fused_scale_product, execute_product_ir, scale_storage
     from amsa.ir import ProductIR, TermIR
     from amsa.layouts import MVLayout

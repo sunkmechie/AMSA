@@ -15,6 +15,7 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    storage
    backends
    operators
+   inspection
    viz
    examples
    probes

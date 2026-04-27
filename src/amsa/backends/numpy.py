@@ -134,7 +134,7 @@ def execute_sequence_ir(
             next_step = ir.steps[i + 1]
             if next_step.kind == "binary_product":
                 meta = step.metadata or {}
-                factor = meta.get("factor", 1.0)
+                factor = cast(float, meta.get("factor", 1.0))
                 lhs = cast(MVArray, operands[0])
                 # Get the RHS from the next step's operands
                 rhs_name = next_step.operands[1]
@@ -186,7 +186,7 @@ def execute_sequence_ir(
             result = execute_unary_ir(cast(MVArray, operands[0]), step.ir)
         elif step.kind == "scale":
             meta = step.metadata or {}
-            factor = meta.get("factor", 1.0)
+            factor = cast(float, meta.get("factor", 1.0))
             mv = cast(MVArray, operands[0])
             result = MVArray(
                 algebra=mv.algebra,

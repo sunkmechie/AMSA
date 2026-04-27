@@ -21,8 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import amsa
-from amsa.ir import clear_backends, init, register_backend
 from amsa.backends.numpy import NumpyBackend
+from amsa.ir import clear_backends, init, register_backend
 
 try:
     from amsa.backends.jax import JAXBackend
@@ -82,13 +82,25 @@ def build_numpy_cases() -> list[BenchCase]:
     pga3d_generator = pga3d.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05})
     
     return [
-        BenchCase(name="numpy: vga2d geometric_product (single)", operation=lambda: u * v),
-        BenchCase(name="numpy: vga2d geometric_product (batch)", operation=lambda: u_batch * v_batch),
-        BenchCase(name="numpy: vga2d geometric_product (large batch)", operation=lambda: u_large * v_large),
+        BenchCase(
+            name="numpy: vga2d geometric_product (single)",
+            operation=lambda: u * v,
+        ),
+        BenchCase(
+            name="numpy: vga2d geometric_product (batch)",
+            operation=lambda: u_batch * v_batch,
+        ),
+        BenchCase(
+            name="numpy: vga2d geometric_product (large batch)",
+            operation=lambda: u_large * v_large,
+        ),
         BenchCase(name="numpy: vga2d outer_product", operation=lambda: u ^ v),
         BenchCase(name="numpy: vga2d inner_product", operation=lambda: u | v),
         BenchCase(name="numpy: pga2d exp", operation=lambda: pga2d_generator.exp()),
-        BenchCase(name="numpy: pga3d motor_exp", operation=lambda: amsa.motor_exp(pga3d_generator)),
+        BenchCase(
+            name="numpy: pga3d motor_exp",
+            operation=lambda: amsa.motor_exp(pga3d_generator),
+        ),
     ]
 
 
@@ -128,13 +140,25 @@ def build_jax_cases() -> list[BenchCase]:
     pga3d_generator = pga3d.multivector({"e12": -0.3, "e03": 0.2, "e01": 0.05})
     
     return [
-        BenchCase(name="jax: vga2d geometric_product (single)", operation=lambda: u * v),
-        BenchCase(name="jax: vga2d geometric_product (batch)", operation=lambda: u_batch * v_batch),
-        BenchCase(name="jax: vga2d geometric_product (large batch)", operation=lambda: u_large * v_large),
+        BenchCase(
+            name="jax: vga2d geometric_product (single)",
+            operation=lambda: u * v,
+        ),
+        BenchCase(
+            name="jax: vga2d geometric_product (batch)",
+            operation=lambda: u_batch * v_batch,
+        ),
+        BenchCase(
+            name="jax: vga2d geometric_product (large batch)",
+            operation=lambda: u_large * v_large,
+        ),
         BenchCase(name="jax: vga2d outer_product", operation=lambda: u ^ v),
         BenchCase(name="jax: vga2d inner_product", operation=lambda: u | v),
         BenchCase(name="jax: pga2d exp", operation=lambda: pga2d_generator.exp()),
-        BenchCase(name="jax: pga3d motor_exp", operation=lambda: amsa.motor_exp(pga3d_generator)),
+        BenchCase(
+            name="jax: pga3d motor_exp",
+            operation=lambda: amsa.motor_exp(pga3d_generator),
+        ),
     ]
 
 

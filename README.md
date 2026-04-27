@@ -11,13 +11,15 @@ AMSA is a Clifford algebra library for high-performance numerical computation in
 1. [What is AMSA?](#what-is-amsa)
 2. [Package Layout](#package-layout)
 3. [Quick Start](#quick-start)
-4. [Documentation](#documentation)
-5. [Notebooks](#notebooks)
-6. [License and Acknowledgments](#license-and-acknowledgments)
-7. [What Works Today](#what-works-today)
-8. [Development](#development)
-9. [Current Operations](#current-operations)
-10. [Notes](#notes)
+4. [Inspection API](#inspection-api)
+5. [Execution Backends](#execution-backends)
+6. [Documentation](#documentation)
+7. [Notebooks](#notebooks)
+8. [License and Acknowledgments](#license-and-acknowledgments)
+9. [What Works Today](#what-works-today)
+10. [Development](#development)
+11. [Current Operations](#current-operations)
+12. [Notes](#notes)
 
 ## What is AMSA?
 
@@ -96,6 +98,68 @@ s = alg.scalar(1.0)
 ```
 
 Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
+
+## Inspection API
+
+AMSA provides inspection helpers for debugging and understanding algebraic operations:
+
+```python
+from amsa import Algebra
+
+alg = Algebra.vga2d()
+u = alg.vector([1.0, 2.0])
+v = alg.bivector([3.0])
+
+print(u)  # 1.0 e1 + 2.0 e2
+print(v)  # 3.0 e12
+```
+
+Inspect product plans and IR:
+
+```python
+from amsa.plans import plan_binary_product
+from amsa.ir import build_product_ir
+
+lhs_layout = alg.grade_layout(1)
+rhs_layout = alg.grade_layout(1)
+plan = plan_binary_product(lhs_layout, rhs_layout, "geometric")
+print(plan.show())
+# OpPlan(geometric)
+#   LHS blades: e1, e2
+#   RHS blades: e1, e2
+#   Output blades: e, e12
+#   Terms (4):
+#     + e1 * e1 -> e
+#     + e1 * e2 -> e12
+#     -1 e2 * e1 -> e12
+#     + e2 * e2 -> e
+
+ir = build_product_ir(plan, "dense", "dense")
+print(ir.show(alg.spec))
+# ProductIR(geometric)
+#   LHS storage: dense, width: 2
+#   RHS storage: dense, width: 2
+#   Output blades: e, e12
+#   Terms (4):
+#     + col[0] * col[0] -> col[0]
+#     + col[0] * col[1] -> col[1]
+#     -1 col[1] * col[0] -> col[1]
+#     + col[1] * col[1] -> col[0]
+```
+
+View Cayley table subsets:
+
+```python
+print(alg.show_cayley())
+# Cayley table for (1, 1) (4 blades)
+#        e     e1    e2   e12
+#      e  +     e  +  e1  +  e2  + e12
+#     e1  +    e1  +   e  + e12  +  e2
+#     e2  +    e2 -1 e12  +   e -1  e1
+#    e12  +   e12 -1  e2  +  e1 -1   e
+```
+
+See `docs/inspection.rst` for full inspection API documentation.
 
 ## Execution Backends
 
