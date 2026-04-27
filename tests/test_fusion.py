@@ -14,7 +14,7 @@
 
 """Tests for IR fusion analysis."""
 
-from amsa.fusion import analyze_fusion, apply_fusion_metadata, FUSION_PATTERNS
+from amsa.fusion import FUSION_PATTERNS, analyze_fusion, apply_fusion_metadata
 from amsa.ir import IRStep, SequenceIR
 from tests._utils import assert_allclose
 
@@ -56,8 +56,19 @@ def test_analyze_fusion_scale_product():
         name="scale_product",
         inputs=("input",),
         steps=(
-            IRStep(kind="scale", operands=("input",), ir=None, output="scaled", metadata={"factor": 2.0}),
-            IRStep(kind="binary_product", operands=("scaled", "other"), ir=None, output="result"),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="binary_product",
+                operands=("scaled", "other"),
+                ir=None,
+                output="result",
+            ),
         ),
         result="result",
     )
@@ -88,8 +99,20 @@ def test_analyze_fusion_elementwise_chain():
         name="elementwise_chain",
         inputs=("input",),
         steps=(
-            IRStep(kind="elementwise", operands=("input",), ir=None, output="abs", metadata={"function": "abs"}),
-            IRStep(kind="elementwise", operands=("abs",), ir=None, output="sqrt", metadata={"function": "sqrt"}),
+            IRStep(
+                kind="elementwise",
+                operands=("input",),
+                ir=None,
+                output="abs",
+                metadata={"function": "abs"},
+            ),
+            IRStep(
+                kind="elementwise",
+                operands=("abs",),
+                ir=None,
+                output="sqrt",
+                metadata={"function": "sqrt"},
+            ),
         ),
         result="sqrt",
     )
@@ -104,8 +127,19 @@ def test_apply_fusion_metadata():
         name="scale_product",
         inputs=("input",),
         steps=(
-            IRStep(kind="scale", operands=("input",), ir=None, output="scaled", metadata={"factor": 2.0}),
-            IRStep(kind="binary_product", operands=("scaled", "other"), ir=None, output="result"),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="binary_product",
+                operands=("scaled", "other"),
+                ir=None,
+                output="result",
+            ),
         ),
         result="result",
     )
@@ -143,8 +177,19 @@ def test_fusion_preserves_ir_structure():
         name="scale_product",
         inputs=("input",),
         steps=(
-            IRStep(kind="scale", operands=("input",), ir=None, output="scaled", metadata={"factor": 2.0}),
-            IRStep(kind="binary_product", operands=("scaled", "other"), ir=None, output="result"),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="binary_product",
+                operands=("scaled", "other"),
+                ir=None,
+                output="result",
+            ),
         ),
         result="result",
     )
@@ -158,7 +203,9 @@ def test_fusion_preserves_ir_structure():
     assert len(fused_ir.steps) == len(ir.steps)
     
     # Step content should be preserved except for fusion field
-    for i, (orig_step, fused_step) in enumerate(zip(ir.steps, fused_ir.steps)):
+    for _i, (orig_step, fused_step) in enumerate(
+        zip(ir.steps, fused_ir.steps, strict=True)
+    ):
         assert fused_step.kind == orig_step.kind
         assert fused_step.operands == orig_step.operands
         assert fused_step.ir == orig_step.ir
@@ -169,8 +216,9 @@ def test_fusion_preserves_ir_structure():
 def test_fused_scale_product_correctness():
     """Test that fused scale+product produces correct results."""
     import numpy as np
+
     from amsa.backends.numpy import _execute_fused_scale_product, execute_product_ir
-    from amsa.ir import ProductIR, TermIR, output_layout_from_product_ir
+    from amsa.ir import ProductIR, TermIR
     from amsa.layouts import MVLayout
     from amsa.mv import MVArray
     from amsa.specs import AlgebraSpec
@@ -191,8 +239,13 @@ def test_fused_scale_product_correctness():
         rhs_width=2,
         out_blades=(1, 2, 3),  # scalar, e1, e2
         terms=(
-            TermIR(lhs_col=0, rhs_col=0, out_col=0, coefficient=1),   # e1*e1 = 1
-            TermIR(lhs_col=0, rhs_col=1, out_col=2, coefficient=1),   # e1*e2 = e12 (not in grade-1 output)
+            TermIR(lhs_col=0, rhs_col=0, out_col=0, coefficient=1),  # e1*e1 = 1
+            TermIR(
+                lhs_col=0,
+                rhs_col=1,
+                out_col=2,
+                coefficient=1,
+            ),  # e1*e2 = e12 (not in grade-1 output)
             TermIR(lhs_col=1, rhs_col=0, out_col=2, coefficient=-1),  # e2*e1 = -e12
             TermIR(lhs_col=1, rhs_col=1, out_col=0, coefficient=-1),  # e2*e2 = -1
         ),
@@ -212,6 +265,7 @@ def test_fused_scale_product_correctness():
 def test_fused_elementwise_chain_correctness():
     """Test that fused elementwise chain produces correct results."""
     import numpy as np
+
     from amsa.backends.numpy import _execute_fused_elementwise_chain
 
     # Test abs -> sqrt chain
@@ -231,17 +285,27 @@ def test_fused_elementwise_chain_correctness():
 
 def test_fusion_integration_with_backend():
     """Test that fusion metadata is correctly applied and preserved."""
-    import numpy as np
     from amsa.fusion import apply_fusion_metadata
-    from amsa.ir import SequenceIR, IRStep
+    from amsa.ir import IRStep, SequenceIR
 
     # Create SequenceIR for scale + binary_product pattern
     sequence_ir = SequenceIR(
         name="scale_product",
         inputs=("u", "v"),
         steps=(
-            IRStep(kind="scale", operands=("u",), ir=None, output="scaled", metadata={"factor": 2.0}),
-            IRStep(kind="binary_product", operands=("scaled", "v"), ir=None, output="result"),
+            IRStep(
+                kind="scale",
+                operands=("u",),
+                ir=None,
+                output="scaled",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="binary_product",
+                operands=("scaled", "v"),
+                ir=None,
+                output="result",
+            ),
         ),
         result="result",
     )
@@ -262,9 +326,8 @@ def test_fusion_integration_with_backend():
 
 def test_fusion_unary_product_integration():
     """Test that unary + product fusion detection works (execution tested separately)."""
-    import numpy as np
     from amsa.fusion import apply_fusion_metadata
-    from amsa.ir import SequenceIR, IRStep
+    from amsa.ir import IRStep, SequenceIR
 
     # Create SequenceIR for unary + product pattern
     sequence_ir = SequenceIR(
@@ -287,15 +350,27 @@ def test_fusion_unary_product_integration():
 def test_fusion_elementwise_chain_integration():
     """Test that elementwise chain fusion metadata is correctly applied."""
     from amsa.fusion import apply_fusion_metadata
-    from amsa.ir import SequenceIR, IRStep
+    from amsa.ir import IRStep, SequenceIR
 
     # Create SequenceIR for elementwise chain (abs -> sqrt)
     sequence_ir = SequenceIR(
         name="elementwise_chain",
         inputs=("input",),
         steps=(
-            IRStep(kind="elementwise", operands=("input",), ir=None, output="abs", metadata={"function": "abs"}),
-            IRStep(kind="elementwise", operands=("abs",), ir=None, output="sqrt", metadata={"function": "sqrt"}),
+            IRStep(
+                kind="elementwise",
+                operands=("input",),
+                ir=None,
+                output="abs",
+                metadata={"function": "abs"},
+            ),
+            IRStep(
+                kind="elementwise",
+                operands=("abs",),
+                ir=None,
+                output="sqrt",
+                metadata={"function": "sqrt"},
+            ),
         ),
         result="sqrt",
     )
@@ -311,7 +386,7 @@ def test_fusion_elementwise_chain_integration():
 def test_fusion_no_opportunity_unchanged():
     """Test that non-fusible sequences have no fusion metadata."""
     from amsa.fusion import apply_fusion_metadata
-    from amsa.ir import SequenceIR, IRStep
+    from amsa.ir import IRStep, SequenceIR
 
     # Create SequenceIR with non-fusible pattern (add -> sub)
     sequence_ir = SequenceIR(

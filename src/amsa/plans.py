@@ -71,9 +71,12 @@ class OpPlan:
     def show(self) -> str:
         """Display product plan in human-readable algebra notation."""
         lines = [f"OpPlan({self.kind})"]
-        lines.append(f"  LHS blades: {', '.join(self.algebra.blade_name(b) for b in self.lhs_blades)}")
-        lines.append(f"  RHS blades: {', '.join(self.algebra.blade_name(b) for b in self.rhs_blades)}")
-        lines.append(f"  Output blades: {', '.join(self.algebra.blade_name(b) for b in self.output_blades)}")
+        lhs_names = ", ".join(self.algebra.blade_name(b) for b in self.lhs_blades)
+        lines.append(f"  LHS blades: {lhs_names}")
+        rhs_names = ", ".join(self.algebra.blade_name(b) for b in self.rhs_blades)
+        lines.append(f"  RHS blades: {rhs_names}")
+        out_names = ", ".join(self.algebra.blade_name(b) for b in self.output_blades)
+        lines.append(f"  Output blades: {out_names}")
         lines.append(f"  Terms ({len(self.terms)}):")
         for term in self.terms:
             lhs_name = self.algebra.blade_name(self.lhs_blades[term.lhs_index])

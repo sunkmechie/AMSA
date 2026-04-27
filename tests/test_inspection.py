@@ -14,15 +14,13 @@
 
 """Tests for inspection and pretty-print API."""
 
-import numpy as np
-import pytest
 
 from amsa import Algebra
-from amsa.plans import plan_binary_product
 from amsa.ir import build_product_ir
+from amsa.plans import plan_binary_product
 
 
-def test_mvarray_repr_simple():
+def test_mvarray_repr_simple() -> None:
     """Test MVArray.__repr__ for simple multivector."""
     alg = Algebra.vga2d()
     mv = alg.vector([1.0, 2.0])
@@ -31,7 +29,7 @@ def test_mvarray_repr_simple():
     assert "1.0" in repr_str or "2.0" in repr_str
 
 
-def test_mvarray_repr_zero():
+def test_mvarray_repr_zero() -> None:
     """Test MVArray.__repr__ for zero multivector."""
     alg = Algebra.vga2d()
     mv = alg.zeros()
@@ -39,7 +37,7 @@ def test_mvarray_repr_zero():
     assert repr_str == "0"
 
 
-def test_mvarray_repr_bivector():
+def test_mvarray_repr_bivector() -> None:
     """Test MVArray.__repr__ for bivector."""
     alg = Algebra.vga2d()
     mv = alg.bivector([3.0])
@@ -48,7 +46,7 @@ def test_mvarray_repr_bivector():
     assert "3.0" in repr_str
 
 
-def test_mvarray_repr_batched():
+def test_mvarray_repr_batched() -> None:
     """Test MVArray.__repr__ for batched multivector."""
     alg = Algebra.vga2d()
     mv = alg.zeros(batch_shape=(2, 3))
@@ -58,7 +56,7 @@ def test_mvarray_repr_batched():
     assert "dtype=" in repr_str
 
 
-def test_mvarray_repr_mixed_grades():
+def test_mvarray_repr_mixed_grades() -> None:
     """Test MVArray.__repr__ for mixed-grade multivector."""
     alg = Algebra.vga2d()
     mv = alg.multivector({0: 1.0, 1: 2.0, 3: 3.0})
@@ -66,7 +64,7 @@ def test_mvarray_repr_mixed_grades():
     assert "e" in repr_str or "e1" in repr_str or "e12" in repr_str
 
 
-def test_opplan_show():
+def test_opplan_show() -> None:
     """Test OpPlan.show() displays product plan in readable format."""
     alg = Algebra.vga2d()
     lhs_layout = alg.grade_layout(1)
@@ -81,7 +79,7 @@ def test_opplan_show():
     assert "Terms" in show_str
 
 
-def test_productir_show():
+def test_productir_show() -> None:
     """Test ProductIR.show() displays IR in readable format."""
     alg = Algebra.vga2d()
     lhs_layout = alg.grade_layout(1)
@@ -96,3 +94,19 @@ def test_productir_show():
     assert "Output blades:" in show_str
     assert "Terms" in show_str
     assert "col[" in show_str
+
+
+def test_algebra_show_cayley() -> None:
+    """Test Algebra.show_cayley() displays Cayley table subset."""
+    alg = Algebra.vga2d()
+    show_str = alg.show_cayley()
+    assert "Cayley table" in show_str
+    assert "e" in show_str or "e1" in show_str
+
+
+def test_algebra_show_cayley_custom_blades() -> None:
+    """Test Algebra.show_cayley() with custom blade selection."""
+    alg = Algebra.vga2d()
+    show_str = alg.show_cayley(blades=(0, 1, 2))
+    assert "Cayley table" in show_str
+    # Should only show 3 blades

@@ -25,7 +25,6 @@ from typing import Literal
 
 from amsa.ir import SequenceIR, SequenceStepKind
 
-
 FusionKind = Literal[
     "scale_product",  # scale followed by binary product
     "unary_product",  # unary followed by binary product
@@ -94,7 +93,8 @@ def analyze_fusion(ir: SequenceIR) -> dict[int, FusionKind]:
                 # Check metadata requirements
                 metadata_ok = True
                 for key in pattern.requires_metadata:
-                    if ir.steps[i].metadata is None or key not in ir.steps[i].metadata:
+                    step_metadata = ir.steps[i].metadata
+                    if step_metadata is None or key not in step_metadata:
                         metadata_ok = False
                         break
 

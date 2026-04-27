@@ -12,7 +12,9 @@ BOUNDARY_CLASSIFICATION = {
     "src/amsa/__init__.py": "package wiring",
     "src/amsa/algebra.py": "construction/coercion pending backend routing",
     "src/amsa/backends/__init__.py": "backend namespace",
+    "src/amsa/backends/jax.py": "backend execution",
     "src/amsa/backends/numpy.py": "backend execution",
+    "src/amsa/fusion.py": "IR fusion analysis",
     "src/amsa/ir.py": "IR metadata and backend registry",
     "src/amsa/layouts.py": "layout metadata",
     "src/amsa/mv.py": "container/coercion pending backend routing",
@@ -42,7 +44,9 @@ EXPECTED_NUMPY_CORE_FILES = {
 
 EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/algebra.py",
+    "src/amsa/backends/jax.py",
     "src/amsa/backends/numpy.py",
+    "src/amsa/fusion.py",
     "src/amsa/ir.py",
     "src/amsa/layouts.py",
     "src/amsa/mv.py",

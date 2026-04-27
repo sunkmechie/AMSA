@@ -169,6 +169,34 @@ class Algebra:
     def signature(self) -> tuple[int, ...]:
         return self.spec.signature
 
+    def show_cayley(self, blades: tuple[int, ...] | None = None) -> str:
+        """Display Cayley table subset in human-readable format.
+        
+        Args:
+            blades: Optional tuple of blades to show. If None, shows first 8 blades
+                    or all blades if algebra is small.
+        """
+        if blades is None:
+            all_blades = list(range(self.spec.blade_count))
+            blades = tuple(all_blades[:min(8, len(all_blades))])
+
+        lines = [f"Cayley table for {self.spec.signature} ({len(blades)} blades)"]
+        lines.append("  " + "  ".join(f"{self.spec.blade_name(b):>6}" for b in blades))
+        
+        for row_blade in blades:
+            row_parts = [f"{self.spec.blade_name(row_blade):>6}"]
+            for col_blade in blades:
+                coeff, out_blade = self.spec.blade_product(row_blade, col_blade)
+                if coeff == 0:
+                    row_parts.append("     0")
+                else:
+                    coeff_str = f"{coeff:+d}" if coeff != 1 else "+"
+                    out_name = self.spec.blade_name(out_blade)
+                    row_parts.append(f"{coeff_str}{out_name:>5}")
+            lines.append("  ".join(row_parts))
+        
+        return "\n".join(lines)
+
     def dense_layout(self) -> MVLayout:
         return MVLayout.dense(self.spec)
 
