@@ -455,3 +455,18 @@ class MVArray:
         if isinstance(other, Number):
             return divide(other, self)
         return NotImplemented
+
+    def __repr__(self) -> str:
+        """Human-readable multivector representation with blade names and coefficients."""
+        if self.batch_shape:
+            return f"MVArray(batch_shape={self.batch_shape}, blades={len(self.layout.blades)}, dtype={self.dtype})"
+
+        parts = []
+        for blade, value in zip(self.layout.blades, self.values):
+            if not np.allclose(value, 0):
+                blade_name = self.algebra.blade_name(blade)
+                parts.append(f"{value} {blade_name}")
+
+        if not parts:
+            return "0"
+        return " + ".join(parts)
