@@ -68,6 +68,21 @@ class OpPlan:
             name=_LAYOUT_NAMES[self.kind],
         )
 
+    def show(self) -> str:
+        """Display product plan in human-readable algebra notation."""
+        lines = [f"OpPlan({self.kind})"]
+        lines.append(f"  LHS blades: {', '.join(self.algebra.blade_name(b) for b in self.lhs_blades)}")
+        lines.append(f"  RHS blades: {', '.join(self.algebra.blade_name(b) for b in self.rhs_blades)}")
+        lines.append(f"  Output blades: {', '.join(self.algebra.blade_name(b) for b in self.output_blades)}")
+        lines.append(f"  Terms ({len(self.terms)}):")
+        for term in self.terms:
+            lhs_name = self.algebra.blade_name(self.lhs_blades[term.lhs_index])
+            rhs_name = self.algebra.blade_name(self.rhs_blades[term.rhs_index])
+            out_name = self.algebra.blade_name(term.out_blade)
+            coeff_str = f"{term.coefficient:+d}" if term.coefficient != 1 else "+"
+            lines.append(f"    {coeff_str} {lhs_name} * {rhs_name} -> {out_name}")
+        return "\n".join(lines)
+
 
 def _include_term(kind: OpKind, lhs_blade: int, rhs_blade: int, out_blade: int) -> bool:
     if kind == "geometric":

@@ -18,6 +18,8 @@ import numpy as np
 import pytest
 
 from amsa import Algebra
+from amsa.plans import plan_binary_product
+from amsa.ir import build_product_ir
 
 
 def test_mvarray_repr_simple():
@@ -62,3 +64,35 @@ def test_mvarray_repr_mixed_grades():
     mv = alg.multivector({0: 1.0, 1: 2.0, 3: 3.0})
     repr_str = repr(mv)
     assert "e" in repr_str or "e1" in repr_str or "e12" in repr_str
+
+
+def test_opplan_show():
+    """Test OpPlan.show() displays product plan in readable format."""
+    alg = Algebra.vga2d()
+    lhs_layout = alg.grade_layout(1)
+    rhs_layout = alg.grade_layout(1)
+    plan = plan_binary_product(lhs_layout, rhs_layout, "geometric")
+    
+    show_str = plan.show()
+    assert "OpPlan(geometric)" in show_str
+    assert "LHS blades:" in show_str
+    assert "RHS blades:" in show_str
+    assert "Output blades:" in show_str
+    assert "Terms" in show_str
+
+
+def test_productir_show():
+    """Test ProductIR.show() displays IR in readable format."""
+    alg = Algebra.vga2d()
+    lhs_layout = alg.grade_layout(1)
+    rhs_layout = alg.grade_layout(1)
+    plan = plan_binary_product(lhs_layout, rhs_layout, "geometric")
+    ir = build_product_ir(plan, "dense", "dense")
+    
+    show_str = ir.show(alg.spec)
+    assert "ProductIR(geometric)" in show_str
+    assert "LHS storage:" in show_str
+    assert "RHS storage:" in show_str
+    assert "Output blades:" in show_str
+    assert "Terms" in show_str
+    assert "col[" in show_str
