@@ -7,7 +7,7 @@ jnp = pytest.importorskip("jax.numpy")
 import amsa  # noqa: E402
 from amsa.backends.jax import JAXBackend  # noqa: E402
 from amsa.backends.numpy import NumpyBackend  # noqa: E402
-from amsa.ir import clear_backends, init, register_backend  # noqa: E402
+from amsa.ir import IRStep, SequenceIR, clear_backends, init, register_backend  # noqa: E402
 from amsa.storage import CSRStorage  # noqa: E402
 from tests._utils import assert_allclose  # noqa: E402
 
@@ -230,3 +230,128 @@ def test_jax_jit_dense_add_sub_and_norm_squared():
         init(use="cpu")
 
     assert_allclose(np.asarray(actual), np.array([5.0]), rtol=1e-5)
+
+
+def test_jax_jit_exp_coefficient_kernel_handles_all_signs():
+    """Exp coefficient helper should trace without dynamic masking."""
+    backend = JAXBackend()
+    ir = SequenceIR(
+        name="exp_coefficients",
+        inputs=("scalars",),
+        steps=(
+            IRStep(
+                kind="exp_coefficients",
+                operands=("scalars",),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+
+    @jax.jit
+    def coefficients(values):
+        return backend.execute_sequence({"scalars": values}, ir)
+
+    scalar, linear = coefficients(jnp.array([1.0, -1.0, 0.0]))
+
+    assert_allclose(np.asarray(scalar), np.array([np.cosh(1.0), np.cos(1.0), 1.0]), rtol=1e-5)
+    assert_allclose(np.asarray(linear), np.array([np.sinh(1.0), np.sin(1.0), 1.0]), rtol=1e-5)
+
+
+def test_jax_jit_motor_exp_coefficient_kernel_handles_all_branches():
+    """Motor exp coefficient helper should trace without Python value branches."""
+    backend = JAXBackend()
+    ir = SequenceIR(
+        name="motor_exp_coefficients",
+        inputs=("scalar", "pseudoscalar"),
+        steps=(
+            IRStep(
+                kind="motor_exp_coefficients",
+                operands=("scalar", "pseudoscalar"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+
+    @jax.jit
+    def coefficients(scalar, pseudoscalar):
+        return backend.execute_sequence(
+            {"scalar": scalar, "pseudoscalar": pseudoscalar},
+            ir,
+        )
+
+    scalar, pseudo, linear, dual_linear = coefficients(
+        jnp.array([0.0, -0.09, 0.16]),
+        jnp.array([0.6, -0.12, 0.08]),
+    )
+
+    assert_allclose(np.asarray(scalar[0]), 1.0, rtol=1e-5)
+    assert_allclose(np.asarray(pseudo[0]), 0.3, rtol=1e-5)
+    assert_allclose(np.asarray(linear[0]), 1.0, rtol=1e-5)
+    assert_allclose(np.asarray(dual_linear[0]), 0.1, rtol=1e-5)
+    assert_allclose(np.asarray(scalar[1]), np.cos(0.3), rtol=1e-5)
+    assert_allclose(np.asarray(linear[1]), np.sin(0.3) / 0.3, rtol=1e-5)
+    assert_allclose(np.asarray(scalar[2]), np.cosh(0.4), rtol=1e-5)
+    assert_allclose(np.asarray(linear[2]), np.sinh(0.4) / 0.4, rtol=1e-5)
+
+
+def test_jax_jit_motor_log_coefficient_kernels_handle_zero_and_nonzero_cases():
+    """Motor log coefficient helpers should trace without dynamic mask extraction."""
+    backend = JAXBackend()
+    simple_ir = SequenceIR(
+        name="simple_bivector_log_coefficients",
+        inputs=("scalar", "square"),
+        steps=(
+            IRStep(
+                kind="simple_bivector_log_coefficients",
+                operands=("scalar", "square"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+    pga3d_ir = SequenceIR(
+        name="pga3d_motor_log_coefficients",
+        inputs=("scalar", "pseudoscalar", "sine"),
+        steps=(
+            IRStep(
+                kind="pga3d_motor_log_coefficients",
+                operands=("scalar", "pseudoscalar", "sine"),
+                ir=None,
+                output="coefficients",
+            ),
+        ),
+        result="coefficients",
+    )
+
+    @jax.jit
+    def simple_coefficients(scalar, square):
+        return backend.execute_sequence({"scalar": scalar, "square": square}, simple_ir)
+
+    @jax.jit
+    def pga3d_coefficients(scalar, pseudoscalar, sine):
+        return backend.execute_sequence(
+            {"scalar": scalar, "pseudoscalar": pseudoscalar, "sine": sine},
+            pga3d_ir,
+        )
+
+    simple = simple_coefficients(jnp.array([1.0, 2.0]), jnp.array([0.0, -1.0]))
+    alpha, beta = pga3d_coefficients(
+        jnp.array([1.0, np.cos(0.3)]),
+        jnp.array([0.0, -0.2 * np.sin(0.3)]),
+        jnp.array([0.0, np.sin(0.3)]),
+    )
+
+    assert_allclose(np.asarray(simple), np.array([1.0, np.arctan2(1.0, 2.0)]), rtol=1e-5)
+    assert_allclose(np.asarray(alpha[0]), 0.0, rtol=1e-5)
+    assert_allclose(np.asarray(beta[0]), 0.0, rtol=1e-5)
+    assert_allclose(np.asarray(alpha[1]), 0.3 / np.sin(0.3), rtol=1e-5)
+    assert_allclose(
+        np.asarray(beta[1]),
+        0.2 * (1.0 - (0.3 * np.cos(0.3) / np.sin(0.3))) / np.sin(0.3),
+        rtol=1e-5,
+    )

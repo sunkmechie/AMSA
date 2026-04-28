@@ -102,6 +102,8 @@ The dense JAX path is expected to become traceable for these core operations:
 - composed Clifford operations: sandwich, norm_squared, and nonsingular
   normalize paths
 - scalar-objective autodiff paths built from differentiable Clifford operations
+- coefficient helper kernels for ``exp()``, ``motor_exp()``, and motor-log
+  coefficient calculations
 
 Deferred traceability targets:
 
@@ -119,6 +121,13 @@ Implementation rules for traceable paths:
 - avoid value-dependent boolean indexing that changes array size
 - prefer shape-preserving ``jax.numpy.where`` expressions in coefficient kernels
 - keep validation that raises Python exceptions outside jitted numeric kernels
+
+Benchmarking note:
+
+Traceability should be verified before performance claims are made. Add or
+refresh JAX benchmarks after the dense core operation suite has explicit
+``jax.jit`` coverage, so measurements reflect stable supported behavior rather
+than isolated helper kernels.
 
 Important notes
 ---------------

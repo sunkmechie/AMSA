@@ -329,25 +329,18 @@ def _exp_coefficients(scalar_values: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndar
     zero_mask = jnp.isclose(values, 0.0)
 
     roots = jnp.sqrt(jnp.abs(values))
-    scalar_coefficients = jnp.empty_like(roots, dtype=values.dtype)
-    linear_coefficients = jnp.empty_like(roots, dtype=values.dtype)
+    safe_roots = jnp.where(zero_mask, 1.0, roots)
 
-    scalar_coefficients = scalar_coefficients.at[positive_mask].set(
-        jnp.cosh(roots[positive_mask])
+    scalar_coefficients = jnp.where(
+        positive_mask,
+        jnp.cosh(roots),
+        jnp.where(negative_mask, jnp.cos(roots), jnp.ones_like(roots)),
     )
-    linear_coefficients = linear_coefficients.at[positive_mask].set(
-        jnp.sinh(roots[positive_mask]) / roots[positive_mask]
+    linear_coefficients = jnp.where(
+        positive_mask,
+        jnp.sinh(roots) / safe_roots,
+        jnp.where(negative_mask, jnp.sin(roots) / safe_roots, jnp.ones_like(roots)),
     )
-
-    scalar_coefficients = scalar_coefficients.at[negative_mask].set(
-        jnp.cos(roots[negative_mask])
-    )
-    linear_coefficients = linear_coefficients.at[negative_mask].set(
-        jnp.sin(roots[negative_mask]) / roots[negative_mask]
-    )
-
-    scalar_coefficients = scalar_coefficients.at[zero_mask].set(1.0)
-    linear_coefficients = linear_coefficients.at[zero_mask].set(1.0)
     return scalar_coefficients, linear_coefficients
 
 
@@ -368,33 +361,69 @@ def _motor_exp_coefficients(
     circular_mask = scalar < 0.0
     hyperbolic_mask = scalar > 0.0
 
-    if jnp.any(zero_mask):
-        scalar_coeff = scalar_coeff.at[zero_mask].set(1.0)
-        linear_coeff = linear_coeff.at[zero_mask].set(1.0)
-        pseudo_coeff = pseudo_coeff.at[zero_mask].set(0.5 * pseudoscalar[zero_mask])
-        dual_linear_coeff = dual_linear_coeff.at[zero_mask].set(pseudoscalar[zero_mask] / 6.0)
+    circular_roots = jnp.sqrt(jnp.where(circular_mask, -scalar, 1.0))
+    circular_delta = -pseudoscalar / (2.0 * circular_roots)
+    circular_sinc = jnp.sin(circular_roots) / circular_roots
+    circular_dsinc = (
+        (circular_roots * jnp.cos(circular_roots) - jnp.sin(circular_roots))
+        / (circular_roots * circular_roots)
+    )
 
-    if jnp.any(circular_mask):
-        roots = jnp.sqrt(-scalar[circular_mask])
-        delta = -pseudoscalar[circular_mask] / (2.0 * roots)
-        sinc = jnp.sin(roots) / roots
-        dsinc = (roots * jnp.cos(roots) - jnp.sin(roots)) / (roots * roots)
+    hyperbolic_roots = jnp.sqrt(jnp.where(hyperbolic_mask, scalar, 1.0))
+    hyperbolic_delta = pseudoscalar / (2.0 * hyperbolic_roots)
+    hyperbolic_sinhc = jnp.sinh(hyperbolic_roots) / hyperbolic_roots
+    hyperbolic_dsinhc = (
+        (
+            hyperbolic_roots * jnp.cosh(hyperbolic_roots)
+            - jnp.sinh(hyperbolic_roots)
+        )
+        / (hyperbolic_roots * hyperbolic_roots)
+    )
 
-        scalar_coeff = scalar_coeff.at[circular_mask].set(jnp.cos(roots))
-        pseudo_coeff = pseudo_coeff.at[circular_mask].set(-delta * jnp.sin(roots))
-        linear_coeff = linear_coeff.at[circular_mask].set(sinc)
-        dual_linear_coeff = dual_linear_coeff.at[circular_mask].set(delta * dsinc)
-
-    if jnp.any(hyperbolic_mask):
-        roots = jnp.sqrt(scalar[hyperbolic_mask])
-        delta = pseudoscalar[hyperbolic_mask] / (2.0 * roots)
-        sinhc = jnp.sinh(roots) / roots
-        dsinhc = (roots * jnp.cosh(roots) - jnp.sinh(roots)) / (roots * roots)
-
-        scalar_coeff = scalar_coeff.at[hyperbolic_mask].set(jnp.cosh(roots))
-        pseudo_coeff = pseudo_coeff.at[hyperbolic_mask].set(delta * jnp.sinh(roots))
-        linear_coeff = linear_coeff.at[hyperbolic_mask].set(sinhc)
-        dual_linear_coeff = dual_linear_coeff.at[hyperbolic_mask].set(delta * dsinhc)
+    scalar_coeff = jnp.where(
+        zero_mask,
+        jnp.ones_like(scalar),
+        jnp.where(
+            circular_mask,
+            jnp.cos(circular_roots),
+            jnp.where(hyperbolic_mask, jnp.cosh(hyperbolic_roots), scalar_coeff),
+        ),
+    )
+    pseudo_coeff = jnp.where(
+        zero_mask,
+        0.5 * pseudoscalar,
+        jnp.where(
+            circular_mask,
+            -circular_delta * jnp.sin(circular_roots),
+            jnp.where(
+                hyperbolic_mask,
+                hyperbolic_delta * jnp.sinh(hyperbolic_roots),
+                pseudo_coeff,
+            ),
+        ),
+    )
+    linear_coeff = jnp.where(
+        zero_mask,
+        jnp.ones_like(scalar),
+        jnp.where(
+            circular_mask,
+            circular_sinc,
+            jnp.where(hyperbolic_mask, hyperbolic_sinhc, linear_coeff),
+        ),
+    )
+    dual_linear_coeff = jnp.where(
+        zero_mask,
+        pseudoscalar / 6.0,
+        jnp.where(
+            circular_mask,
+            circular_delta * circular_dsinc,
+            jnp.where(
+                hyperbolic_mask,
+                hyperbolic_delta * hyperbolic_dsinhc,
+                dual_linear_coeff,
+            ),
+        ),
+    )
 
     return scalar_coeff, pseudo_coeff, linear_coeff, dual_linear_coeff
 
@@ -413,17 +442,17 @@ def _simple_bivector_log_coefficients(
     hyperbolic_mask = square > 0.0
     null_mask = jnp.isclose(square, 0.0)
 
-    if jnp.any(circular_mask):
-        coefficients = coefficients.at[circular_mask].set(
-            jnp.arctan2(roots[circular_mask], scalar[circular_mask]) / roots[circular_mask]
-        )
-    if jnp.any(hyperbolic_mask):
-        coefficients = coefficients.at[hyperbolic_mask].set(
-            jnp.arctanh(roots[hyperbolic_mask] / scalar[hyperbolic_mask])
-            / roots[hyperbolic_mask]
-        )
-    if jnp.any(null_mask):
-        coefficients = coefficients.at[null_mask].set(jnp.reciprocal(scalar[null_mask]))
+    safe_roots = jnp.where(null_mask, 1.0, roots)
+    circular_coeff = jnp.arctan2(roots, scalar) / safe_roots
+    hyperbolic_coeff = jnp.arctanh(roots / scalar) / safe_roots
+    null_coeff = jnp.reciprocal(scalar)
+
+    coefficients = jnp.where(
+        circular_mask,
+        circular_coeff,
+        jnp.where(hyperbolic_mask, hyperbolic_coeff, coefficients),
+    )
+    coefficients = jnp.where(null_mask, null_coeff, coefficients)
 
     return coefficients
 
@@ -439,26 +468,15 @@ def _pga3d_motor_log_coefficients(
     sine = jnp.asarray(sine_values, dtype=dtype)
     nonzero_mask = ~jnp.isclose(sine, 0.0)
 
-    phi = jnp.zeros_like(sine, dtype=dtype)
-    phi = phi.at[nonzero_mask].set(jnp.arctan2(sine[nonzero_mask], scalar[nonzero_mask]))
+    safe_sine = jnp.where(nonzero_mask, sine, 1.0)
+    phi = jnp.where(nonzero_mask, jnp.arctan2(sine, scalar), jnp.zeros_like(sine))
+    distance = jnp.where(nonzero_mask, -pseudoscalar / safe_sine, jnp.zeros_like(sine))
 
-    distance = jnp.zeros_like(sine, dtype=dtype)
-    distance = distance.at[nonzero_mask].set(-pseudoscalar[nonzero_mask] / sine[nonzero_mask])
-
-    alpha = jnp.zeros_like(sine, dtype=dtype)
-    beta = jnp.zeros_like(sine, dtype=dtype)
-    alpha = alpha.at[nonzero_mask].set(phi[nonzero_mask] / sine[nonzero_mask])
-    beta = beta.at[nonzero_mask].set(
-        distance[nonzero_mask]
-        * (
-            1.0
-            - (
-                phi[nonzero_mask]
-                * scalar[nonzero_mask]
-                / sine[nonzero_mask]
-            )
-        )
-        / sine[nonzero_mask]
+    alpha = jnp.where(nonzero_mask, phi / safe_sine, jnp.zeros_like(sine))
+    beta = jnp.where(
+        nonzero_mask,
+        distance * (1.0 - ((phi * scalar) / safe_sine)) / safe_sine,
+        jnp.zeros_like(sine),
     )
 
     return alpha, beta
