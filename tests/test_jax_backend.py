@@ -1,26 +1,14 @@
-# Copyright 2026 Surya Sunkara
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import numpy as np
 import pytest
 
 jax = pytest.importorskip("jax")
+jnp = pytest.importorskip("jax.numpy")
 
 import amsa  # noqa: E402
 from amsa.backends.jax import JAXBackend  # noqa: E402
 from amsa.backends.numpy import NumpyBackend  # noqa: E402
 from amsa.ir import clear_backends, init, register_backend  # noqa: E402
+from amsa.storage import CSRStorage  # noqa: E402
 from tests._utils import assert_allclose  # noqa: E402
 
 
@@ -159,3 +147,63 @@ def test_device_selection_cpu_fallback():
     init(use="cpu")
     from amsa.ir import get_device
     assert get_device() == "cpu"
+
+
+def test_mvarray_pytree_flatten_uses_coefficients_as_only_leaf():
+    """Dense MVArray pytrees should expose coefficients and keep metadata static."""
+    alg = amsa.Algebra.vga2d()
+    mv = alg.vector([1.0, 2.0])
+
+    leaves, treedef = jax.tree_util.tree_flatten(mv)
+    restored = jax.tree_util.tree_unflatten(treedef, leaves)
+
+    assert len(leaves) == 1
+    assert leaves[0].shape == (2,)
+    assert restored.algebra == mv.algebra
+    assert restored.layout == mv.layout
+    assert_allclose(np.asarray(restored.values), np.asarray(mv.values))
+
+
+def test_mvarray_pytree_jit_round_trip():
+    """JIT should round-trip a dense MVArray without unpacking metadata manually."""
+    alg = amsa.Algebra.vga2d()
+    mv = alg.vector(jnp.array([1.0, 2.0]))
+
+    round_tripped = jax.jit(lambda value: value)(mv)
+
+    assert round_tripped.algebra == mv.algebra
+    assert round_tripped.layout == mv.layout
+    assert_allclose(np.asarray(round_tripped.values), np.asarray(mv.values))
+
+
+def test_mvarray_pytree_vmap_identity_preserves_metadata():
+    """VMAP should map coefficient leaves while preserving static algebra/layout metadata."""
+    alg = amsa.Algebra.vga2d()
+    mv = alg.vector(jnp.array([[1.0, 2.0], [3.0, 4.0]]))
+
+    mapped = jax.vmap(lambda value: value)(mv)
+
+    assert mapped.algebra == mv.algebra
+    assert mapped.layout == mv.layout
+    assert mapped.batch_shape == mv.batch_shape
+    assert_allclose(np.asarray(mapped.values), np.asarray(mv.values))
+
+
+def test_mvarray_pytree_rejects_csr_storage_for_jax():
+    """CSR-on-JAX is intentionally deferred by the traceability contract."""
+    alg = amsa.Algebra.vga2d()
+    layout = alg.grade_layout(1)
+    mv = amsa.MVArray(
+        algebra=alg.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([1.0, 2.0]),
+            np.array([0, 1]),
+            np.array([0, 2]),
+            batch_shape=(),
+            width=layout.size,
+        ),
+    )
+
+    with pytest.raises(TypeError, match="dense MVArray storage only"):
+        jax.tree_util.tree_flatten(mv)

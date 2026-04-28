@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 try:
+    import jax
     import jax.numpy as jnp
 except ImportError as err:
     raise ImportError(
@@ -34,7 +35,10 @@ from amsa.ir import (
 )
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
+from amsa.specs import AlgebraSpec
 from amsa.storage import (
+    DenseStorage,
+    NumPyPayload,
     gather_storage_columns,
     project_storage,
     reweight_storage,
@@ -42,6 +46,28 @@ from amsa.storage import (
     scale_storage,
     storage_component,
 )
+
+
+def _flatten_mvarray(mv: MVArray) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
+    if not isinstance(mv.storage, DenseStorage):
+        raise TypeError("JAX pytrees currently support dense MVArray storage only.")
+    return (mv.storage._payload.array,), (mv.algebra, mv.layout)
+
+
+def _unflatten_mvarray(metadata: tuple[Any, ...], children: tuple[Any, ...]) -> MVArray:
+    algebra, layout = metadata
+    (values,) = children
+    if not isinstance(algebra, AlgebraSpec):
+        raise TypeError("Invalid MVArray pytree algebra metadata.")
+    if not isinstance(layout, MVLayout):
+        raise TypeError("Invalid MVArray pytree layout metadata.")
+    # Avoid DenseStorage.from_array() here: it normalizes through NumPy, which
+    # would reject abstract JAX values during jit/vmap tracing.
+    storage = DenseStorage(_payload=NumPyPayload(array=values))
+    return MVArray(algebra=algebra, layout=layout, storage=storage)
+
+
+jax.tree_util.register_pytree_node(MVArray, _flatten_mvarray, _unflatten_mvarray)
 
 
 def execute_product_ir(

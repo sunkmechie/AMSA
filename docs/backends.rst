@@ -64,6 +64,62 @@ Then select GPU execution:
 - JAX may truncate float64 to float32 by default. Enable float64 with the ``JAX_ENABLE_X64=1`` environment variable or ``jax.config.update("jax_enable_x64", True)`` in your code
 - JIT compilation can be enabled on individual backend functions for performance, but is not enabled by default to maintain debugging tractability
 
+JAX traceability contract
+-------------------------
+
+AMSA's JAX integration treats algebraic structure as static metadata and
+coefficient arrays as dynamic data. This keeps tracing aligned with AMSA's
+matrix-free architecture: JAX transforms coefficient execution, while blades,
+layouts, supports, and product plans remain Clifford metadata.
+
+Static metadata:
+
+- ``AlgebraSpec`` values, including signature and basis naming policy
+- ``MVLayout`` values, including blade ordering and support
+- product plans and IR objects such as ``ProductIR`` and ``UnaryIR``
+- storage descriptors such as storage kind, width, and batch rank
+
+Dynamic values:
+
+- coefficient arrays
+- scalar coefficient inputs used by scale, row-scale, and coefficient helpers
+- batch contents within a fixed traced shape
+
+Each compiled JAX trace specializes to the static algebra/layout/IR metadata and
+to the array shapes seen by JAX. Changing coefficients should not require a new
+trace; changing layouts, blade support, or output shape may require one.
+
+Traceability targets
+~~~~~~~~~~~~~~~~~~~~
+
+The dense JAX path is expected to become traceable for these core operations:
+
+- dense binary products: geometric, outer, inner, scalar, left contraction,
+  right contraction, and regressive product
+- unary involutions and duals: reverse, involute, conjugate, Poincare dual, and
+  Poincare undual
+- coefficient-local operations: add, sub, scale, row_scale, and grade projection
+- composed Clifford operations: sandwich, norm_squared, and nonsingular
+  normalize paths
+- scalar-objective autodiff paths built from differentiable Clifford operations
+
+Deferred traceability targets:
+
+- CSR storage on JAX
+- value-dependent output support or value-dependent output shapes
+- Python exceptions triggered from traced coefficient values
+- singular normalization branches inside ``jax.jit``
+- predicate helpers that intentionally return Python ``bool`` values
+
+Implementation rules for traceable paths:
+
+- register AMSA containers as JAX pytrees only when array payloads are leaves and
+  algebra/layout metadata is static auxiliary data
+- avoid Python ``bool(...)`` conversions of traced values
+- avoid value-dependent boolean indexing that changes array size
+- prefer shape-preserving ``jax.numpy.where`` expressions in coefficient kernels
+- keep validation that raises Python exceptions outside jitted numeric kernels
+
 Important notes
 ---------------
 
