@@ -29,11 +29,14 @@ from amsa.ir import (
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.storage import (
+    add_storage,
+    coefficient_magnitude_squared_storage,
     gather_storage_columns,
     project_storage,
     reweight_storage,
     row_scale_storage,
     scale_storage,
+    sub_storage,
 )
 
 
@@ -320,11 +323,7 @@ def _predicate(operands: tuple[np.ndarray, ...], metadata: dict[str, object]) ->
 
 
 def _coefficient_magnitude_squared(mv: MVArray) -> np.ndarray:
-    dtype = np.result_type(mv.dtype, np.float64)
-    values = np.asarray(mv.values, dtype=dtype)
-    if values.shape[-1] == 0:
-        return np.zeros(mv.batch_shape, dtype=dtype)
-    return np.asarray(np.sum(values * values, axis=-1), dtype=dtype)
+    return coefficient_magnitude_squared_storage(mv.storage)
 
 
 def _exp_coefficients(scalar_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -462,6 +461,8 @@ def _pga3d_motor_log_coefficients(
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray) -> tuple[MVArray, MVLayout]:
+    if lhs.layout == rhs.layout:
+        return rhs, lhs.layout
     blades = tuple(sorted(set(lhs.layout.blades) | set(rhs.layout.blades)))
     if len(blades) == lhs.algebra.blade_count:
         return rhs, MVLayout.dense(lhs.algebra)
@@ -472,14 +473,22 @@ def _mv_add(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values + rhs_p.values)
+    return MVArray(
+        algebra=lhs.algebra,
+        layout=layout,
+        storage=add_storage(lhs_p.storage, rhs_p.storage),
+    )
 
 
 def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values - rhs_p.values)
+    return MVArray(
+        algebra=lhs.algebra,
+        layout=layout,
+        storage=sub_storage(lhs_p.storage, rhs_p.storage),
+    )
 
 
 def _extract_scalar(mv: MVArray) -> MVArray:

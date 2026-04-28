@@ -207,3 +207,26 @@ def test_mvarray_pytree_rejects_csr_storage_for_jax():
 
     with pytest.raises(TypeError, match="dense MVArray storage only"):
         jax.tree_util.tree_flatten(mv)
+
+
+def test_jax_jit_dense_add_sub_and_norm_squared():
+    """Dense add/sub/norm-squared should trace after storage-local cleanup."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    lhs = alg.vector(jnp.array([1.0, 2.0]))
+    rhs = alg.vector(jnp.array([3.0, -4.0]))
+
+    def add_sub_norm(a, b):
+        combined = (a + b) - b
+        return amsa.norm_squared(combined).values
+
+    try:
+        actual = jax.jit(add_sub_norm)(lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    assert_allclose(np.asarray(actual), np.array([5.0]), rtol=1e-5)

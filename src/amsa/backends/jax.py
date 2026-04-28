@@ -70,6 +70,17 @@ def _unflatten_mvarray(metadata: tuple[Any, ...], children: tuple[Any, ...]) -> 
 jax.tree_util.register_pytree_node(MVArray, _flatten_mvarray, _unflatten_mvarray)
 
 
+def _gather_dense_columns(
+    storage: DenseStorage,
+    columns: tuple[int, ...],
+    batch_shape: tuple[int, ...],
+) -> jnp.ndarray:
+    if not columns:
+        return jnp.zeros(batch_shape + (0,), dtype=storage.dtype)
+    gathered = storage._payload.array[..., list(columns)]
+    return jnp.broadcast_to(gathered, batch_shape + (len(columns),))
+
+
 def execute_product_ir(
     lhs: MVArray,
     rhs: MVArray,
@@ -81,8 +92,16 @@ def execute_product_ir(
     # Gather the minimal set of columns from each operand.
     lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in ir.terms))
     rhs_columns = tuple(dict.fromkeys(term.rhs_col for term in ir.terms))
-    lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)
-    rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
+    lhs_values: Any
+    rhs_values: Any
+    if isinstance(lhs.storage, DenseStorage):
+        lhs_values = _gather_dense_columns(lhs.storage, lhs_columns, batch_shape)
+    else:
+        lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)
+    if isinstance(rhs.storage, DenseStorage):
+        rhs_values = _gather_dense_columns(rhs.storage, rhs_columns, batch_shape)
+    else:
+        rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
     lhs_col_index = {col: i for i, col in enumerate(lhs_columns)}
     rhs_col_index = {col: i for i, col in enumerate(rhs_columns)}
 
@@ -97,7 +116,8 @@ def execute_product_ir(
             * rhs_values[..., rhs_col_index[term.rhs_col]]
         )
 
-    return MVArray(algebra=lhs.algebra, layout=layout, values=result)
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, result)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def execute_unary_ir(
@@ -111,6 +131,13 @@ def execute_unary_ir(
         assert ir.permutation is not None
         # Project each output column from its permuted source column.
         columns = tuple(ir.permutation)
+        if isinstance(mv.storage, DenseStorage):
+            values = mv.storage._payload.array[..., list(columns)]
+            weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+            storage = DenseStorage(
+                _payload=NumPyPayload(array=cast(Any, values * weights))
+            )
+            return MVArray(algebra=mv.algebra, layout=layout, storage=storage)
         projected = project_storage(mv.storage, columns)
         # Apply per-column weights.
         transformed = reweight_storage(
@@ -119,6 +146,12 @@ def execute_unary_ir(
         return MVArray(algebra=mv.algebra, layout=layout, storage=transformed)
 
     # Pure weight case: input and output layouts are identical.
+    if isinstance(mv.storage, DenseStorage):
+        weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+        storage = DenseStorage(
+            _payload=NumPyPayload(array=cast(Any, mv.storage._payload.array * weights))
+        )
+        return MVArray(algebra=mv.algebra, layout=layout, storage=storage)
     transformed = reweight_storage(
         mv.storage, jnp.asarray(ir.weights, dtype=mv.dtype)
     )
@@ -280,9 +313,12 @@ def _predicate(operands: tuple[jnp.ndarray, ...], metadata: dict[str, object]) -
 
 def _coefficient_magnitude_squared(mv: MVArray) -> jnp.ndarray:
     dtype = jnp.result_type(mv.dtype, jnp.float64)
-    values = jnp.asarray(mv.values, dtype=dtype)
-    if values.shape[-1] == 0:
+    if mv.storage.width == 0:
         return jnp.zeros(mv.batch_shape, dtype=dtype)
+    if not isinstance(mv.storage, DenseStorage):
+        values = jnp.asarray(mv.values, dtype=dtype)
+        return jnp.asarray(jnp.sum(values * values, axis=-1), dtype=dtype)
+    values = jnp.asarray(mv.storage._payload.array, dtype=dtype)
     return jnp.asarray(jnp.sum(values * values, axis=-1), dtype=dtype)
 
 
@@ -429,6 +465,8 @@ def _pga3d_motor_log_coefficients(
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray) -> tuple[MVArray, MVLayout]:
+    if lhs.layout == rhs.layout:
+        return rhs, lhs.layout
     blades = tuple(sorted(set(lhs.layout.blades) | set(rhs.layout.blades)))
     if len(blades) == lhs.algebra.blade_count:
         return rhs, MVLayout.dense(lhs.algebra)
@@ -439,14 +477,22 @@ def _mv_add(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values + rhs_p.values)
+    batch_shape = jnp.broadcast_shapes(lhs_p.batch_shape, rhs_p.batch_shape)
+    lhs_values = jnp.broadcast_to(lhs_p.values, batch_shape + (layout.size,))
+    rhs_values = jnp.broadcast_to(rhs_p.values, batch_shape + (layout.size,))
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, lhs_values + rhs_values)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values - rhs_p.values)
+    batch_shape = jnp.broadcast_shapes(lhs_p.batch_shape, rhs_p.batch_shape)
+    lhs_values = jnp.broadcast_to(lhs_p.values, batch_shape + (layout.size,))
+    rhs_values = jnp.broadcast_to(rhs_p.values, batch_shape + (layout.size,))
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, lhs_values - rhs_values)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def _extract_scalar(mv: MVArray) -> MVArray:
