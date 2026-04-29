@@ -96,30 +96,6 @@ def build_scale_product_cases() -> list[BenchCase]:
     ]
 
 
-def build_elementwise_chain_cases() -> list[BenchCase]:
-    """Build benchmark cases for elementwise chain fusion."""
-    import numpy as np
-
-    from amsa.backends.numpy import _execute_fused_elementwise_chain
-
-    # Small array
-    arr = np.array([-4.0, -9.0, -16.0])
-
-    return [
-        BenchCase(
-            name="elementwise chain (non-fused)",
-            operation=lambda: np.sqrt(np.abs(arr))
-        ),
-        BenchCase(
-            name="elementwise chain (fused)",
-            operation=lambda: _execute_fused_elementwise_chain(
-                (arr,),
-                ({"function": "abs"}, {"function": "sqrt"}),
-            )
-        ),
-    ]
-
-
 def build_large_batch_cases() -> list[BenchCase]:
     """Build benchmark cases for large batch operations."""
     import numpy as np
@@ -194,14 +170,9 @@ def main() -> None:
         print(_summarize(case, number=args.number, repeat=args.repeat))
 
     print()
-    print("Elementwise Chain (small):")
-    for case in build_elementwise_chain_cases():
-        print(_summarize(case, number=args.number, repeat=args.repeat))
-
-    print()
     print("Scale + Product (large batch):")
     for case in build_large_batch_cases():
-        print(_summarize(case, number=args.number // 10, repeat=args.repeat))
+        print(_summarize(case, number=max(1, args.number // 10), repeat=args.repeat))
 
 
 if __name__ == "__main__":

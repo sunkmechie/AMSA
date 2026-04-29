@@ -18,6 +18,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 try:
+    import jax
     import jax.numpy as jnp
 except ImportError as err:
     raise ImportError(
@@ -34,7 +35,10 @@ from amsa.ir import (
 )
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
+from amsa.specs import AlgebraSpec
 from amsa.storage import (
+    DenseStorage,
+    NumPyPayload,
     gather_storage_columns,
     project_storage,
     reweight_storage,
@@ -42,6 +46,39 @@ from amsa.storage import (
     scale_storage,
     storage_component,
 )
+
+
+def _flatten_mvarray(mv: MVArray) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
+    if not isinstance(mv.storage, DenseStorage):
+        raise TypeError("JAX pytrees currently support dense MVArray storage only.")
+    return (mv.storage._payload.array,), (mv.algebra, mv.layout)
+
+
+def _unflatten_mvarray(metadata: tuple[Any, ...], children: tuple[Any, ...]) -> MVArray:
+    algebra, layout = metadata
+    (values,) = children
+    if not isinstance(algebra, AlgebraSpec):
+        raise TypeError("Invalid MVArray pytree algebra metadata.")
+    if not isinstance(layout, MVLayout):
+        raise TypeError("Invalid MVArray pytree layout metadata.")
+    # Avoid DenseStorage.from_array() here: it normalizes through NumPy, which
+    # would reject abstract JAX values during jit/vmap tracing.
+    storage = DenseStorage(_payload=NumPyPayload(array=values))
+    return MVArray(algebra=algebra, layout=layout, storage=storage)
+
+
+jax.tree_util.register_pytree_node(MVArray, _flatten_mvarray, _unflatten_mvarray)
+
+
+def _gather_dense_columns(
+    storage: DenseStorage,
+    columns: tuple[int, ...],
+    batch_shape: tuple[int, ...],
+) -> jnp.ndarray:
+    if not columns:
+        return jnp.zeros(batch_shape + (0,), dtype=storage.dtype)
+    gathered = storage._payload.array[..., list(columns)]
+    return jnp.broadcast_to(gathered, batch_shape + (len(columns),))
 
 
 def execute_product_ir(
@@ -55,8 +92,16 @@ def execute_product_ir(
     # Gather the minimal set of columns from each operand.
     lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in ir.terms))
     rhs_columns = tuple(dict.fromkeys(term.rhs_col for term in ir.terms))
-    lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)
-    rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
+    lhs_values: Any
+    rhs_values: Any
+    if isinstance(lhs.storage, DenseStorage):
+        lhs_values = _gather_dense_columns(lhs.storage, lhs_columns, batch_shape)
+    else:
+        lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)
+    if isinstance(rhs.storage, DenseStorage):
+        rhs_values = _gather_dense_columns(rhs.storage, rhs_columns, batch_shape)
+    else:
+        rhs_values = gather_storage_columns(rhs.storage, rhs_columns, batch_shape=batch_shape)
     lhs_col_index = {col: i for i, col in enumerate(lhs_columns)}
     rhs_col_index = {col: i for i, col in enumerate(rhs_columns)}
 
@@ -71,7 +116,8 @@ def execute_product_ir(
             * rhs_values[..., rhs_col_index[term.rhs_col]]
         )
 
-    return MVArray(algebra=lhs.algebra, layout=layout, values=result)
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, result)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def execute_unary_ir(
@@ -85,6 +131,13 @@ def execute_unary_ir(
         assert ir.permutation is not None
         # Project each output column from its permuted source column.
         columns = tuple(ir.permutation)
+        if isinstance(mv.storage, DenseStorage):
+            values = mv.storage._payload.array[..., list(columns)]
+            weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+            storage = DenseStorage(
+                _payload=NumPyPayload(array=cast(Any, values * weights))
+            )
+            return MVArray(algebra=mv.algebra, layout=layout, storage=storage)
         projected = project_storage(mv.storage, columns)
         # Apply per-column weights.
         transformed = reweight_storage(
@@ -93,6 +146,12 @@ def execute_unary_ir(
         return MVArray(algebra=mv.algebra, layout=layout, storage=transformed)
 
     # Pure weight case: input and output layouts are identical.
+    if isinstance(mv.storage, DenseStorage):
+        weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+        storage = DenseStorage(
+            _payload=NumPyPayload(array=cast(Any, mv.storage._payload.array * weights))
+        )
+        return MVArray(algebra=mv.algebra, layout=layout, storage=storage)
     transformed = reweight_storage(
         mv.storage, jnp.asarray(ir.weights, dtype=mv.dtype)
     )
@@ -184,8 +243,6 @@ def execute_sequence_ir(
                 jnp.asarray(operands[1]),
                 jnp.asarray(operands[2]),
             )
-        elif step.kind == "scalar_extract":
-            result = _extract_scalar(cast(MVArray, operands[0]))
         elif step.kind == "scalar_mv_from_array":
             result = _scalar_mv_from_array(
                 cast(MVArray, operands[0]),
@@ -254,9 +311,12 @@ def _predicate(operands: tuple[jnp.ndarray, ...], metadata: dict[str, object]) -
 
 def _coefficient_magnitude_squared(mv: MVArray) -> jnp.ndarray:
     dtype = jnp.result_type(mv.dtype, jnp.float64)
-    values = jnp.asarray(mv.values, dtype=dtype)
-    if values.shape[-1] == 0:
+    if mv.storage.width == 0:
         return jnp.zeros(mv.batch_shape, dtype=dtype)
+    if not isinstance(mv.storage, DenseStorage):
+        values = jnp.asarray(mv.values, dtype=dtype)
+        return jnp.asarray(jnp.sum(values * values, axis=-1), dtype=dtype)
+    values = jnp.asarray(mv.storage._payload.array, dtype=dtype)
     return jnp.asarray(jnp.sum(values * values, axis=-1), dtype=dtype)
 
 
@@ -267,25 +327,18 @@ def _exp_coefficients(scalar_values: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndar
     zero_mask = jnp.isclose(values, 0.0)
 
     roots = jnp.sqrt(jnp.abs(values))
-    scalar_coefficients = jnp.empty_like(roots, dtype=values.dtype)
-    linear_coefficients = jnp.empty_like(roots, dtype=values.dtype)
+    safe_roots = jnp.where(zero_mask, 1.0, roots)
 
-    scalar_coefficients = scalar_coefficients.at[positive_mask].set(
-        jnp.cosh(roots[positive_mask])
+    scalar_coefficients = jnp.where(
+        positive_mask,
+        jnp.cosh(roots),
+        jnp.where(negative_mask, jnp.cos(roots), jnp.ones_like(roots)),
     )
-    linear_coefficients = linear_coefficients.at[positive_mask].set(
-        jnp.sinh(roots[positive_mask]) / roots[positive_mask]
+    linear_coefficients = jnp.where(
+        positive_mask,
+        jnp.sinh(roots) / safe_roots,
+        jnp.where(negative_mask, jnp.sin(roots) / safe_roots, jnp.ones_like(roots)),
     )
-
-    scalar_coefficients = scalar_coefficients.at[negative_mask].set(
-        jnp.cos(roots[negative_mask])
-    )
-    linear_coefficients = linear_coefficients.at[negative_mask].set(
-        jnp.sin(roots[negative_mask]) / roots[negative_mask]
-    )
-
-    scalar_coefficients = scalar_coefficients.at[zero_mask].set(1.0)
-    linear_coefficients = linear_coefficients.at[zero_mask].set(1.0)
     return scalar_coefficients, linear_coefficients
 
 
@@ -306,33 +359,69 @@ def _motor_exp_coefficients(
     circular_mask = scalar < 0.0
     hyperbolic_mask = scalar > 0.0
 
-    if jnp.any(zero_mask):
-        scalar_coeff = scalar_coeff.at[zero_mask].set(1.0)
-        linear_coeff = linear_coeff.at[zero_mask].set(1.0)
-        pseudo_coeff = pseudo_coeff.at[zero_mask].set(0.5 * pseudoscalar[zero_mask])
-        dual_linear_coeff = dual_linear_coeff.at[zero_mask].set(pseudoscalar[zero_mask] / 6.0)
+    circular_roots = jnp.sqrt(jnp.where(circular_mask, -scalar, 1.0))
+    circular_delta = -pseudoscalar / (2.0 * circular_roots)
+    circular_sinc = jnp.sin(circular_roots) / circular_roots
+    circular_dsinc = (
+        (circular_roots * jnp.cos(circular_roots) - jnp.sin(circular_roots))
+        / (circular_roots * circular_roots)
+    )
 
-    if jnp.any(circular_mask):
-        roots = jnp.sqrt(-scalar[circular_mask])
-        delta = -pseudoscalar[circular_mask] / (2.0 * roots)
-        sinc = jnp.sin(roots) / roots
-        dsinc = (roots * jnp.cos(roots) - jnp.sin(roots)) / (roots * roots)
+    hyperbolic_roots = jnp.sqrt(jnp.where(hyperbolic_mask, scalar, 1.0))
+    hyperbolic_delta = pseudoscalar / (2.0 * hyperbolic_roots)
+    hyperbolic_sinhc = jnp.sinh(hyperbolic_roots) / hyperbolic_roots
+    hyperbolic_dsinhc = (
+        (
+            hyperbolic_roots * jnp.cosh(hyperbolic_roots)
+            - jnp.sinh(hyperbolic_roots)
+        )
+        / (hyperbolic_roots * hyperbolic_roots)
+    )
 
-        scalar_coeff = scalar_coeff.at[circular_mask].set(jnp.cos(roots))
-        pseudo_coeff = pseudo_coeff.at[circular_mask].set(-delta * jnp.sin(roots))
-        linear_coeff = linear_coeff.at[circular_mask].set(sinc)
-        dual_linear_coeff = dual_linear_coeff.at[circular_mask].set(delta * dsinc)
-
-    if jnp.any(hyperbolic_mask):
-        roots = jnp.sqrt(scalar[hyperbolic_mask])
-        delta = pseudoscalar[hyperbolic_mask] / (2.0 * roots)
-        sinhc = jnp.sinh(roots) / roots
-        dsinhc = (roots * jnp.cosh(roots) - jnp.sinh(roots)) / (roots * roots)
-
-        scalar_coeff = scalar_coeff.at[hyperbolic_mask].set(jnp.cosh(roots))
-        pseudo_coeff = pseudo_coeff.at[hyperbolic_mask].set(delta * jnp.sinh(roots))
-        linear_coeff = linear_coeff.at[hyperbolic_mask].set(sinhc)
-        dual_linear_coeff = dual_linear_coeff.at[hyperbolic_mask].set(delta * dsinhc)
+    scalar_coeff = jnp.where(
+        zero_mask,
+        jnp.ones_like(scalar),
+        jnp.where(
+            circular_mask,
+            jnp.cos(circular_roots),
+            jnp.where(hyperbolic_mask, jnp.cosh(hyperbolic_roots), scalar_coeff),
+        ),
+    )
+    pseudo_coeff = jnp.where(
+        zero_mask,
+        0.5 * pseudoscalar,
+        jnp.where(
+            circular_mask,
+            -circular_delta * jnp.sin(circular_roots),
+            jnp.where(
+                hyperbolic_mask,
+                hyperbolic_delta * jnp.sinh(hyperbolic_roots),
+                pseudo_coeff,
+            ),
+        ),
+    )
+    linear_coeff = jnp.where(
+        zero_mask,
+        jnp.ones_like(scalar),
+        jnp.where(
+            circular_mask,
+            circular_sinc,
+            jnp.where(hyperbolic_mask, hyperbolic_sinhc, linear_coeff),
+        ),
+    )
+    dual_linear_coeff = jnp.where(
+        zero_mask,
+        pseudoscalar / 6.0,
+        jnp.where(
+            circular_mask,
+            circular_delta * circular_dsinc,
+            jnp.where(
+                hyperbolic_mask,
+                hyperbolic_delta * hyperbolic_dsinhc,
+                dual_linear_coeff,
+            ),
+        ),
+    )
 
     return scalar_coeff, pseudo_coeff, linear_coeff, dual_linear_coeff
 
@@ -351,17 +440,17 @@ def _simple_bivector_log_coefficients(
     hyperbolic_mask = square > 0.0
     null_mask = jnp.isclose(square, 0.0)
 
-    if jnp.any(circular_mask):
-        coefficients = coefficients.at[circular_mask].set(
-            jnp.arctan2(roots[circular_mask], scalar[circular_mask]) / roots[circular_mask]
-        )
-    if jnp.any(hyperbolic_mask):
-        coefficients = coefficients.at[hyperbolic_mask].set(
-            jnp.arctanh(roots[hyperbolic_mask] / scalar[hyperbolic_mask])
-            / roots[hyperbolic_mask]
-        )
-    if jnp.any(null_mask):
-        coefficients = coefficients.at[null_mask].set(jnp.reciprocal(scalar[null_mask]))
+    safe_roots = jnp.where(null_mask, 1.0, roots)
+    circular_coeff = jnp.arctan2(roots, scalar) / safe_roots
+    hyperbolic_coeff = jnp.arctanh(roots / scalar) / safe_roots
+    null_coeff = jnp.reciprocal(scalar)
+
+    coefficients = jnp.where(
+        circular_mask,
+        circular_coeff,
+        jnp.where(hyperbolic_mask, hyperbolic_coeff, coefficients),
+    )
+    coefficients = jnp.where(null_mask, null_coeff, coefficients)
 
     return coefficients
 
@@ -377,32 +466,23 @@ def _pga3d_motor_log_coefficients(
     sine = jnp.asarray(sine_values, dtype=dtype)
     nonzero_mask = ~jnp.isclose(sine, 0.0)
 
-    phi = jnp.zeros_like(sine, dtype=dtype)
-    phi = phi.at[nonzero_mask].set(jnp.arctan2(sine[nonzero_mask], scalar[nonzero_mask]))
+    safe_sine = jnp.where(nonzero_mask, sine, 1.0)
+    phi = jnp.where(nonzero_mask, jnp.arctan2(sine, scalar), jnp.zeros_like(sine))
+    distance = jnp.where(nonzero_mask, -pseudoscalar / safe_sine, jnp.zeros_like(sine))
 
-    distance = jnp.zeros_like(sine, dtype=dtype)
-    distance = distance.at[nonzero_mask].set(-pseudoscalar[nonzero_mask] / sine[nonzero_mask])
-
-    alpha = jnp.zeros_like(sine, dtype=dtype)
-    beta = jnp.zeros_like(sine, dtype=dtype)
-    alpha = alpha.at[nonzero_mask].set(phi[nonzero_mask] / sine[nonzero_mask])
-    beta = beta.at[nonzero_mask].set(
-        distance[nonzero_mask]
-        * (
-            1.0
-            - (
-                phi[nonzero_mask]
-                * scalar[nonzero_mask]
-                / sine[nonzero_mask]
-            )
-        )
-        / sine[nonzero_mask]
+    alpha = jnp.where(nonzero_mask, phi / safe_sine, jnp.zeros_like(sine))
+    beta = jnp.where(
+        nonzero_mask,
+        distance * (1.0 - ((phi * scalar) / safe_sine)) / safe_sine,
+        jnp.zeros_like(sine),
     )
 
     return alpha, beta
 
 
 def _union_layout(lhs: MVArray, rhs: MVArray) -> tuple[MVArray, MVLayout]:
+    if lhs.layout == rhs.layout:
+        return rhs, lhs.layout
     blades = tuple(sorted(set(lhs.layout.blades) | set(rhs.layout.blades)))
     if len(blades) == lhs.algebra.blade_count:
         return rhs, MVLayout.dense(lhs.algebra)
@@ -413,27 +493,22 @@ def _mv_add(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values + rhs_p.values)
+    batch_shape = jnp.broadcast_shapes(lhs_p.batch_shape, rhs_p.batch_shape)
+    lhs_values = jnp.broadcast_to(lhs_p.values, batch_shape + (layout.size,))
+    rhs_values = jnp.broadcast_to(rhs_p.values, batch_shape + (layout.size,))
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, lhs_values + rhs_values)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
     _, layout = _union_layout(lhs, rhs)
     lhs_p = lhs.to_layout(layout)
     rhs_p = rhs.to_layout(layout)
-    return MVArray(algebra=lhs.algebra, layout=layout, values=lhs_p.values - rhs_p.values)
-
-
-def _extract_scalar(mv: MVArray) -> MVArray:
-    """Extract the scalar (blade 0) component as a grade-0 MVArray."""
-    scalar_layout = MVLayout.grade(mv.algebra, 0)
-    value = storage_component(mv.storage, 0) if 0 in mv.layout.blades else jnp.zeros(
-        mv.batch_shape, dtype=mv.dtype
-    )
-    if value.ndim == 0:
-        value = jnp.asarray([value.item()], dtype=mv.dtype)
-    else:
-        value = value[..., jnp.newaxis]
-    return MVArray(algebra=mv.algebra, layout=scalar_layout, values=value)
+    batch_shape = jnp.broadcast_shapes(lhs_p.batch_shape, rhs_p.batch_shape)
+    lhs_values = jnp.broadcast_to(lhs_p.values, batch_shape + (layout.size,))
+    rhs_values = jnp.broadcast_to(rhs_p.values, batch_shape + (layout.size,))
+    storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, lhs_values - rhs_values)))
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
 
 
 def _scalar_mv_from_array(reference: MVArray, values: jnp.ndarray) -> MVArray:

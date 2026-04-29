@@ -6,7 +6,7 @@ Backends are selected by device type rather than library name, making the API
 more intuitive for users who think in terms of CPU/GPU execution.
 
 Device selection
----------------
+----------------
 
 Use ``amsa.init()`` to select the execution device:
 
@@ -64,6 +64,136 @@ Then select GPU execution:
 - JAX may truncate float64 to float32 by default. Enable float64 with the ``JAX_ENABLE_X64=1`` environment variable or ``jax.config.update("jax_enable_x64", True)`` in your code
 - JIT compilation can be enabled on individual backend functions for performance, but is not enabled by default to maintain debugging tractability
 
+JAX traceability contract
+-------------------------
+
+AMSA's JAX integration treats algebraic structure as static metadata and
+coefficient arrays as dynamic data. This keeps tracing aligned with AMSA's
+matrix-free architecture: JAX transforms coefficient execution, while blades,
+layouts, supports, and product plans remain Clifford metadata.
+
+Static metadata:
+
+- ``AlgebraSpec`` values, including signature and basis naming policy
+- ``MVLayout`` values, including blade ordering and support
+- product plans and IR objects such as ``ProductIR`` and ``UnaryIR``
+- storage descriptors such as storage kind, width, and batch rank
+
+Dynamic values:
+
+- coefficient arrays
+- scalar coefficient inputs used by scale, row-scale, and coefficient helpers
+- batch contents within a fixed traced shape
+
+Each compiled JAX trace specializes to the static algebra/layout/IR metadata and
+to the array shapes seen by JAX. Changing coefficients should not require a new
+trace; changing layouts, blade support, or output shape may require one.
+
+JIT example:
+
+.. code-block:: python
+
+   import jax
+   import jax.numpy as jnp
+   import amsa
+
+   amsa.init(use="gpu")
+
+   alg = amsa.Algebra.vga3d()
+   u = alg.vector(jnp.array([1.0, 2.0, 3.0]))
+   v = alg.vector(jnp.array([4.0, -2.0, 1.0]))
+
+   product_values = jax.jit(lambda a, b: (a * b).values)
+   print(product_values(u, v))
+
+VMAP example:
+
+.. code-block:: python
+
+   batched_u = alg.vector(jnp.ones((8, 3)))
+   batched_v = alg.vector(jnp.ones((8, 3)))
+
+   outer_values = jax.jit(jax.vmap(lambda a, b: (a ^ b).values))
+   print(outer_values(batched_u, batched_v).shape)
+
+Gradient example:
+
+.. code-block:: python
+
+   layout = alg.grade_layout(1)
+
+   def objective(coefficients):
+       mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+       return amsa.norm_squared(mv).values[0]
+
+   print(jax.grad(objective)(jnp.array([0.5, -1.5, 2.0])))
+
+These examples use dense storage. CSR remains a CPU storage backend in the
+current JAX traceability milestone.
+
+Traceability targets
+~~~~~~~~~~~~~~~~~~~~
+
+The dense JAX path is traceable for these core operations:
+
+- dense binary products: geometric, outer, inner, scalar, left contraction,
+  right contraction, and regressive product
+- unary involutions and duals: reverse, involute, conjugate, Poincare dual, and
+  Poincare undual
+- coefficient-local operations: add, sub, scale, row_scale, and grade projection
+- composed Clifford operations that do not require value-dependent validation,
+  such as norm_squared
+- ``jax.vmap`` over dense ``MVArray`` coefficient leaves, including nested maps
+- ``jax.grad`` over scalar-objective autodiff paths built from differentiable
+  Clifford operations
+- coefficient helper kernels for ``exp()``, ``motor_exp()``, and motor-log
+  coefficient calculations
+
+Deferred traceability targets:
+
+- CSR storage on JAX
+- value-dependent output support or value-dependent output shapes
+- Python exceptions triggered from traced coefficient values
+- singular normalization branches inside ``jax.jit``
+- predicate helpers that intentionally return Python ``bool`` values
+- validation-backed public operations such as ``normalize()``, ``inverse()``,
+  and ``sandwich()`` until their value checks have a trace-safe validation model
+
+Implementation rules for traceable paths:
+
+- register AMSA containers as JAX pytrees only when array payloads are leaves and
+  algebra/layout metadata is static auxiliary data
+- avoid Python ``bool(...)`` conversions of traced values
+- avoid value-dependent boolean indexing that changes array size
+- prefer shape-preserving ``jax.numpy.where`` expressions in coefficient kernels
+- keep validation that raises Python exceptions outside jitted numeric kernels
+
+Benchmarking note:
+
+Use ``benchmarks/jax_traceability.py`` to compare NumPy eager execution, JAX
+eager execution, warmed ``jax.jit`` execution, ``jit`` + ``vmap``, and
+``jit`` + ``grad``. Warmed JIT timings are the meaningful numbers for checking
+whether JAX/XLA is helping; eager JAX timings mainly show Python-layer overhead
+through the AMSA abstraction.
+
+Dense traced construction:
+
+.. code-block:: python
+
+   import jax
+   import jax.numpy as jnp
+   import amsa
+
+   amsa.init(use="gpu")
+   alg = amsa.Algebra.vga3d()
+   layout = alg.grade_layout(1)
+
+   def objective(coefficients):
+       mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+       return amsa.norm_squared(mv).values[0]
+
+   gradient = jax.grad(objective)(jnp.array([0.5, -1.5, 2.0]))
+
 Important notes
 ---------------
 
@@ -73,7 +203,7 @@ Important notes
 - Device selection is global for the current Python process
 
 Future backends
---------------
+---------------
 
 Additional backends can be registered via the low-level ``amsa.ir`` module:
 

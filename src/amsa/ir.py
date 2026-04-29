@@ -57,7 +57,6 @@ SequenceStepKind = Literal[
     "motor_exp_coefficients",
     "simple_bivector_log_coefficients",
     "pga3d_motor_log_coefficients",
-    "scalar_extract",
     "scalar_mv_from_array",
     "single_blade_mv",
     "single_blade_mv_from_array",

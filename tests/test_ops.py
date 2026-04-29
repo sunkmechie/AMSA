@@ -747,6 +747,52 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
     assert_mv_allclose(actual, expected)
 
 
+def test_csr_add_sub_preserve_storage_without_dense_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    algebra = Algebra.vga2d()
+    layout = algebra.grade_layout(1)
+    lhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([1.0, 2.0]),
+            np.array([0, 1]),
+            np.array([0, 2]),
+            batch_shape=(),
+            width=layout.size,
+        ),
+    )
+    rhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([3.0, -2.0]),
+            np.array([0, 1]),
+            np.array([0, 2]),
+            batch_shape=(),
+            width=layout.size,
+        ),
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("add/sub should not densify matching CSR inputs via as_dense()")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    added = lhs + rhs
+    subtracted = lhs - rhs
+
+    assert added.storage_kind == "csr"
+    assert subtracted.storage_kind == "csr"
+    assert isinstance(added.storage, CSRStorage)
+    assert isinstance(subtracted.storage, CSRStorage)
+    np.testing.assert_array_equal(added.storage._payload.data, np.array([4.0]))
+    np.testing.assert_array_equal(added.storage._payload.indices, np.array([0]))
+    np.testing.assert_array_equal(subtracted.storage._payload.data, np.array([-2.0, 4.0]))
+    np.testing.assert_array_equal(subtracted.storage._payload.indices, np.array([0, 1]))
+
+
 @pytest.mark.parametrize(
     ("kind", "operation"),
     [

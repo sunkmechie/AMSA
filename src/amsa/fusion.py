@@ -28,8 +28,6 @@ from amsa.ir import SequenceIR, SequenceStepKind
 FusionKind = Literal[
     "scale_product",  # scale followed by binary product
     "unary_product",  # unary followed by binary product
-    "sequential_products",  # chain of binary products
-    "elementwise_chain",  # chain of elementwise operations
 ]
 
 
@@ -48,22 +46,14 @@ class FusionPattern:
     requires_metadata: tuple[str, ...] = ()
 
 
-# Define fusion patterns
 FUSION_PATTERNS: tuple[FusionPattern, ...] = (
-    # Scale + product: scale followed by binary_product
     FusionPattern(
         kind="scale_product",
         step_kinds=("scale", "binary_product"),
     ),
-    # Unary + product: unary followed by binary_product
     FusionPattern(
         kind="unary_product",
         step_kinds=("unary", "binary_product"),
-    ),
-    # Elementwise chains: multiple elementwise operations
-    FusionPattern(
-        kind="elementwise_chain",
-        step_kinds=("elementwise", "elementwise"),
     ),
 )
 

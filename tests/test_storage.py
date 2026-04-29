@@ -1,17 +1,3 @@
-# Copyright 2026 Surya Sunkara
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """Regression tests for storage operations.
 
 These tests lock down storage behavior (conversion, projection, scaling)
@@ -24,12 +10,15 @@ import pytest
 from amsa.storage import (
     CSRStorage,
     DenseStorage,
+    add_storage,
+    coefficient_magnitude_squared_storage,
     gather_storage_columns,
     project_storage,
     reweight_storage,
     row_scale_storage,
     scale_storage,
     storage_component,
+    sub_storage,
     to_csr_storage,
     to_dense_storage,
 )
@@ -160,6 +149,77 @@ def test_row_scale_csr_storage() -> None:
     scaled = row_scale_storage(csr, np.array([2.0, 3.0]))
     expected = np.array([[2.0, 4.0], [9.0, 12.0]])
     np.testing.assert_array_equal(scaled.as_dense(), expected)
+
+
+def test_add_csr_storage_preserves_csr_without_densifying(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Adding CSR storage with matching batch shape must merge sparse rows directly."""
+    lhs = CSRStorage(
+        data=np.array([1.0, 3.0, 5.0]),
+        indices=np.array([0, 2, 1]),
+        indptr=np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=3,
+    )
+    rhs = CSRStorage(
+        data=np.array([2.0, -3.0, 7.0]),
+        indices=np.array([0, 2, 2]),
+        indptr=np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=3,
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("CSR add should not densify matching CSR inputs")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+    added = add_storage(lhs, rhs)
+
+    assert isinstance(added, CSRStorage)
+    np.testing.assert_array_equal(added._payload.indices, np.array([0, 1, 2]))
+    np.testing.assert_array_equal(added._payload.data, np.array([3.0, 5.0, 7.0]))
+    np.testing.assert_array_equal(added._payload.indptr, np.array([0, 1, 3]))
+
+
+def test_sub_csr_storage_preserves_csr_without_densifying(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Subtracting CSR storage with matching batch shape must merge sparse rows directly."""
+    lhs = CSRStorage(
+        data=np.array([1.0, 3.0, 5.0]),
+        indices=np.array([0, 2, 1]),
+        indptr=np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=3,
+    )
+    rhs = CSRStorage(
+        data=np.array([1.0, 4.0]),
+        indices=np.array([0, 2]),
+        indptr=np.array([0, 1, 2]),
+        batch_shape=(2,),
+        width=3,
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("CSR sub should not densify matching CSR inputs")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+    subtracted = sub_storage(lhs, rhs)
+
+    assert isinstance(subtracted, CSRStorage)
+    np.testing.assert_array_equal(subtracted._payload.indices, np.array([2, 1, 2]))
+    np.testing.assert_array_equal(subtracted._payload.data, np.array([3.0, 5.0, -4.0]))
+    np.testing.assert_array_equal(subtracted._payload.indptr, np.array([0, 1, 3]))
+
+
+def test_coefficient_magnitude_squared_csr_storage() -> None:
+    """CSR coefficient magnitude squared must reduce stored coefficients by row."""
+    csr = CSRStorage(
+        data=np.array([1.0, -2.0, 3.0]),
+        indices=np.array([0, 2, 1]),
+        indptr=np.array([0, 2, 3]),
+        batch_shape=(2,),
+        width=3,
+    )
+
+    np.testing.assert_array_equal(coefficient_magnitude_squared_storage(csr), np.array([5.0, 9.0]))
 
 
 def test_project_dense_storage() -> None:

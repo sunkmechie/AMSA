@@ -199,6 +199,23 @@ import amsa
 amsa.init(use="gpu")
 ```
 
+Dense AMSA multivectors can be used directly with JAX transforms:
+
+```python
+import jax
+import jax.numpy as jnp
+import amsa
+
+amsa.init(use="gpu")
+
+alg = amsa.Algebra.vga3d()
+u = alg.vector(jnp.array([1.0, 2.0, 3.0]))
+v = alg.vector(jnp.array([4.0, -2.0, 1.0]))
+
+product_values = jax.jit(lambda a, b: (a * b).values)
+print(product_values(u, v))
+```
+
 See the documentation for details on execution backends.
 
 ## Documentation
@@ -338,5 +355,4 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 
 Visualization note:
 - `amsa.viz`provides neutral primitives, point adapters for PGA points, and optional matplotlib/VisPy backends
-
 

@@ -23,6 +23,11 @@ Inspection
 - ``examples/inspection/ir_inspection.py`` — ProductIR execution inspection
 - ``examples/inspection/cayley_table.py`` — Cayley table algebra inspection
 
+JAX
+---
+
+- ``examples/jax/dense_traceability.py`` — dense ``jit``, ``vmap``, and ``grad`` usage
+
 Kernels
 -------
 

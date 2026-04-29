@@ -7,7 +7,7 @@ Current scripts:
 - `motor_ops.py` — PGA2d / PGA3d motor `exp` and `log` timing
 - `ir_routing.py` — IR routing overhead for common operations (products, involutions)
 - `storage_backends.py` — Dense vs CSR storage performance comparison
-- `backend_comparison.py` — NumPy vs JAX backend performance comparison
+- `jax_traceability.py` — NumPy vs dense JAX eager, `jit`, `vmap`, and `grad` comparison
 
 Run from the repo root:
 
@@ -15,7 +15,7 @@ Run from the repo root:
 ./.venv/bin/python benchmarks/motor_ops.py
 ./.venv/bin/python benchmarks/ir_routing.py
 ./.venv/bin/python benchmarks/storage_backends.py
-./.venv/bin/python benchmarks/backend_comparison.py
+./.venv/bin/python benchmarks/jax_traceability.py
 ```
 
 Run the fusion comparison benchmark:
@@ -26,17 +26,25 @@ uv run python benchmarks/fusion_comparison.py
 
 ## Benchmark Results
 
-### Backend Comparison (NumPy vs JAX)
+### Dense JAX Traceability
 
-The backend comparison benchmark measures the performance difference between NumPy and JAX backends for common operations.
+The JAX traceability benchmark compares NumPy eager execution with dense JAX
+eager and warmed compiled paths:
 
-**Important Notes:**
+```bash
+uv run python benchmarks/jax_traceability.py --batch-size 10000 --number 1000 --repeat 5
+```
 
-- This benchmark measures latency through the AMSA abstraction layer, not raw backend performance
-- True JAX performance requires deeper backend integration (JIT compilation through Clifford composition)
-- Current JAX backend uses jax.numpy but cannot trace through AMSA objects
-- For meaningful JAX performance, use large batched operations and enable JIT where applicable
-- The benchmark is useful for comparing relative performance, not absolute throughput
+It reports:
+
+- NumPy eager batch products and norm-squared baselines
+- JAX eager batch product overhead
+- warmed `jax.jit` batch products and norm-squared
+- warmed `jax.jit(jax.vmap(...))` product execution
+- warmed `jax.jit(jax.grad(...))` scalar-objective differentiation
+
+The warmed JIT rows are the ones to use when checking whether the JAX
+implementation is doing useful compiled coefficient work.
 
 ### Fusion Comparison (NumPy Backend)
 
@@ -49,10 +57,6 @@ Scale + Product (small):
 scale+product (non-fused)                best=   48.280 us  median=   48.517 us  mean=   49.953 us
 scale+product (fused)                    best=   38.246 us  median=   38.684 us  mean=   38.990 us
 
-Elementwise Chain (small):
-elementwise chain (non-fused)            best=    0.685 us  median=    0.688 us  mean=    0.753 us
-elementwise chain (fused)                best=    1.006 us  median=    1.020 us  mean=    1.038 us
-
 Scale + Product (large batch):
 scale+product large batch (non-fused)    best=  108.165 us  median=  109.679 us  mean=  122.922 us
 scale+product large batch (fused)        best=   94.925 us  median=   97.260 us  mean=   97.831 us
@@ -61,9 +65,7 @@ scale+product large batch (fused)        best=   94.925 us  median=   97.260 us 
 **Interpretation:**
 
 - **Scale + Product fusion**: 12-21% faster by avoiding intermediate array allocation
-- **Elementwise Chain fusion**: 47% slower for simple operations due to function call overhead
-- Fusion is beneficial for operations that avoid significant intermediate allocations
-- Elementwise fusion may become beneficial for longer chains or larger arrays
+- Fusion is kept focused on Clifford product sequences that avoid significant intermediate allocations
 
 ### Motor Operations
 
