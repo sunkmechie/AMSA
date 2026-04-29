@@ -8,6 +8,7 @@ Current scripts:
 - `ir_routing.py` — IR routing overhead for common operations (products, involutions)
 - `storage_backends.py` — Dense vs CSR storage performance comparison
 - `backend_comparison.py` — NumPy vs JAX backend performance comparison
+- `jax_traceability.py` — Dense JAX `jit`, `vmap`, and `grad` benchmarks
 
 Run from the repo root:
 
@@ -16,6 +17,7 @@ Run from the repo root:
 ./.venv/bin/python benchmarks/ir_routing.py
 ./.venv/bin/python benchmarks/storage_backends.py
 ./.venv/bin/python benchmarks/backend_comparison.py
+./.venv/bin/python benchmarks/jax_traceability.py
 ```
 
 Run the fusion comparison benchmark:
@@ -33,10 +35,28 @@ The backend comparison benchmark measures the performance difference between Num
 **Important Notes:**
 
 - This benchmark measures latency through the AMSA abstraction layer, not raw backend performance
-- True JAX performance requires deeper backend integration (JIT compilation through Clifford composition)
-- Current JAX backend uses jax.numpy but cannot trace through AMSA objects
-- For meaningful JAX performance, use large batched operations and enable JIT where applicable
+- Dense AMSA multivectors are JAX pytrees, so supported public operations can trace through `jax.jit`, `jax.vmap`, and scalar-objective `jax.grad`
+- For meaningful JAX performance, use large batched operations and compare warmed JIT timings
 - The benchmark is useful for comparing relative performance, not absolute throughput
+
+### Dense JAX Traceability
+
+The JAX traceability benchmark separates eager JAX from warmed compiled paths:
+
+```bash
+uv run python benchmarks/jax_traceability.py --batch-size 10000 --number 1000 --repeat 5
+```
+
+It reports:
+
+- NumPy eager batch products and norm-squared baselines
+- JAX eager batch product overhead
+- warmed `jax.jit` batch products and norm-squared
+- warmed `jax.jit(jax.vmap(...))` product execution
+- warmed `jax.jit(jax.grad(...))` scalar-objective differentiation
+
+The warmed JIT rows are the ones to use when checking whether the JAX
+implementation is doing useful compiled coefficient work.
 
 ### Fusion Comparison (NumPy Backend)
 

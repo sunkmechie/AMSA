@@ -511,3 +511,156 @@ def test_jax_jit_motor_log_coefficient_kernels_handle_zero_and_nonzero_cases():
         0.2 * (1.0 - (0.3 * np.cos(0.3) / np.sin(0.3))) / np.sin(0.3),
         rtol=1e-5,
     )
+
+
+def test_jax_vmap_dense_binary_product_matches_explicit_batching():
+    """VMAP over dense MVArray leaves should match AMSA's batch semantics."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    lhs = alg.vector(jnp.array([[1.0, 2.0], [3.0, 4.0], [-1.0, 0.5]]))
+    rhs = alg.vector(jnp.array([[3.0, -4.0], [5.0, -6.0], [2.0, 7.0]]))
+
+    try:
+        mapped = jax.vmap(lambda a, b: a * b)(lhs, rhs)
+        explicit = lhs * rhs
+    finally:
+        init(use="cpu")
+
+    assert mapped.algebra == explicit.algebra
+    assert mapped.layout == explicit.layout
+    assert_allclose(np.asarray(mapped.values), np.asarray(explicit.values), rtol=1e-5)
+
+
+def test_jax_nested_vmap_dense_outer_product_preserves_metadata():
+    """Nested VMAP should compose with AMSA batch axes and static metadata."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    lhs = alg.vector(jnp.arange(18.0).reshape(2, 3, 3) / 10.0)
+    rhs = alg.vector((jnp.arange(18.0).reshape(2, 3, 3) + 1.0) / 7.0)
+
+    try:
+        mapped = jax.vmap(jax.vmap(lambda a, b: a ^ b))(lhs, rhs)
+        explicit = lhs ^ rhs
+    finally:
+        init(use="cpu")
+
+    assert mapped.algebra == explicit.algebra
+    assert mapped.layout == explicit.layout
+    assert mapped.batch_shape == explicit.batch_shape
+    assert_allclose(np.asarray(mapped.values), np.asarray(explicit.values), rtol=1e-5)
+
+
+def test_jax_grad_scalar_product_objective_matches_finite_difference():
+    """Scalar-product objectives should differentiate through dense products."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    layout = alg.grade_layout(1)
+    target = alg.vector(jnp.array([3.0, -4.0]))
+
+    def objective(coefficients):
+        mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+        return amsa.scalar_product(mv, target).values[0]
+
+    try:
+        coefficients = jnp.array([1.0, 2.0])
+        actual = jax.grad(objective)(coefficients)
+    finally:
+        init(use="cpu")
+
+    eps = 1e-3
+    expected = []
+    for index in range(2):
+        delta = np.zeros(2)
+        delta[index] = eps
+        plus = np.asarray(objective(jnp.asarray(np.array([1.0, 2.0]) + delta)))
+        minus = np.asarray(objective(jnp.asarray(np.array([1.0, 2.0]) - delta)))
+        expected.append((plus - minus) / (2.0 * eps))
+
+    assert_allclose(np.asarray(actual), np.asarray(expected), rtol=1e-3, atol=1e-3)
+
+
+def test_jax_grad_norm_squared_objective_matches_finite_difference():
+    """Norm-squared scalar objectives should expose coefficient gradients."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    layout = alg.grade_layout(1)
+
+    def objective(coefficients):
+        mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+        return amsa.norm_squared(mv).values[0]
+
+    try:
+        coefficients = jnp.array([0.5, -1.5, 2.0])
+        actual = jax.grad(objective)(coefficients)
+    finally:
+        init(use="cpu")
+
+    eps = 1e-3
+    expected = []
+    base = np.array([0.5, -1.5, 2.0])
+    for index in range(3):
+        delta = np.zeros(3)
+        delta[index] = eps
+        plus = np.asarray(objective(jnp.asarray(base + delta)))
+        minus = np.asarray(objective(jnp.asarray(base - delta)))
+        expected.append((plus - minus) / (2.0 * eps))
+
+    assert_allclose(np.asarray(actual), np.asarray(expected), rtol=1e-3, atol=1e-3)
+
+
+def test_jax_grad_rotor_action_loss_matches_finite_difference():
+    """Rotor-style sandwich composition should differentiate without inverse validation."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    even_layout = alg.even_layout()
+    vector_layout = alg.grade_layout(1)
+    target = alg.vector(jnp.array([0.25, -0.75]))
+
+    def objective(rotor_coefficients):
+        rotor = amsa.MVArray(algebra=alg.spec, layout=even_layout, values=rotor_coefficients)
+        vector = amsa.MVArray(
+            algebra=alg.spec,
+            layout=vector_layout,
+            values=jnp.array([1.0, 0.0]),
+        )
+        rotated = rotor * vector * amsa.reverse(rotor)
+        residual = rotated - target
+        return amsa.scalar_product(residual, residual).values[0]
+
+    try:
+        coefficients = jnp.array([0.8, 0.2])
+        actual = jax.grad(objective)(coefficients)
+    finally:
+        init(use="cpu")
+
+    eps = 1e-3
+    expected = []
+    base = np.array([0.8, 0.2])
+    for index in range(2):
+        delta = np.zeros(2)
+        delta[index] = eps
+        plus = np.asarray(objective(jnp.asarray(base + delta)))
+        minus = np.asarray(objective(jnp.asarray(base - delta)))
+        expected.append((plus - minus) / (2.0 * eps))
+
+    assert_allclose(np.asarray(actual), np.asarray(expected), rtol=1e-3, atol=1e-3)

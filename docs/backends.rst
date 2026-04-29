@@ -92,7 +92,7 @@ trace; changing layouts, blade support, or output shape may require one.
 Traceability targets
 ~~~~~~~~~~~~~~~~~~~~
 
-The dense JAX path is expected to become traceable for these core operations:
+The dense JAX path is traceable for these core operations:
 
 - dense binary products: geometric, outer, inner, scalar, left contraction,
   right contraction, and regressive product
@@ -101,7 +101,9 @@ The dense JAX path is expected to become traceable for these core operations:
 - coefficient-local operations: add, sub, scale, row_scale, and grade projection
 - composed Clifford operations that do not require value-dependent validation,
   such as norm_squared
-- scalar-objective autodiff paths built from differentiable Clifford operations
+- ``jax.vmap`` over dense ``MVArray`` coefficient leaves, including nested maps
+- ``jax.grad`` over scalar-objective autodiff paths built from differentiable
+  Clifford operations
 - coefficient helper kernels for ``exp()``, ``motor_exp()``, and motor-log
   coefficient calculations
 
@@ -126,10 +128,29 @@ Implementation rules for traceable paths:
 
 Benchmarking note:
 
-Traceability should be verified before performance claims are made. Add or
-refresh JAX benchmarks after the dense core operation suite has explicit
-``jax.jit`` coverage, so measurements reflect stable supported behavior rather
-than isolated helper kernels.
+Use ``benchmarks/jax_traceability.py`` to compare NumPy eager execution, JAX
+eager execution, warmed ``jax.jit`` execution, ``jit`` + ``vmap``, and
+``jit`` + ``grad``. Warmed JIT timings are the meaningful numbers for checking
+whether JAX/XLA is helping; eager JAX timings mainly show Python-layer overhead
+through the AMSA abstraction.
+
+Dense traced construction:
+
+.. code-block:: python
+
+   import jax
+   import jax.numpy as jnp
+   import amsa
+
+   amsa.init(use="gpu")
+   alg = amsa.Algebra.vga3d()
+   layout = alg.grade_layout(1)
+
+   def objective(coefficients):
+       mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+       return amsa.norm_squared(mv).values[0]
+
+   gradient = jax.grad(objective)(jnp.array([0.5, -1.5, 2.0]))
 
 Important notes
 ---------------

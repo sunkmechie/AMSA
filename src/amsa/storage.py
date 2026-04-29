@@ -257,10 +257,14 @@ class DenseStorage:
     @classmethod
     def from_array(cls, array: ArrayLike) -> DenseStorage:
         """Create DenseStorage from an array-like object."""
-        values = np.asarray(array)
+        values: Any = (
+            array
+            if all(hasattr(array, attr) for attr in ("shape", "dtype", "ndim"))
+            else np.asarray(array)
+        )
         if values.ndim == 0:
             raise ValueError("storage values must have at least one dimension.")
-        return cls(_payload=NumPyPayload(array=values))
+        return cls(_payload=NumPyPayload(array=cast(NDArray[Any], values)))
 
     @property
     def batch_shape(self) -> tuple[int, ...]:
