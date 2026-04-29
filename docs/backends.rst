@@ -6,7 +6,7 @@ Backends are selected by device type rather than library name, making the API
 more intuitive for users who think in terms of CPU/GPU execution.
 
 Device selection
----------------
+----------------
 
 Use ``amsa.init()`` to select the execution device:
 
@@ -89,6 +89,48 @@ Each compiled JAX trace specializes to the static algebra/layout/IR metadata and
 to the array shapes seen by JAX. Changing coefficients should not require a new
 trace; changing layouts, blade support, or output shape may require one.
 
+JIT example:
+
+.. code-block:: python
+
+   import jax
+   import jax.numpy as jnp
+   import amsa
+
+   amsa.init(use="gpu")
+
+   alg = amsa.Algebra.vga3d()
+   u = alg.vector(jnp.array([1.0, 2.0, 3.0]))
+   v = alg.vector(jnp.array([4.0, -2.0, 1.0]))
+
+   product_values = jax.jit(lambda a, b: (a * b).values)
+   print(product_values(u, v))
+
+VMAP example:
+
+.. code-block:: python
+
+   batched_u = alg.vector(jnp.ones((8, 3)))
+   batched_v = alg.vector(jnp.ones((8, 3)))
+
+   outer_values = jax.jit(jax.vmap(lambda a, b: (a ^ b).values))
+   print(outer_values(batched_u, batched_v).shape)
+
+Gradient example:
+
+.. code-block:: python
+
+   layout = alg.grade_layout(1)
+
+   def objective(coefficients):
+       mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+       return amsa.norm_squared(mv).values[0]
+
+   print(jax.grad(objective)(jnp.array([0.5, -1.5, 2.0])))
+
+These examples use dense storage. CSR remains a CPU storage backend in the
+current JAX traceability milestone.
+
 Traceability targets
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -161,7 +203,7 @@ Important notes
 - Device selection is global for the current Python process
 
 Future backends
---------------
+---------------
 
 Additional backends can be registered via the low-level ``amsa.ir`` module:
 

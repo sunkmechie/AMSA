@@ -162,20 +162,6 @@ def execute_sequence_ir(
                 i += 2  # Skip both steps
                 continue
 
-        if step.fusion == "elementwise_chain" and i + 1 < len(ir.steps):
-            # Fuse elementwise chain
-            next_step = ir.steps[i + 1]
-            if next_step.kind == "elementwise":
-                meta1 = step.metadata or {}
-                meta2 = next_step.metadata or {}
-                result = _execute_fused_elementwise_chain(
-                    tuple(np.asarray(operand) for operand in operands),
-                    (meta1, meta2),
-                )
-                env[next_step.output] = result
-                i += 2  # Skip both steps
-                continue
-
         # Non-fused execution path
         if step.kind == "binary_product":
             assert isinstance(step.ir, ProductIR)
@@ -251,8 +237,6 @@ def execute_sequence_ir(
                 np.asarray(operands[1]),
                 np.asarray(operands[2]),
             )
-        elif step.kind == "scalar_extract":
-            result = _extract_scalar(cast(MVArray, operands[0]))
         elif step.kind == "scalar_mv_from_array":
             result = _scalar_mv_from_array(
                 cast(MVArray, operands[0]),
@@ -491,21 +475,6 @@ def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
     )
 
 
-def _extract_scalar(mv: MVArray) -> MVArray:
-    """Extract the scalar (blade 0) component as a grade-0 MVArray."""
-    from amsa.storage import storage_component
-
-    scalar_layout = MVLayout.grade(mv.algebra, 0)
-    value = storage_component(mv.storage, 0) if 0 in mv.layout.blades else np.zeros(
-        mv.batch_shape, dtype=mv.dtype
-    )
-    if value.ndim == 0:
-        value = np.asarray([value.item()], dtype=mv.dtype)
-    else:
-        value = value[..., np.newaxis]
-    return MVArray(algebra=mv.algebra, layout=scalar_layout, values=value)
-
-
 def _execute_fused_scale_product(
     lhs: MVArray,
     rhs: MVArray,
@@ -593,33 +562,6 @@ def _execute_fused_unary_product(
         )
 
     return MVArray(algebra=mv.algebra, layout=layout, values=result)
-
-
-def _execute_fused_elementwise_chain(
-    operands: tuple[np.ndarray, ...],
-    metadatas: tuple[dict[str, object], ...],
-) -> np.ndarray:
-    """Execute fused elementwise chain in a single pass.
-
-    This combines multiple elementwise operations to avoid intermediate arrays.
-    """
-    result = operands[0]
-
-    for meta in metadatas:
-        func = meta.get("function", "identity")
-        if func == "abs":
-            result = np.abs(result)
-        elif func == "sqrt":
-            result = np.sqrt(result)
-        elif func == "sqrt_abs":
-            result = np.sqrt(np.abs(result))
-        elif func == "reciprocal":
-            result = 1.0 / result
-        else:
-            # Fallback to identity for unknown functions
-            pass
-
-    return result
 
 
 def _scalar_mv_from_array(reference: MVArray, values: np.ndarray) -> MVArray:

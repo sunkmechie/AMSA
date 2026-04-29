@@ -107,6 +107,35 @@ AMSA uses CPU (NumPy) execution by default. You can select the device:
 
 See :doc:`backends` for more details on execution backends.
 
+Dense JAX transforms
+--------------------
+
+Dense multivectors can be passed directly to JAX transforms. Coefficient arrays
+are traced as dynamic values; algebra and layout metadata stay static.
+
+.. code-block:: python
+
+   import jax
+   import jax.numpy as jnp
+   import amsa
+
+   amsa.init(use="gpu")
+
+   alg = amsa.Algebra.vga3d()
+   u = alg.vector(jnp.array([1.0, 2.0, 3.0]))
+   v = alg.vector(jnp.array([4.0, -2.0, 1.0]))
+
+   product_values = jax.jit(lambda a, b: (a * b).values)
+   print(product_values(u, v))
+
+   layout = alg.grade_layout(1)
+
+   def objective(coefficients):
+       mv = amsa.MVArray(algebra=alg.spec, layout=layout, values=coefficients)
+       return amsa.norm_squared(mv).values[0]
+
+   print(jax.grad(objective)(jnp.array([0.5, -1.5, 2.0])))
+
 Visualization
 -------------
 

@@ -243,8 +243,6 @@ def execute_sequence_ir(
                 jnp.asarray(operands[1]),
                 jnp.asarray(operands[2]),
             )
-        elif step.kind == "scalar_extract":
-            result = _extract_scalar(cast(MVArray, operands[0]))
         elif step.kind == "scalar_mv_from_array":
             result = _scalar_mv_from_array(
                 cast(MVArray, operands[0]),
@@ -511,19 +509,6 @@ def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
     rhs_values = jnp.broadcast_to(rhs_p.values, batch_shape + (layout.size,))
     storage = DenseStorage(_payload=NumPyPayload(array=cast(Any, lhs_values - rhs_values)))
     return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
-
-
-def _extract_scalar(mv: MVArray) -> MVArray:
-    """Extract the scalar (blade 0) component as a grade-0 MVArray."""
-    scalar_layout = MVLayout.grade(mv.algebra, 0)
-    value = storage_component(mv.storage, 0) if 0 in mv.layout.blades else jnp.zeros(
-        mv.batch_shape, dtype=mv.dtype
-    )
-    if value.ndim == 0:
-        value = jnp.asarray([value.item()], dtype=mv.dtype)
-    else:
-        value = value[..., jnp.newaxis]
-    return MVArray(algebra=mv.algebra, layout=scalar_layout, values=value)
 
 
 def _scalar_mv_from_array(reference: MVArray, values: jnp.ndarray) -> MVArray:

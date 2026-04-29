@@ -322,17 +322,6 @@ def conjugate(mv: MVArray) -> MVArray:
     return _execute_unary(mv, "conjugate")
 
 
-def _pseudoscalar_inverse_scale(mv: MVArray) -> float:
-    # This remains for public or internal checks, but builds into IR now.
-    pseudoscalar = mv.algebra.pseudoscalar_blade
-    coefficient, _ = mv.algebra.blade_product(pseudoscalar, pseudoscalar)
-    if coefficient == 0:
-        raise ValueError(
-            "dual/undual require an invertible pseudoscalar; this algebra is degenerate."
-        )
-    return 1.0 / float(coefficient)
-
-
 def dual(mv: MVArray) -> MVArray:
     return _execute_unary(mv, "dual")
 

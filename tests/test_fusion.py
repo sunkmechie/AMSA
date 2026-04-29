@@ -11,7 +11,6 @@ def test_fusion_patterns_defined():
     pattern_kinds = {p.kind for p in FUSION_PATTERNS}
     assert "scale_product" in pattern_kinds
     assert "unary_product" in pattern_kinds
-    assert "elementwise_chain" in pattern_kinds
 
 
 def test_analyze_fusion_empty_sequence():
@@ -77,34 +76,6 @@ def test_analyze_fusion_unary_product():
     opportunities = analyze_fusion(ir)
     assert 0 in opportunities
     assert opportunities[0] == "unary_product"
-
-
-def test_analyze_fusion_elementwise_chain():
-    """Test detection of elementwise chain pattern."""
-    ir = SequenceIR(
-        name="elementwise_chain",
-        inputs=("input",),
-        steps=(
-            IRStep(
-                kind="elementwise",
-                operands=("input",),
-                ir=None,
-                output="abs",
-                metadata={"function": "abs"},
-            ),
-            IRStep(
-                kind="elementwise",
-                operands=("abs",),
-                ir=None,
-                output="sqrt",
-                metadata={"function": "sqrt"},
-            ),
-        ),
-        result="sqrt",
-    )
-    opportunities = analyze_fusion(ir)
-    assert 0 in opportunities
-    assert opportunities[0] == "elementwise_chain"
 
 
 def test_apply_fusion_metadata():
@@ -248,27 +219,6 @@ def test_fused_scale_product_correctness():
     assert_allclose(result_fused.values, result_non_fused.values)
 
 
-def test_fused_elementwise_chain_correctness():
-    """Test that fused elementwise chain produces correct results."""
-    import numpy as np
-
-    from amsa.backends.numpy import _execute_fused_elementwise_chain
-
-    # Test abs -> sqrt chain
-    arr = np.array([-4.0, -9.0, -16.0])
-
-    # Non-fused
-    result_non_fused = np.sqrt(np.abs(arr))
-
-    # Fused
-    result_fused = _execute_fused_elementwise_chain(
-        (arr,),
-        ({"function": "abs"}, {"function": "sqrt"}),
-    )
-
-    assert_allclose(result_fused, result_non_fused)
-
-
 def test_fusion_integration_with_backend():
     """Test that fusion metadata is correctly applied and preserved."""
     from amsa.fusion import apply_fusion_metadata
@@ -331,42 +281,6 @@ def test_fusion_unary_product_integration():
 
     # Verify fusion metadata is present
     assert fused_ir.steps[0].fusion == "unary_product"
-
-
-def test_fusion_elementwise_chain_integration():
-    """Test that elementwise chain fusion metadata is correctly applied."""
-    from amsa.fusion import apply_fusion_metadata
-    from amsa.ir import IRStep, SequenceIR
-
-    # Create SequenceIR for elementwise chain (abs -> sqrt)
-    sequence_ir = SequenceIR(
-        name="elementwise_chain",
-        inputs=("input",),
-        steps=(
-            IRStep(
-                kind="elementwise",
-                operands=("input",),
-                ir=None,
-                output="abs",
-                metadata={"function": "abs"},
-            ),
-            IRStep(
-                kind="elementwise",
-                operands=("abs",),
-                ir=None,
-                output="sqrt",
-                metadata={"function": "sqrt"},
-            ),
-        ),
-        result="sqrt",
-    )
-
-    # Apply fusion metadata
-    fused_ir = apply_fusion_metadata(sequence_ir)
-
-    # Verify fusion metadata is present
-    assert fused_ir.steps[0].fusion == "elementwise_chain"
-    assert fused_ir.steps[1].fusion is None
 
 
 def test_fusion_no_opportunity_unchanged():
