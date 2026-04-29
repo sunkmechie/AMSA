@@ -515,6 +515,11 @@ def gather_storage_columns(
 def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVStorage:
     target_width = len(columns)
     if isinstance(storage, DenseStorage):
+        if all(column is not None for column in columns):
+            dense_columns = cast(tuple[int, ...], columns)
+            return DenseStorage(
+                _payload=NumPyPayload(array=storage._payload.array[..., list(dense_columns)])
+            )
         projected = np.zeros(storage.batch_shape + (target_width,), dtype=storage.dtype)
         for out_column, in_column in enumerate(columns):
             if in_column is not None:

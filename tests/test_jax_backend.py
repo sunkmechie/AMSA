@@ -232,6 +232,162 @@ def test_jax_jit_dense_add_sub_and_norm_squared():
     assert_allclose(np.asarray(actual), np.array([5.0]), rtol=1e-5)
 
 
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        (lambda lhs, rhs: lhs * rhs, np.array([-5.0, -10.0])),
+        (lambda lhs, rhs: lhs ^ rhs, np.array([-10.0])),
+        (lambda lhs, rhs: lhs | rhs, np.array([-5.0])),
+        (amsa.scalar_product, np.array([-5.0])),
+        (amsa.left_contraction, np.array([-5.0])),
+        (amsa.right_contraction, np.array([-5.0])),
+    ],
+)
+def test_jax_jit_dense_binary_products(operation, expected):
+    """Dense binary products should trace through the public operation layer."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    lhs = alg.vector(jnp.array([1.0, 2.0]))
+    rhs = alg.vector(jnp.array([3.0, -4.0]))
+
+    try:
+        actual = jax.jit(lambda a, b: operation(a, b).values)(lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    assert_allclose(np.asarray(actual), expected, rtol=1e-5)
+
+
+def test_jax_jit_dense_regressive_product():
+    """Regressive products should trace for dense nondegenerate algebras."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    lhs = alg.bivector(jnp.array([1.0, -2.0, 0.5]))
+    rhs = alg.bivector(jnp.array([0.25, 3.0, -1.0]))
+
+    try:
+        actual = jax.jit(lambda a, b: amsa.regressive_product(a, b).values)(lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    init(use="cpu")
+    expected = amsa.regressive_product(
+        alg.bivector(np.array([1.0, -2.0, 0.5])),
+        alg.bivector(np.array([0.25, 3.0, -1.0])),
+    )
+    assert_allclose(np.asarray(actual), np.asarray(expected.values), rtol=1e-5)
+
+
+def test_jax_jit_dense_layout_product_preserves_full_output_shape():
+    """Dense layouts should trace with the full layout width when support is dense."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    lhs = alg.multivector(jnp.array([1.0, 2.0, 0.0, 0.0]), layout=alg.dense_layout())
+    rhs = alg.multivector(jnp.array([0.0, 3.0, -4.0, 0.0]), layout=alg.dense_layout())
+
+    try:
+        actual = jax.jit(lambda a, b: (a * b).values)(lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    assert actual.shape == (4,)
+    assert_allclose(np.asarray(actual), np.array([6.0, 3.0, -4.0, -8.0]), rtol=1e-5)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        amsa.reverse,
+        amsa.involute,
+        amsa.conjugate,
+        amsa.poincare_dual,
+        amsa.poincare_undual,
+    ],
+)
+def test_jax_jit_dense_unary_operations(operation):
+    """Dense unary operations should trace through public functions."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    mv = alg.multivector(
+        {
+            "e": jnp.array(1.0),
+            "e1": jnp.array(2.0),
+            "e23": jnp.array(-3.0),
+            "e123": jnp.array(0.5),
+        },
+        layout=alg.dense_layout(),
+    )
+
+    try:
+        actual = jax.jit(lambda value: operation(value).values)(mv)
+    finally:
+        init(use="cpu")
+
+    expected = operation(
+        alg.multivector(
+            {"e": 1.0, "e1": 2.0, "e23": -3.0, "e123": 0.5},
+            layout=alg.dense_layout(),
+        )
+    )
+    assert_allclose(np.asarray(actual), np.asarray(expected.values), rtol=1e-5)
+
+
+def test_jax_eval_shape_reports_dense_product_shape_without_execution():
+    """Dense product shape should be available through jax.eval_shape."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    lhs = alg.vector(jnp.ones((4, 3)))
+    rhs = alg.vector(jnp.ones((4, 3)))
+
+    try:
+        shape = jax.eval_shape(lambda a, b: (a * b).values, lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    assert shape.shape == (4, 4)
+
+
+def test_jax_jit_dense_grade_projection():
+    """Dense-to-grade projection should trace when it only selects existing columns."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga3d()
+    mv = alg.multivector(
+        jnp.arange(8.0),
+        layout=alg.dense_layout(),
+    )
+
+    try:
+        actual = jax.jit(lambda value: value.grade(1, 3).values)(mv)
+    finally:
+        init(use="cpu")
+
+    assert_allclose(np.asarray(actual), np.array([1.0, 2.0, 4.0, 7.0]), rtol=1e-5)
+
+
 def test_jax_jit_exp_coefficient_kernel_handles_all_signs():
     """Exp coefficient helper should trace without dynamic masking."""
     backend = JAXBackend()

@@ -99,8 +99,8 @@ The dense JAX path is expected to become traceable for these core operations:
 - unary involutions and duals: reverse, involute, conjugate, Poincare dual, and
   Poincare undual
 - coefficient-local operations: add, sub, scale, row_scale, and grade projection
-- composed Clifford operations: sandwich, norm_squared, and nonsingular
-  normalize paths
+- composed Clifford operations that do not require value-dependent validation,
+  such as norm_squared
 - scalar-objective autodiff paths built from differentiable Clifford operations
 - coefficient helper kernels for ``exp()``, ``motor_exp()``, and motor-log
   coefficient calculations
@@ -112,6 +112,8 @@ Deferred traceability targets:
 - Python exceptions triggered from traced coefficient values
 - singular normalization branches inside ``jax.jit``
 - predicate helpers that intentionally return Python ``bool`` values
+- validation-backed public operations such as ``normalize()``, ``inverse()``,
+  and ``sandwich()`` until their value checks have a trace-safe validation model
 
 Implementation rules for traceable paths:
 
