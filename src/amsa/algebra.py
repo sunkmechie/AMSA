@@ -350,6 +350,71 @@ class Algebra:
     def pseudoscalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:
         return self.multivector([value], layout=self.grade_layout(self.dimension), backend=backend)
 
+    def _validate_cga(self) -> int:
+        if self.dimension < 3 or self.signature[-2:] != (1, -1):
+            raise ValueError("CGA helpers require an AMSA CGA algebra with signature (1^n, 1, -1).")
+        return self.dimension - 2
+
+    def origin(self, *, backend: StorageRequest = "auto") -> MVArray:
+        """Return the conformal null origin vector ``n_o``."""
+        from amsa.cga import origin as _cga_origin
+        return _cga_origin(self, backend=backend)
+
+    def infinity(self, *, backend: StorageRequest = "auto") -> MVArray:
+        """Return the conformal null infinity vector ``n_inf``."""
+        from amsa.cga import infinity as _cga_infinity
+        return _cga_infinity(self, backend=backend)
+
+    def euclidean_vector(
+        self, coordinates: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Embed Euclidean coordinates in the Euclidean vector subspace of a CGA algebra."""
+        from amsa.cga import euclidean_vector as _cga_euclidean_vector
+        return _cga_euclidean_vector(self, coordinates, backend=backend)
+
+    def point(
+        self, coordinates: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return the conformal point ``X = n_o + x + 0.5 * (x·x) n_inf``."""
+        from amsa.cga import point as _cga_point
+        return _cga_point(self, coordinates, backend=backend)
+
+    def sphere(
+        self, center: Any, radius: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a dual sphere ``S = C - 0.5 r^2 n_inf``."""
+        from amsa.cga import sphere as _cga_sphere
+        return _cga_sphere(self, center, radius, backend=backend)
+
+    def plane(
+        self, normal: Any, distance: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a dual plane ``P = n + d n_inf`` with Euclidean unit normal ``n``."""
+        from amsa.cga import plane as _cga_plane
+        return _cga_plane(self, normal, distance, backend=backend)
+
+    def translate(
+        self, displacement: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return the CGA translator ``T = 1 - 0.5 t n_inf``."""
+        from amsa.cga import translate as _cga_translate
+        return _cga_translate(self, displacement, backend=backend)
+
+    def line_through_points(self, a: MVArray, b: MVArray) -> MVArray:
+        """Return the direct line through two conformal points."""
+        from amsa.cga import line_through_points as _cga_line_through_points
+        return _cga_line_through_points(self, a, b)
+
+    def circle_through_points(self, a: MVArray, b: MVArray, c: MVArray) -> MVArray:
+        """Return the direct circle through three conformal points."""
+        from amsa.cga import circle_through_points as _cga_circle_through_points
+        return _cga_circle_through_points(self, a, b, c)
+
+    def distance_squared(self, a: MVArray, b: MVArray) -> Any:
+        """Return Euclidean squared distance from normalized conformal points."""
+        from amsa.cga import distance_squared as _cga_distance_squared
+        return _cga_distance_squared(self, a, b)
+
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs
 

@@ -1,13 +1,13 @@
 import numpy as np
+import pytest
 
 import amsa
-from amsa import cga
 
 
 def test_cga3d_null_basis_identities() -> None:
     alg = amsa.Algebra.cga3d()
-    no = cga.origin(alg)
-    ninf = cga.infinity(alg)
+    no = alg.origin()
+    ninf = alg.infinity()
 
     assert np.allclose((no * no).component(0), 0.0)
     assert np.allclose((ninf * ninf).component(0), 0.0)
@@ -16,17 +16,94 @@ def test_cga3d_null_basis_identities() -> None:
 
 def test_cga_point_is_null_and_distance_identity() -> None:
     alg = amsa.Algebra.cga3d()
-    a = cga.point(alg, [1.0, 2.0, 3.0])
-    b = cga.point(alg, [2.0, 2.0, 3.0])
+    a = alg.point([1.0, 2.0, 3.0])
+    b = alg.point([2.0, 2.0, 3.0])
 
     assert np.allclose((a * a).component(0), 0.0)
-    assert np.allclose(cga.distance_squared(a, b), 1.0)
+    assert np.allclose(alg.distance_squared(a, b), 1.0)
 
 
 def test_cga_translator_moves_points() -> None:
     alg = amsa.Algebra.cga2d()
-    x = cga.point(alg, [1.0, 2.0])
-    translated = amsa.sandwich(cga.translate(alg, [3.0, -1.0]), x)
-    expected = cga.point(alg, [4.0, 1.0])
+    x = alg.point([1.0, 2.0])
+    translated = amsa.sandwich(alg.translate([3.0, -1.0]), x)
+    expected = alg.point([4.0, 1.0])
 
     assert np.allclose(translated.to_layout(expected.layout).values, expected.values)
+
+
+def test_algebra_origin_returns_null_vector() -> None:
+    alg = amsa.Algebra.cga3d()
+    no = alg.origin()
+    assert np.allclose((no * no).component(0), 0.0)
+
+
+def test_algebra_infinity_returns_null_vector() -> None:
+    alg = amsa.Algebra.cga2d()
+    ninf = alg.infinity()
+    assert np.allclose((ninf * ninf).component(0), 0.0)
+
+
+def test_algebra_sphere_squares_to_radius_squared() -> None:
+    alg = amsa.Algebra.cga3d()
+    s = alg.sphere([0.0, 0.0, 0.0], 1.0)
+    result = alg.norm_squared(s)
+    assert np.allclose(result.component(0), 1.0)  # dual sphere S^2 = r^2
+
+
+def test_algebra_plane_squares_to_normal_squared() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.plane([0.0, 0.0, 1.0], 2.0)
+    result = alg.norm_squared(p)
+    assert np.allclose(result.component(0), 1.0)  # dual plane P^2 = n^2 = 1
+
+
+def test_algebra_line_through_points() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([0.0, 0.0, 0.0])
+    b = alg.point([1.0, 0.0, 0.0])
+    L = alg.line_through_points(a, b)
+    result = alg.norm_squared(L)
+    assert np.allclose(np.abs(result.component(0)), 1.0)
+
+
+def test_algebra_circle_through_points() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([1.0, 0.0, 0.0])
+    b = alg.point([0.0, 1.0, 0.0])
+    c = alg.point([-1.0, 0.0, 0.0])
+    C = alg.circle_through_points(a, b, c)
+    result = alg.norm_squared(C)
+    assert np.allclose(np.abs(result.component(0)), 4.0)
+
+
+def test_algebra_translate_returns_motor() -> None:
+    alg = amsa.Algebra.cga3d()
+    T = alg.translate([1.0, 2.0, 3.0])
+    assert T.algebra == alg.spec
+
+
+def test_algebra_euclidean_vector() -> None:
+    alg = amsa.Algebra.cga3d()
+    v = alg.euclidean_vector([1.0, 2.0, 3.0])
+    assert np.allclose((v * v).component(0), 14.0)
+
+
+def test_algebra_cga_methods_reject_non_cga() -> None:
+    alg = amsa.Algebra.vga3d()
+    with pytest.raises(ValueError):
+        alg.origin()
+
+
+def test_cga_standalone_still_works() -> None:
+    from amsa.cga import distance_squared, infinity, origin, point
+
+    alg = amsa.Algebra.cga3d()
+    no = origin(alg)
+    ninf = infinity(alg)
+    a = point(alg, [1.0, 2.0, 3.0])
+    b = point(alg, [2.0, 2.0, 3.0])
+
+    assert np.allclose((no * no).component(0), 0.0)
+    assert np.allclose((ninf * ninf).component(0), 0.0)
+    assert np.allclose(distance_squared(alg, a, b), 1.0)

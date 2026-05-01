@@ -103,21 +103,27 @@ def plane(
     )
 
 
-def line_through_points(a: MVArray, b: MVArray) -> MVArray:
+def line_through_points(alg: Algebra, a: MVArray, b: MVArray) -> MVArray:
     """Return the direct line through two conformal points."""
-    ensure_same_cga(a, b)
-    return a ^ b ^ infinity(Algebra(a.algebra))
+    _euclidean_dimension(alg)
+    if a.algebra != alg.spec or b.algebra != alg.spec:
+        raise ValueError("CGA objects must belong to the same algebra as the provided algebra.")
+    return a ^ b ^ infinity(alg)
 
 
-def circle_through_points(a: MVArray, b: MVArray, c: MVArray) -> MVArray:
+def circle_through_points(alg: Algebra, a: MVArray, b: MVArray, c: MVArray) -> MVArray:
     """Return the direct circle through three conformal points."""
-    ensure_same_cga(a, b, c)
+    _euclidean_dimension(alg)
+    if a.algebra != alg.spec or b.algebra != alg.spec or c.algebra != alg.spec:
+        raise ValueError("CGA objects must belong to the same algebra as the provided algebra.")
     return a ^ b ^ c
 
 
-def distance_squared(a: MVArray, b: MVArray) -> Any:
+def distance_squared(alg: Algebra, a: MVArray, b: MVArray) -> Any:
     """Return Euclidean squared distance from normalized conformal points."""
-    ensure_same_cga(a, b)
+    _euclidean_dimension(alg)
+    if a.algebra != alg.spec or b.algebra != alg.spec:
+        raise ValueError("CGA objects must belong to the same algebra as the provided algebra.")
     return -2.0 * (a.inner(b)).component(0)
 
 

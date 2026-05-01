@@ -338,9 +338,9 @@ def cga(dimension: int) -> AlgebraSpec:
     """Return the conformal model for Euclidean ``dimension``-space.
 
     The basis convention is Euclidean axes followed by two orthogonal conformal
-    axes with squares ``+1`` and ``-1``. Helpers in :mod:`amsa.cga` expose the
-    null origin/infinity combinations, so the core algebra can remain a plain
-    diagonal Clifford signature.
+    axes with squares ``+1`` and ``-1``. ``Algebra`` methods and the standalone
+    :mod:`amsa.cga` helpers expose the null origin/infinity combinations, so the
+    core algebra can remain a plain diagonal Clifford signature.
     """
     if dimension <= 0:
         raise ValueError("dimension must be positive.")
