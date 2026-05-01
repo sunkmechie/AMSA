@@ -332,3 +332,24 @@ def pga2d() -> AlgebraSpec:
 
 def pga3d() -> AlgebraSpec:
     return AlgebraSpec(signature=(0, 1, 1, 1), start_index=0)
+
+
+def cga(dimension: int) -> AlgebraSpec:
+    """Return the conformal model for Euclidean ``dimension``-space.
+
+    The basis convention is Euclidean axes followed by two orthogonal conformal
+    axes with squares ``+1`` and ``-1``. Helpers in :mod:`amsa.cga` expose the
+    null origin/infinity combinations, so the core algebra can remain a plain
+    diagonal Clifford signature.
+    """
+    if dimension <= 0:
+        raise ValueError("dimension must be positive.")
+    return AlgebraSpec(signature=(1,) * dimension + (1, -1), start_index=1)
+
+
+def cga2d() -> AlgebraSpec:
+    return cga(2)
+
+
+def cga3d() -> AlgebraSpec:
+    return cga(3)

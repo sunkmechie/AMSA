@@ -661,6 +661,18 @@ def motor_log(mv: MVArray) -> MVArray:
     raise ValueError("motor_log() currently supports PGA2d and PGA3d motor-like multivectors.")
 
 
+def log(mv: MVArray) -> MVArray:
+    """Principal logarithm for simple scalar+bivector rotors.
+
+    This is the algebra-generic path: the input must contain only grade-0 and
+    grade-2 terms, and the bivector part must square to a scalar. PGA motor
+    special cases stay in :func:`motor_log`.
+    """
+    if not set(mv.grades).issubset({0, 2}):
+        raise NotImplementedError("log() currently supports scalar + simple bivector rotors.")
+    return _simple_bivector_log(mv)
+
+
 def bulk_norm_squared(mv: MVArray) -> MVArray:
     bulk_mv = bulk(mv)
     if bulk_mv.layout.size == 0:

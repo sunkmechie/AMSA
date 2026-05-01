@@ -114,6 +114,8 @@ from amsa.ops import (
     weight_norm_squared as weight_norm_squared_op,
 )
 from amsa.specs import AlgebraSpec
+from amsa.specs import cga2d as cga2d_spec
+from amsa.specs import cga3d as cga3d_spec
 from amsa.specs import pga2d as pga2d_spec
 from amsa.specs import pga3d as pga3d_spec
 from amsa.specs import vga2d as vga2d_spec
@@ -144,6 +146,14 @@ class Algebra:
         return cls(pga3d_spec())
 
     @classmethod
+    def cga2d(cls) -> Algebra:
+        return cls(cga2d_spec())
+
+    @classmethod
+    def cga3d(cls) -> Algebra:
+        return cls(cga3d_spec())
+
+    @classmethod
     def from_name(cls, name: str) -> Algebra:
         normalized = "".join(char for char in name.casefold() if char.isalnum())
         presets = {
@@ -153,6 +163,10 @@ class Algebra:
             "2dpga": pga2d_spec,
             "pga3d": pga3d_spec,
             "3dpga": pga3d_spec,
+            "cga2d": cga2d_spec,
+            "2dcga": cga2d_spec,
+            "cga3d": cga3d_spec,
+            "3dcga": cga3d_spec,
         }
         try:
             return cls(presets[normalized]())
@@ -383,6 +397,11 @@ class Algebra:
 
     def motor_log(self, mv: MVArray) -> MVArray:
         return motor_log_op(mv)
+
+    def log(self, mv: MVArray) -> MVArray:
+        from amsa.ops import log as log_op
+
+        return log_op(mv)
 
     def bulk_norm_squared(self, mv: MVArray) -> MVArray:
         return bulk_norm_squared_op(mv)

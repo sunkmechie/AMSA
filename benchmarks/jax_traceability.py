@@ -15,27 +15,48 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
 import statistics
+import sys
 import timeit
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
 
+if "--jax-device" in sys.argv:
+    index = sys.argv.index("--jax-device")
+    if index + 1 < len(sys.argv) and sys.argv[index + 1] == "cpu":
+        os.environ.setdefault("JAX_PLATFORMS", "cpu")
+
 import amsa
 from amsa.backends.numpy import NumpyBackend
-from amsa.ir import clear_backends, init, register_backend
+from amsa.ir import clear_backends, init, register_backend, set_default_backend
 
-try:
-    import jax
-    import jax.numpy as jnp
+jax: object | None = None
+jnp: object | None = None
+JAXBackend: type[object] | None = None
+JAX_AVAILABLE = importlib.util.find_spec("jax") is not None
 
-    from amsa.backends.jax import JAXBackend
 
-    jax.config.update("jax_enable_x64", True)
-    JAX_AVAILABLE = True
-except ImportError:
-    JAX_AVAILABLE = False
+def _load_jax(requested_device: str) -> bool:
+    global JAXBackend, jax, jnp
+    if not JAX_AVAILABLE:
+        return False
+    if requested_device == "cpu":
+        os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    if jax is None or jnp is None or JAXBackend is None:
+        import jax as loaded_jax
+        import jax.numpy as loaded_jnp
+
+        from amsa.backends.jax import JAXBackend as LoadedJAXBackend
+
+        loaded_jax.config.update("jax_enable_x64", True)
+        jax = loaded_jax
+        jnp = loaded_jnp
+        JAXBackend = LoadedJAXBackend
+    return True
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,11 +93,26 @@ def _register_numpy() -> None:
     init(use="cpu")
 
 
-def _register_jax() -> None:
+def _select_jax_device(requested: str) -> str:
+    if requested == "cpu":
+        return "cpu"
+    if requested == "gpu":
+        return "gpu"
+    try:
+        assert jax is not None
+        return "gpu" if jax.devices("gpu") else "cpu"
+    except RuntimeError:
+        return "cpu"
+
+
+def _register_jax(device: str) -> str:
+    selected = _select_jax_device(device)
+    assert JAXBackend is not None
     clear_backends()
     register_backend("numpy", NumpyBackend())
     register_backend("jax", JAXBackend())
-    init(use="gpu")
+    set_default_backend("jax")
+    return selected
 
 
 def build_numpy_cases(batch_size: int) -> list[BenchCase]:
@@ -93,15 +129,18 @@ def build_numpy_cases(batch_size: int) -> list[BenchCase]:
     ]
 
 
-def build_jax_cases(batch_size: int) -> list[BenchCase]:
-    if not JAX_AVAILABLE:
-        return []
+def build_jax_cases(batch_size: int, *, device: str) -> tuple[str | None, list[BenchCase]]:
+    if not _load_jax(device):
+        return None, []
 
-    _register_jax()
+    selected_device = _register_jax(device)
     rng = np.random.default_rng(42)
     alg = amsa.Algebra.vga3d()
-    lhs = alg.vector(jnp.asarray(rng.normal(size=(batch_size, 3))))
-    rhs = alg.vector(jnp.asarray(rng.normal(size=(batch_size, 3))))
+    assert jax is not None
+    assert jnp is not None
+    device_values = jax.devices(selected_device)[0]
+    lhs = alg.vector(jax.device_put(jnp.asarray(rng.normal(size=(batch_size, 3))), device_values))
+    rhs = alg.vector(jax.device_put(jnp.asarray(rng.normal(size=(batch_size, 3))), device_values))
 
     gp_jit = jax.jit(lambda a, b: (a * b).values)
     outer_jit = jax.jit(lambda a, b: (a ^ b).values)
@@ -126,7 +165,7 @@ def build_jax_cases(batch_size: int) -> list[BenchCase]:
     ):
         _block(warmed)
 
-    return [
+    return selected_device, [
         BenchCase("jax eager: vga3d gp batch", lambda: lhs * rhs),
         BenchCase("jax jit: vga3d gp batch", lambda: gp_jit(lhs, rhs)),
         BenchCase("jax jit: vga3d outer batch", lambda: outer_jit(lhs, rhs)),
@@ -141,6 +180,7 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=10000)
     parser.add_argument("--number", type=int, default=1000)
     parser.add_argument("--repeat", type=int, default=5)
+    parser.add_argument("--jax-device", choices=("auto", "cpu", "gpu"), default="auto")
     args = parser.parse_args()
 
     print("AMSA dense JAX traceability benchmarks")
@@ -152,7 +192,9 @@ def main() -> None:
 
     print()
     if JAX_AVAILABLE:
-        for case in build_jax_cases(args.batch_size):
+        selected_device, cases = build_jax_cases(args.batch_size, device=args.jax_device)
+        print(f"jax_device={selected_device}")
+        for case in cases:
             print(_summarize(case, number=args.number, repeat=args.repeat))
     else:
         print("JAX unavailable. Install with: uv pip install amsa-ga[jax]")

@@ -37,6 +37,7 @@ from amsa.ops import (
     inverse,
     involute,
     left_contraction,
+    log,
     motor_exp,
     motor_log,
     neg,
@@ -61,7 +62,17 @@ from amsa.ops import (
     weight_norm,
     weight_norm_squared,
 )
-from amsa.specs import AlgebraSpec, grade_of_blade, pga2d, pga3d, vga, vga2d, vga3d
+from amsa.specs import (
+    AlgebraSpec,
+    cga2d,
+    cga3d,
+    grade_of_blade,
+    pga2d,
+    pga3d,
+    vga,
+    vga2d,
+    vga3d,
+)
 
 register_backend("numpy", NumpyBackend())
 
@@ -99,6 +110,7 @@ __all__ = [
     "inverse",
     "involute",
     "left_contraction",
+    "log",
     "motor_exp",
     "motor_log",
     "neg",
@@ -108,6 +120,8 @@ __all__ = [
     "outer_product",
     "pga2d",
     "pga3d",
+    "cga2d",
+    "cga3d",
     "poincare_dual",
     "poincare_undual",
     "project_grades",

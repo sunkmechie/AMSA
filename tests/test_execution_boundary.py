@@ -14,6 +14,7 @@ BOUNDARY_CLASSIFICATION = {
     "src/amsa/backends/__init__.py": "backend namespace",
     "src/amsa/backends/jax.py": "backend execution",
     "src/amsa/backends/numpy.py": "backend execution",
+    "src/amsa/cga.py": "CGA domain constructors",
     "src/amsa/fusion.py": "IR fusion analysis",
     "src/amsa/ir.py": "IR metadata and backend registry",
     "src/amsa/layouts.py": "layout metadata",
@@ -21,6 +22,7 @@ BOUNDARY_CLASSIFICATION = {
     "src/amsa/ops.py": "public ops pending fuller IR routing",
     "src/amsa/plans.py": "product planning",
     "src/amsa/reference.py": "reference execution",
+    "src/amsa/robo.py": "experimental robotics domain layer",
     "src/amsa/specs.py": "algebra semantics",
     "src/amsa/storage.py": "storage execution pending backend routing",
 }
@@ -35,9 +37,11 @@ PENDING_EXECUTION_ROUTING = {
 EXPECTED_NUMPY_CORE_FILES = {
     "src/amsa/algebra.py",
     "src/amsa/backends/numpy.py",
+    "src/amsa/cga.py",
     "src/amsa/mv.py",
     "src/amsa/ops.py",
     "src/amsa/reference.py",
+    "src/amsa/robo.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }
@@ -46,6 +50,7 @@ EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/algebra.py",
     "src/amsa/backends/jax.py",
     "src/amsa/backends/numpy.py",
+    "src/amsa/cga.py",
     "src/amsa/fusion.py",
     "src/amsa/ir.py",
     "src/amsa/layouts.py",
@@ -53,6 +58,7 @@ EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/ops.py",
     "src/amsa/plans.py",
     "src/amsa/reference.py",
+    "src/amsa/robo.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }
