@@ -26,3 +26,21 @@ direct Euclidean computation.
 ```bash
 uv run python examples/cga/cga_point_distance_batch.py
 ```
+
+### [Classification Overview](cga_classify_overview.py)
+Runs every CGA primitive (cga3d and cga2d) through ``alg.classify()`` and prints
+the ``EntityInfo`` output — kind, grades, nullity, normalization, invariants,
+geometric data, and storage metadata.
+
+```bash
+uv run python examples/cga/cga_classify_overview.py
+```
+
+### [Versor Actions](cga_versor_actions.py)
+Applies translation and reflection versor actions, classifying the result each
+time.  Shows that ``alg.classify()`` correctly identifies transformed points and
+extracts the updated coordinates.
+
+```bash
+uv run python examples/cga/cga_versor_actions.py
+```

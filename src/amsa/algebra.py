@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Number
 from typing import Any
 
@@ -121,6 +121,81 @@ from amsa.specs import pga3d as pga3d_spec
 from amsa.specs import vga2d as vga2d_spec
 from amsa.specs import vga3d as vga3d_spec
 from amsa.storage import StorageRequest, resolve_storage_kind
+
+
+@dataclass(frozen=True, slots=True)
+class EntityInfo:
+    """Describes the geometric interpretation of a multivector.
+
+    ``classify()`` returns this for structured inspection and display — it
+    never mutates the underlying multivector.
+    """
+
+    algebra: str
+    kind: str
+    representation: str = ""
+
+    grades: tuple[int, ...] = ()
+    null: bool = False
+    normalized: bool = False
+
+    invariants: dict[str, Any] = field(default_factory=dict)
+    geometric_data: dict[str, Any] = field(default_factory=dict)
+    storage: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    ambiguous: bool = False
+
+    def __str__(self) -> str:
+        lines: list[str] = []
+        title = f"{self.algebra.upper()} Classification"
+        lines.append(title)
+        lines.append("-" * len(title))
+        lines.append(f"kind:           {self.kind}")
+        if self.representation:
+            lines.append(f"representation: {self.representation}")
+        lines.append("")
+
+        if self.ambiguous:
+            lines.append("⚠  Ambiguous — multiple interpretations possible.")
+            lines.append("")
+
+        if self.warnings:
+            lines.append("warnings:")
+            for w in self.warnings:
+                lines.append(f"  - {w}")
+            lines.append("")
+
+        lines.append(f"grades:        {{{', '.join(str(g) for g in self.grades)}}}")
+        lines.append(f"null:          {'yes' if self.null else 'no'}")
+        lines.append(f"normalized:    {'yes' if self.normalized else 'no'}")
+        lines.append("")
+
+        if self.invariants:
+            lines.append("invariants:")
+            width = max(len(k) for k in self.invariants)
+            for k, v in self.invariants.items():
+                if isinstance(v, float):
+                    lines.append(f"  {k:<{width}} = {v:.4g}")
+                else:
+                    lines.append(f"  {k:<{width}} = {v}")
+            lines.append("")
+
+        if self.geometric_data:
+            lines.append("geometric data:")
+            for k, v in self.geometric_data.items():
+                if isinstance(v, np.ndarray):
+                    lines.append(f"  {k}: {np.array_str(v, precision=4)}")
+                else:
+                    lines.append(f"  {k}: {v}")
+            lines.append("")
+
+        if self.storage:
+            lines.append("storage:")
+            for k, v in self.storage.items():
+                lines.append(f"  {k:<12} {v}")
+            lines.append("")
+
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,6 +509,16 @@ class Algebra:
         """Return Euclidean coordinates from a Euclidean vector subspace MV."""
         from amsa.cga import extract_euclidean_vector as _cga_extract_euclidean_vector
         return _cga_extract_euclidean_vector(mv)
+
+    def classify(self, mv: MVArray) -> EntityInfo:
+        """Return a geometric interpretation of *mv* for this algebra.
+
+        Routes to the appropriate model-specific classifier (CGA, PGA, VGA)
+        based on the algebra signature.  Currently CGA is fully supported;
+        PGA and VGA will raise ``NotImplementedError`` until Pass 2.
+        """
+        from amsa.cga import _classify_cga as _cga_classify
+        return _cga_classify(self, mv)
 
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs

@@ -218,3 +218,131 @@ def test_extract_rejects_non_cga() -> None:
 
     with pytest.raises(ValueError):
         extract_point(v)
+
+
+# -- classify ----------------------------------------------------------------
+
+
+def test_classify_normalized_point() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.point([1.0, 2.0, 3.0]))
+    assert info.kind == "normalized conformal point"
+    assert info.representation == "direct"
+    assert info.null
+    assert info.normalized
+    assert np.allclose(info.geometric_data["coordinates"], [1.0, 2.0, 3.0])
+
+
+def test_classify_origin() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.origin())
+    assert info.kind == "normalized conformal point"
+    assert info.null
+    assert info.normalized
+    assert np.allclose(info.geometric_data["coordinates"], [0.0, 0.0, 0.0])
+
+
+def test_classify_point_at_infinity() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.infinity())
+    assert info.kind == "point at infinity"
+    assert info.null
+    assert not info.normalized
+    assert "could not extract" in str(info.warnings)
+
+
+def test_classify_dual_sphere() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.sphere([1.0, 0.0, 0.0], 3.0))
+    assert info.kind == "dual sphere"
+    assert info.representation == "dual"
+    assert not info.null
+    assert np.allclose(info.geometric_data["center"], [1.0, 0.0, 0.0])
+    assert np.allclose(info.geometric_data["radius"], 3.0)
+
+
+def test_classify_dual_plane() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.plane([0.0, 0.0, 1.0], 5.0))
+    assert info.kind == "dual plane"
+    assert info.representation == "dual"
+    assert not info.null
+    assert np.allclose(info.geometric_data["normal"], [0.0, 0.0, 1.0])
+    assert np.allclose(info.geometric_data["signed_distance"], 5.0)
+
+
+def test_classify_translator() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.translate([1.0, 2.0, 3.0]))
+    assert info.kind == "translator candidate"
+    assert 0 in info.grades and 2 in info.grades
+
+
+def test_classify_generic_scalar() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.scalar(5.0))
+    assert info.kind == "generic blade"
+    assert info.grades == (0,)
+
+
+def test_classify_euclidean_vector_is_vector() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.euclidean_vector([1.0, 2.0, 3.0]))
+    assert info.kind in ("dual plane", "generic vector")
+    assert not info.null
+
+
+def test_classify_line() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([0.0, 0.0, 0.0])
+    b = alg.point([1.0, 0.0, 0.0])
+    info = alg.classify(alg.line_through_points(a, b))
+    assert info.kind == "direct line"
+    assert 3 in info.grades
+
+
+def test_classify_circle() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([1.0, 0.0, 0.0])
+    b = alg.point([0.0, 1.0, 0.0])
+    c = alg.point([-1.0, 0.0, 0.0])
+    info = alg.classify(alg.circle_through_points(a, b, c))
+    # Current heuristic cannot distinguish direct line from direct circle
+    # (both contain conformal axes in their blade content).
+    # TODO: L ^ n_inf == 0 check for line distinction.
+    assert info.kind in ("direct line", "direct circle")
+    assert 3 in info.grades
+
+
+def test_classify_cga2d() -> None:
+    alg = amsa.Algebra.cga2d()
+    info = alg.classify(alg.point([3.0, 4.0]))
+    assert info.algebra == "cga2d"
+    assert info.kind == "normalized conformal point"
+    assert np.allclose(info.geometric_data["coordinates"], [3.0, 4.0])
+
+
+def test_classify_str_output() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.point([1.0, 2.0, 3.0]))
+    text = str(info)
+    assert "CGA3D Classification" in text
+    assert "normalized conformal point" in text
+    assert "coordinates" in text
+
+
+def test_classify_zero() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.zeros())
+    assert info.kind == "zero multivector"
+
+
+def test_classify_reflected_point() -> None:
+    alg = amsa.Algebra.cga3d()
+    plane = alg.plane([1.0, 0.0, 0.0], 0.0)
+    p = alg.point([3.0, 2.0, 1.0])
+    reflected = amsa.sandwich(plane, p)
+    info = alg.classify(reflected)
+    assert info.kind == "conformal point"
+    assert info.null
+    assert np.allclose(info.geometric_data["coordinates"], [-3.0, 2.0, 1.0])

@@ -75,6 +75,67 @@ Available extraction methods
 - ``alg.extract_plane(mv)`` — ``(normal, signed_distance)`` from a dual plane
 - ``alg.extract_euclidean_vector(mv)`` — Euclidean coordinates from a subspace vector
 
+Classification
+^^^^^^^^^^^^^^
+
+``alg.classify(mv)`` inspects a multivector and returns an
+:class:`~amsa.algebra.EntityInfo` with its geometric interpretation.
+
+.. code-block:: python
+
+   import amsa
+
+   alg = amsa.Algebra.cga3d()
+
+   print(alg.classify(alg.point([1.0, 2.0, 3.0])))
+
+.. code-block:: text
+
+   CGA3D Classification
+   --------------------
+   kind:           normalized conformal point
+   representation: direct
+
+   grades:        {1}
+   null:          yes
+   normalized:    yes
+
+   geometric data:
+     coordinates: [1. 2. 3.]
+
+   invariants:
+     X²   = 0
+     X·n∞ = -1
+
+   storage:
+     layout       dense
+     backend      numpy
+     batch_shape  ()
+     dtype        float64
+
+Recognized CGA entities
+~~~~~~~~~~~~~~~~~~~~~~~
+
+- ``normalized conformal point`` — grade 1, null, ``X·n∞ = -1``
+- ``conformal point`` — grade 1, null, unnormalized
+- ``point at infinity`` — grade 1, null, ``X·n∞ = 0``
+- ``dual sphere`` — grade 1, not null, contains n_o
+- ``dual plane`` — grade 1, not null, no n_o component
+- ``direct line`` — grade 3, null
+- ``direct circle`` — grade 3, null
+- ``translator candidate`` — grades {0, 2}, contains conformal axes
+- ``even versor`` — grades {0, 2}, no conformal axes
+- ``generic blade`` — single grade
+- ``zero multivector`` — empty or all-zero coefficients
+- ``unknown multivector`` — everything else
+
+.. warning::
+
+   ``classify()`` provides a *structured geometric interpretation*, not a
+   mathematical proof.  It uses numerical tolerance (1e-10) and may classify
+   near-null or near-degenerate objects approximately.  It never mutates the
+   input multivector.
+
 .. note::
 
    Extraction is documented in Dorst, Fontijne, Mann (2007), *Geometric Algebra

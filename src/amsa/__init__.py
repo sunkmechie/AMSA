@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from amsa.algebra import Algebra
+from amsa.algebra import Algebra, EntityInfo
 
 # Register the NumPy IR backend as the default execution engine.
 from amsa.backends.numpy import NumpyBackend
@@ -88,6 +88,7 @@ init(use="cpu")
 __all__ = [
     "Algebra",
     "AlgebraSpec",
+    "EntityInfo",
     "MVArray",
     "MVLayout",
     "get_device",
