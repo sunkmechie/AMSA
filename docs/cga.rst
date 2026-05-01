@@ -40,6 +40,48 @@ Available ``Algebra`` methods
 - ``alg.circle_through_points(a, b, c)`` — direct circle through three conformal points
 - ``alg.distance_squared(a, b)`` — Euclidean squared distance from normalized points
 
+Extraction utilities
+^^^^^^^^^^^^^^^^^^^^
+
+Extract Euclidean parameters from CGA multivectors.  ``extract_point``
+normalizes via ``-(X · n_inf)`` so it works correctly after versor actions.
+
+.. code-block:: python
+
+   import amsa
+
+   alg = amsa.Algebra.cga3d()
+
+   p = alg.point([1.0, 2.0, 3.0])
+   print(alg.extract_point(p))  # [1. 2. 3.]
+
+   s = alg.sphere([1.0, 0.0, 0.0], 3.0)
+   center, radius = alg.extract_sphere(s)
+   print(center, radius)  # [1. 0. 0.] 3.0
+
+   plane = alg.plane([0.0, 0.0, 1.0], 2.0)
+   normal, distance = alg.extract_plane(plane)
+   print(normal, distance)  # [0. 0. 1.] 2.0
+
+    # After versor action — still extracts correctly
+    reflected = amsa.sandwich(plane, p)
+    print(alg.extract_point(reflected))  # [1. 2. 1.]  (reflected across z=2)
+
+Available extraction methods
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- ``alg.extract_point(mv)`` — Euclidean point coordinates (normalizes by ``-(X·n_inf)``)
+- ``alg.extract_sphere(mv)`` — ``(center, radius)`` from a dual sphere
+- ``alg.extract_plane(mv)`` — ``(normal, signed_distance)`` from a dual plane
+- ``alg.extract_euclidean_vector(mv)`` — Euclidean coordinates from a subspace vector
+
+.. note::
+
+   Extraction is documented in Dorst, Fontijne, Mann (2007), *Geometric Algebra
+   for Computer Science*, Morgan Kaufmann, Tables 13.1–13.4.
+   ``extract_point`` normalizes using the inverse mapping from Perwass (2009),
+   §4.3.2.
+
 Standalone ``amsa.cga`` module (secondary API)
 ----------------------------------------------
 
@@ -69,6 +111,10 @@ Available standalone helpers
 - ``line_through_points(alg, a, b)``
 - ``circle_through_points(alg, a, b, c)``
 - ``distance_squared(alg, a, b)``
+- ``extract_point(mv)`` — Euclidean point coordinates
+- ``extract_sphere(mv)`` — ``(center, radius)``
+- ``extract_plane(mv)`` — ``(normal, signed_distance)``
+- ``extract_euclidean_vector(mv)`` — Euclidean coordinates
 
 CGA identities
 --------------

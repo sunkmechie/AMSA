@@ -144,10 +144,95 @@ def ensure_same_cga(*values: MVArray) -> None:
     _euclidean_dimension(Algebra(algebra))
 
 
+def extract_euclidean_vector(mv: MVArray) -> np.ndarray:
+    """Return the Euclidean coordinates stored in the blade coefficients.
+
+    Citation: In the AMSA CGA convention, Euclidean basis blade components
+    ``e1..en`` directly carry the vector coordinates.  See Dorst, Fontijne,
+    Mann (2007), *Geometric Algebra for Computer Science*, Table 13.1
+    (conformal point representation).
+    """
+    alg = Algebra(mv.algebra)
+    n = _euclidean_dimension(alg)
+    return _extract_euclidean_blade_components(mv, n)
+
+
+def extract_point(mv: MVArray) -> np.ndarray:
+    """Return Euclidean point coordinates from a conformal point MV.
+
+    A conformal point ``X = n_o + x + 0.5 x² n_inf`` stores the Euclidean
+    coordinates ``x`` directly in the ``e1..en`` blade coefficients when the
+    point is in canonical form (``X · n_inf = -1``).  After versor actions
+    the point may need re-normalization, so this function divides by
+    ``-(X · n_inf)`` before extracting.
+
+    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
+    Science*, Morgan Kaufmann, Table 13.1 (conformal point representation),
+    and the inverse mapping in Perwass (2009), §4.3.2.
+    """
+    alg = Algebra(mv.algebra)
+    _euclidean_dimension(alg)
+    n = alg.dimension - 2
+    ninf = infinity(alg, backend=mv.storage_kind)
+    s = -(mv.inner(ninf)).component(0)
+    if np.ndim(s) == 0 and s == 0:
+        raise ValueError("extract_point() received a point at infinity (X · n_inf = 0).")
+    return np.asarray(_extract_euclidean_blade_components(mv, n) / _expand_scale(s))
+
+
+def _extract_euclidean_blade_components(mv: MVArray, n: int) -> np.ndarray:
+    return np.stack([mv.component(1 << i) for i in range(n)], axis=-1)
+
+
+def _expand_scale(s: np.ndarray) -> np.ndarray:
+    if np.ndim(s) == 0:
+        return s
+    return np.asarray(s)[..., np.newaxis]
+
+
+def extract_sphere(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+    """Return (center, radius) from a dual-sphere MV.
+
+    The dual sphere ``S = C - 0.5 r² n_inf`` stores the Euclidean center
+    coordinates in the ``e1..en`` coefficients, and ``r = sqrt(S²)``.
+
+    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
+    Science*, Morgan Kaufmann, Table 13.2 (dual sphere representation).
+    """
+    alg = Algebra(mv.algebra)
+    n = _euclidean_dimension(alg)
+    center = _extract_euclidean_blade_components(mv, n)
+    sq = (mv * mv).component(0)
+    radius = np.sqrt(np.abs(sq))
+    return center, radius
+
+
+def extract_plane(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+    """Return (normal, signed_distance) from a dual-plane MV.
+
+    The dual plane ``P = n + d n_inf`` stores the Euclidean normal ``n``
+    in the ``e1..en`` coefficients and the signed distance ``d`` in the
+    ``n_inf`` basis coefficient.
+
+    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
+    Science*, Morgan Kaufmann, Table 13.2 (dual plane representation).
+    """
+    alg = Algebra(mv.algebra)
+    n_axes = _euclidean_dimension(alg)
+    normal = _extract_euclidean_blade_components(mv, n_axes)
+    n_inf_axis = n_axes
+    distance = mv.component(1 << n_inf_axis)
+    return normal, distance
+
+
 __all__ = [
     "circle_through_points",
     "distance_squared",
     "euclidean_vector",
+    "extract_euclidean_vector",
+    "extract_plane",
+    "extract_point",
+    "extract_sphere",
     "infinity",
     "line_through_points",
     "origin",

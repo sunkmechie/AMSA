@@ -107,3 +107,114 @@ def test_cga_standalone_still_works() -> None:
     assert np.allclose((no * no).component(0), 0.0)
     assert np.allclose((ninf * ninf).component(0), 0.0)
     assert np.allclose(distance_squared(alg, a, b), 1.0)
+
+
+# -- extraction utilities -------------------------------------------------------
+
+
+def test_extract_point_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.point([1.0, 2.0, 3.0])
+    coords = alg.extract_point(p)
+    assert np.allclose(coords, [1.0, 2.0, 3.0])
+
+
+def test_extract_sphere_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    s = alg.sphere([1.0, 0.0, 0.0], 3.0)
+    center, radius = alg.extract_sphere(s)
+    assert np.allclose(center, [1.0, 0.0, 0.0])
+    assert np.allclose(radius, 3.0)
+
+
+def test_extract_sphere_origin() -> None:
+    alg = amsa.Algebra.cga3d()
+    s = alg.sphere([0.0, 0.0, 0.0], 2.5)
+    center, radius = alg.extract_sphere(s)
+    assert np.allclose(center, [0.0, 0.0, 0.0])
+    assert np.allclose(radius, 2.5)
+
+
+def test_extract_plane_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.plane([0.0, 0.0, 1.0], 5.0)
+    normal, distance = alg.extract_plane(p)
+    assert np.allclose(normal, [0.0, 0.0, 1.0])
+    assert np.allclose(distance, 5.0)
+
+
+def test_extract_plane_default_normal() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.plane([1.0, 0.0, 0.0], 3.0)
+    normal, distance = alg.extract_plane(p)
+    assert np.allclose(normal, [1.0, 0.0, 0.0])
+    assert np.allclose(distance, 3.0)
+
+
+def test_extract_euclidean_vector_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    v = alg.euclidean_vector([4.0, 5.0, 6.0])
+    coords = alg.extract_euclidean_vector(v)
+    assert np.allclose(coords, [4.0, 5.0, 6.0])
+
+
+def test_extract_point_reflected() -> None:
+    alg = amsa.Algebra.cga3d()
+    plane = alg.plane([1.0, 0.0, 0.0], 0.0)
+    p = alg.point([3.0, 2.0, 1.0])
+    reflected = amsa.sandwich(plane, p)
+    coords = alg.extract_point(reflected)
+    assert np.allclose(coords, [-3.0, 2.0, 1.0])
+
+
+def test_extract_point_translated() -> None:
+    alg = amsa.Algebra.cga2d()
+    T = alg.translate([5.0, -2.0])
+    p = alg.point([1.0, 1.0])
+    moved = amsa.sandwich(T, p)
+    coords = alg.extract_point(moved)
+    assert np.allclose(coords, [6.0, -1.0])
+
+
+def test_extract_cga2d() -> None:
+    alg = amsa.Algebra.cga2d()
+    p = alg.point([3.0, 4.0])
+    coords = alg.extract_point(p)
+    assert np.allclose(coords, [3.0, 4.0])
+
+    s = alg.sphere([1.0, 1.0], 2.0)
+    center, radius = alg.extract_sphere(s)
+    assert np.allclose(center, [1.0, 1.0])
+    assert np.allclose(radius, 2.0)
+
+    pl = alg.plane([0.0, 1.0], 3.0)
+    normal, distance = alg.extract_plane(pl)
+    assert np.allclose(normal, [0.0, 1.0])
+    assert np.allclose(distance, 3.0)
+
+
+def test_extract_standalone_functions() -> None:
+    from amsa.cga import extract_plane, extract_point, extract_sphere
+
+    alg = amsa.Algebra.cga3d()
+    p = alg.point([1.0, 2.0, 3.0])
+    assert np.allclose(extract_point(p), [1.0, 2.0, 3.0])
+
+    s = alg.sphere([0.0, 0.0, 0.0], 4.0)
+    center, radius = extract_sphere(s)
+    assert np.allclose(center, [0.0, 0.0, 0.0])
+    assert np.allclose(radius, 4.0)
+
+    pl = alg.plane([0.0, 0.0, 1.0], 2.0)
+    normal, distance = extract_plane(pl)
+    assert np.allclose(normal, [0.0, 0.0, 1.0])
+    assert np.allclose(distance, 2.0)
+
+
+def test_extract_rejects_non_cga() -> None:
+    alg = amsa.Algebra.vga3d()
+    v = alg.vector([1.0, 2.0, 3.0])
+    from amsa.cga import extract_point
+
+    with pytest.raises(ValueError):
+        extract_point(v)

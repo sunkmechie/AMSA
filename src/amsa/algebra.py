@@ -415,6 +415,26 @@ class Algebra:
         from amsa.cga import distance_squared as _cga_distance_squared
         return _cga_distance_squared(self, a, b)
 
+    def extract_point(self, mv: MVArray) -> np.ndarray:
+        """Return Euclidean point coordinates from a conformal point MV."""
+        from amsa.cga import extract_point as _cga_extract_point
+        return _cga_extract_point(mv)
+
+    def extract_sphere(self, mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+        """Return (center, radius) from a dual-sphere MV."""
+        from amsa.cga import extract_sphere as _cga_extract_sphere
+        return _cga_extract_sphere(mv)
+
+    def extract_plane(self, mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+        """Return (normal, signed_distance) from a dual-plane MV."""
+        from amsa.cga import extract_plane as _cga_extract_plane
+        return _cga_extract_plane(mv)
+
+    def extract_euclidean_vector(self, mv: MVArray) -> np.ndarray:
+        """Return Euclidean coordinates from a Euclidean vector subspace MV."""
+        from amsa.cga import extract_euclidean_vector as _cga_extract_euclidean_vector
+        return _cga_extract_euclidean_vector(mv)
+
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs
 
