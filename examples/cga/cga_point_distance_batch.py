@@ -32,13 +32,14 @@ This example:
 import numpy as np
 
 import amsa
+from amsa import Algebra
 
 print("\n=== Batched CGA Point Distance ===\n")
 
 np.random.seed(42)
 
 N = 5
-alg = amsa.Algebra.cga3d()
+alg = Algebra.cga3d()
 
 coords = np.random.randn(N, 3)
 for i in range(N):

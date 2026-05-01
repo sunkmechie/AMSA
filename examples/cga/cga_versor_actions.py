@@ -18,6 +18,7 @@ This example demonstrates:
 """
 
 import amsa
+from amsa import Algebra
 
 print("\n=== CGA Versor Actions ===\n")
 
@@ -25,41 +26,41 @@ print("\n=== CGA Versor Actions ===\n")
 
 print("--- 3D: Translate ---\n")
 
-alg3 = amsa.Algebra.cga3d()
+alg = Algebra.cga3d()
 
-T = alg3.translate([5.0, -1.0, 3.0])
+T = alg.translate([5.0, -1.0, 3.0])
 print("Translator:")
-print(alg3.classify(T))
+print(alg.classify(T))
 
-p3 = alg3.point([1.0, 2.0, 3.0])
+p = alg.point([1.0, 2.0, 3.0])
 print("Point before:")
-print(alg3.classify(p3))
+print(alg.classify(p))
 
-p3_moved = amsa.sandwich(T, p3)
+p_moved = amsa.sandwich(T, p)
 print("Point after sandwich(T, P):")
-print(alg3.classify(p3_moved))
+print(alg.classify(p_moved))
 
 # ---- 3D: reflect ------------------------------------------------------------
 
 print("--- 3D: Reflect in plane z=2 ---\n")
 
-plane = alg3.plane([0.0, 0.0, 1.0], 2.0)
+plane = alg.plane([0.0, 0.0, 1.0], 2.0)
 print("Plane:")
-print(alg3.classify(plane))
+print(alg.classify(plane))
 
-q3 = alg3.point([1.0, 2.0, 3.0])
+q = alg.point([1.0, 2.0, 3.0])
 print("Point before:")
-print(alg3.classify(q3))
+print(alg.classify(q))
 
-q3_reflected = amsa.sandwich(plane, q3)
+q_reflected = amsa.sandwich(plane, q)
 print("Point after sandwich(plane, Q):")
-print(alg3.classify(q3_reflected))
+print(alg.classify(q_reflected))
 
 # ---- 2D: translate ----------------------------------------------------------
 
 print("--- 2D: Translate ---\n")
 
-alg2 = amsa.Algebra.cga2d()
+alg2 = Algebra.cga2d()
 
 T2 = alg2.translate([10.0, -5.0])
 print("Translator:")

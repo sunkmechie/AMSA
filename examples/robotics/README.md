@@ -4,9 +4,6 @@ This directory contains examples detailing how AMSA can be applied to common pro
 
 ## Examples
 
-### [Circular Robot Motion (PGA 2D)](pga_circle_motion_2d.py)
-Uses 2D Projective Geometric Algebra (PGA) to represent and simulate the motion of a differential-drive robot moving along a circular path. It uses motors (translation + rotation) to evolve the robot's pose.
-
 ### [Corridor Corner Detection (PGA 2D)](pga_corridor_corner_2d.py)
 Demonstrates how to find the intersection of two lines (representing walls) using the regressive product in PGA. This is a common task in processing sensor data to find environment features like corners.
 
@@ -27,6 +24,9 @@ Simulates a robot's position estimation by calculating the distances to three kn
 
 ### [Vector Projection (VGA 2D)](vector_projection_2d.py)
 Projects a robot's position onto a corridor axis using the inner product, a common task in navigation and alignment.
+
+### [3D Kinematic Chain (PGA 3D)](pga3d_kinematic_chain.py)
+Animated 3D robot arm using PGA3D motors and VisPy. Demonstrates forward kinematics with joint motors, coordinate frame rendering, and real-time animation.
 
 ## How to run
 You can run any of these examples using `uv`:

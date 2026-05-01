@@ -26,10 +26,11 @@ This example constructs each primitive and prints its blade decomposition.
 """
 
 import amsa
+from amsa import Algebra
 
 print("\n=== CGA3D Primitives ===")
 
-alg = amsa.Algebra.cga3d()
+alg = Algebra.cga3d()
 
 print(f"\nAlgebra: cga3d  |  signature: {alg.signature}  |  dimension: {alg.dimension}")
 
@@ -99,7 +100,7 @@ print(f"Expected:  {alg.point([5.0, 0.0, 0.0])}")
 
 print("\n=== CGA2D Primitives ===\n")
 
-alg2d = amsa.Algebra.cga2d()
+alg2d = Algebra.cga2d()
 print(f"\nAlgebra: cga2d  |  signature: {alg2d.signature}  |  dimension: {alg2d.dimension}")
 
 no2 = alg2d.origin()

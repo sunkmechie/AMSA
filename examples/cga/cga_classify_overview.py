@@ -15,11 +15,11 @@ This example constructs every CGA primitive (cga3d and cga2d) and
 prints the classification output for each.
 """
 
-import amsa
+from amsa import Algebra
 
 print("\n=== CGA3D Classification Overview ===\n")
 
-alg = amsa.Algebra.cga3d()
+alg = Algebra.cga3d()
 
 entities = [
     ("origin", alg.origin()),
@@ -48,7 +48,7 @@ for label, mv in entities:
 
 print("=== CGA2D Classification Overview ===\n")
 
-alg2 = amsa.Algebra.cga2d()
+alg2 = Algebra.cga2d()
 
 entities_2d = [
     ("origin", alg2.origin()),

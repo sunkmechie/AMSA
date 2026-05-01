@@ -2,152 +2,105 @@
 
 ![PyPI](https://img.shields.io/pypi/v/amsa-ga)
 
-AMSA is a Clifford algebra library for high-performance numerical computation in robotics, engineering, and science.
+AMSA is a matrix-free Clifford algebra engine for high-performance numerical
+computation in robotics, engineering, and science. Supports **VGA** (vector),
+**PGA** (projective), and **CGA** (conformal) geometric algebras.
 
 **Install:** `uv pip install amsa-ga`
 
 ## Table of Contents
 
-1. [What is AMSA?](#what-is-amsa)
-2. [Package Layout](#package-layout)
-3. [Quick Start](#quick-start)
-4. [Inspection API](#inspection-api)
+1. [Quick Start](#quick-start)
+2. [Supported Algebras](#supported-algebras)
+3. [Inspection & Classification](#inspection--classification)
+4. [Examples](#examples)
 5. [Execution Backends](#execution-backends)
-6. [Documentation](#documentation)
-7. [Notebooks](#notebooks)
-8. [License and Acknowledgments](#license-and-acknowledgments)
-9. [What Works Today](#what-works-today)
-10. [Development](#development)
-11. [Current Operations](#current-operations)
-12. [Notes](#notes)
-
-## What is AMSA?
-
-AMSA (Advanced Multivector Symbolic Architecture Engine) is a Clifford algebra library focused on high-performance numerical computation for robotics, engineering, and science.
-
-## Installation
-
-```bash
-uv pip install amsa-ga
-```
-
-For JAX GPU support:
-
-```bash
-uv pip install "jax[cuda13]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-```
-
-Or with visualization extras:
-
-```bash
-uv pip install amsa-ga[viz]
-```
-
-## Package Layout
-
-- `src/amsa/specs.py`: algebra signatures, blade naming, blade products, presets
-- `src/amsa/layouts.py`: dense, grade, and sparse layout descriptors
-- `src/amsa/storage.py`: dense and CSR storage backends plus storage helpers
-- `src/amsa/mv.py`: storage-backed multivector array type
-- `src/amsa/plans.py`: cached operator plans
-- `src/amsa/reference.py`: reference execution of plans
-- `src/amsa/ir.py`: IR definitions and backend registry
-- `src/amsa/backends/`: execution backend implementations
-- `src/amsa/ops.py`: public operator layer
-- `src/amsa/algebra.py`: user-facing algebra handle and constructors
-- `src/amsa/viz/`: visualization adapters, neutral primitives, and optional backends
+6. [Package Layout](#package-layout)
+7. [Documentation](#documentation)
+8. [Notebooks](#notebooks)
+9. [License and Acknowledgments](#license-and-acknowledgments)
+10. [Current Operations](#current-operations)
+11. [Notes](#notes)
+12. [Development](#development)
 
 ## Quick Start
 
-```python
-from amsa import Algebra
-
-alg = Algebra.vga2d()
-u = alg.vector([1.0, 2.0])
-v = alg.vector([3.0, -4.0])
-
-gp = u * v
-ip = u | v
-op = u ^ v
-
-print(gp.as_dense().values)  # [-5.0, 0.0, 0.0, -10.0]
-print(ip.values)             # [-5.0]
-print(op.values)             # [-10.0]
-```
-
-Sparse construction keeps support explicit:
+### VGA — vectors, wedge products, rotors
 
 ```python
 from amsa import Algebra
 
 alg = Algebra.vga3d()
-mv = alg.multivector({"e1": 1.0, "e12": 2.0, "e123": 3.0})
+u = alg.vector([1.0, 2.0, 3.0])
+v = alg.vector([4.0, -2.0, 1.0])
 
-print(mv.layout.blades)          # (1, 3, 7)
-print(mv.grade(1, 3).values)     # [1.0, 3.0]
-print((2.0 - mv).as_dense().values)
+print(u ^ v)                  # bivector: -10.0 e12 + -11.0 e13 + 8.0 e23
+print(u | v)                  # inner product: 3.0
 ```
 
-Scalar construction:
+### PGA — motors, meet/join, rigid motion
 
 ```python
 from amsa import Algebra
 
-alg = Algebra.vga2d()
-s = alg.scalar(1.0)
+alg = Algebra.pga2d()
+motor = alg.multivector({"e": 0.7071, "e12": 0.7071})
+point = alg.multivector({"e12": 1.0, "e01": 2.0, "e02": 1.0})
+
+moved = amsa.sandwich(motor, point)
 ```
 
-Use `alg.scalar(1.0)`, not `alg.multivector(1.0)`.
-
-## Inspection API
-
-AMSA provides inspection helpers for debugging and understanding algebraic operations:
+### CGA — points, spheres, translators, classification
 
 ```python
 from amsa import Algebra
 
+alg = Algebra.cga3d()
+p = alg.point([1.0, 2.0, 3.0])
+s = alg.sphere([0.0, 0.0, 0.0], 5.0)
+T = alg.translate([3.0, 0.0, 0.0])
+
+moved = amsa.sandwich(T, p)
+print(alg.classify(moved))    # EntityInfo: conformal point, coordinates [4, 2, 3]
+```
+
+See `docs/quickstart.rst` and `examples/` for more.
+
+## Supported Algebras
+
+| Algebra | Presets | Signature | Highlights |
+|---|---|---|---|
+| **VGA** (vector) | `vga2d()`, `vga3d()` | `(1,1)`, `(1,1,1)` | Rotors, wedge products, projections |
+| **PGA** (projective) | `pga2d()`, `pga3d()` | `(0,1,1)`, `(0,1,1,1)` | Motors, meet/join, bulk/weight splits |
+| **CGA** (conformal) | `cga2d()`, `cga3d()` | `(1,1,1,-1)`, `(1,1,1,1,-1)` | Points, spheres, planes, translators, `classify()` |
+
+All presets are available as `Algebra.vga3d()`, `Algebra.pga2d()`, `Algebra.cga3d()`,
+etc., or via `Algebra.from_name("cga3d")`.
+
+## Inspection & Classification
+
+AMSA provides inspection helpers for debugging and understanding algebraic operations.
+
+**MVArray display:**
+
+```python
+from amsa import Algebra
 alg = Algebra.vga2d()
 u = alg.vector([1.0, 2.0])
-v = alg.bivector([3.0])
-
 print(u)  # 1.0 e1 + 2.0 e2
-print(v)  # 3.0 e12
 ```
 
-Inspect product plans and IR:
+**Product plan and IR inspection:**
 
 ```python
 from amsa.plans import plan_binary_product
 from amsa.ir import build_product_ir
 
-lhs_layout = alg.grade_layout(1)
-rhs_layout = alg.grade_layout(1)
-plan = plan_binary_product(lhs_layout, rhs_layout, "geometric")
-print(plan.show())
-# OpPlan(geometric)
-#   LHS blades: e1, e2
-#   RHS blades: e1, e2
-#   Output blades: e, e12
-#   Terms (4):
-#     + e1 * e1 -> e
-#     + e1 * e2 -> e12
-#     -1 e2 * e1 -> e12
-#     + e2 * e2 -> e
-
-ir = build_product_ir(plan, "dense", "dense")
-print(ir.show(alg.spec))
-# ProductIR(geometric)
-#   LHS storage: dense, width: 2
-#   RHS storage: dense, width: 2
-#   Output blades: e, e12
-#   Terms (4):
-#     + col[0] * col[0] -> col[0]
-#     + col[0] * col[1] -> col[1]
-#     -1 col[1] * col[0] -> col[1]
-#     + col[1] * col[1] -> col[0]
+plan = plan_binary_product(alg.grade_layout(1), alg.grade_layout(1), "geometric")
+print(plan.show())  # OpPlan: blades, terms, coefficients
 ```
 
-View Cayley table subsets:
+**Cayley table subsets:**
 
 ```python
 print(alg.show_cayley())
@@ -159,7 +112,42 @@ print(alg.show_cayley())
 #    e12  +   e12 -1  e2  +  e1 -1   e
 ```
 
-See `docs/inspection.rst` for full inspection API documentation.
+**Geometric classification (CGA):**
+
+```python
+alg = Algebra.cga3d()
+info = alg.classify(alg.sphere([1.0, 0.0, 0.0], 3.0))
+print(info)
+# CGA3D Classification
+# kind:           dual sphere
+# representation: dual
+# geometric data:
+#   center: [1. 0. 0.]
+#   radius: 3.0
+```
+
+See `docs/inspection.rst`, `docs/cga.rst`, and `examples/inspection/`.
+
+## Examples
+
+Runnable example scripts live in `examples/`:
+
+| Directory | Topic |
+|---|---|
+| [`cga/`](examples/cga/) | CGA primitives, batched distance, classify overview, versor actions |
+| [`geometry/`](examples/geometry/) | Triangle area, signed volume, orientation testing |
+| [`robotics/`](examples/robotics/) | PGA motors, kinematic chain, trilateration, rigid body trajectory |
+| [`inspection/`](examples/inspection/) | Cayley tables, product plans, IR, MVArray display |
+| [`jax/`](examples/jax/) | JAX traceability: `jax.jit`, `jax.vmap`, `jax.grad` |
+| [`algebra/`](examples/algebra/) | Even/odd grade decomposition |
+| [`planes/`](examples/planes/) | Point-to-plane distance using duals |
+| [`kernels/`](examples/kernels/) | Geometric kernel functions |
+
+Run any example with:
+
+```bash
+uv run python examples/cga/cga_classify_overview.py
+```
 
 ## Execution Backends
 
@@ -218,9 +206,23 @@ print(product_values(u, v))
 
 See the documentation for details on execution backends.
 
+## Package Layout
+
+- `src/amsa/specs.py` — algebra signatures, blade naming, blade products, presets
+- `src/amsa/layouts.py` — dense, grade, and sparse layout descriptors
+- `src/amsa/storage.py` — dense and CSR storage backends plus storage helpers
+- `src/amsa/mv.py` — storage-backed multivector array type
+- `src/amsa/plans.py` — cached operator plans
+- `src/amsa/ir.py` — IR definitions and backend registry
+- `src/amsa/backends/` — execution backend implementations
+- `src/amsa/ops.py` — public operator layer
+- `src/amsa/algebra.py` — user-facing algebra handle, constructors, `EntityInfo`, `classify()`
+- `src/amsa/cga.py` — CGA geometry helpers (point, sphere, plane, translator, extraction, classification)
+- `src/amsa/viz/` — visualization adapters, neutral primitives, and optional backends
+
 ## Documentation
 
-Full documentation is in `docs/` 
+Full documentation is in `docs/`:
 
 ```bash
 uv run sphinx-build docs docs/_build
@@ -234,6 +236,7 @@ You can also browse the source directly:
 - `docs/storage.rst` — dense and CSR backends
 - `docs/backends.rst` — execution backend selection (CPU/GPU)
 - `docs/operators.rst` — product semantics, duality, and normalization
+- `docs/cga.rst` — CGA presets, constructors, extraction, classification
 - `docs/viz.rst` — visualization adapters, primitives, and optional matplotlib/VisPy backends
 - `docs/examples.rst` — index of runnable example scripts
 - `docs/probes.rst` — visual debugger probe (`amsa_lab`)
@@ -245,7 +248,7 @@ Introductory notebooks are in `notebooks/`:
 - `01_vga_rotors.ipynb` — VGA vector products, rotors, and sandwich conjugation
 - `02_pga_rigid_body.ipynb` — PGA2d lines, meet/join, motors, and bulk/weight splits
 
-## License and Acknowledgements
+## License and Acknowledgments
 
 The AMSA source code is licensed under Apache 2.0.
 
@@ -255,62 +258,20 @@ AMSA's development has been made possible and was inspired by the following open
 - Look-Ma-No-Matrices
 - Ganja.js
 
-## What Works Today
-
-- geometric product
-- outer product
-- inner product
-- scalar product
-- commutator
-- anticommutator
-- left contraction
-- right contraction
-- regressive product
-- sandwich / conjugation
-- exponential / logarithm support (for robotics-friendly motor slices)
-- bulk dual and weight dual on degenerate/projective algebras
-- addition and subtraction
-- inverse and division for the current reverse-scalar-norm cases
-- reverse-based `norm_squared`, `norm`, and `normalize`
-- bulk/weight norms plus `bulk_normalize`, `unitize`, and `rigid_body_normalize` (for PGA-style work)
-- reverse, involute, conjugate, dual, undual, poincare_dual, and poincare_undual
-- scalar arithmetic
-- grade projection and component lookup
-- lazy basis-product tables and on-demand Cayley tables via `AlgebraSpec`
-- dense/CSR conversion
-- dense and CSR-backed input execution in the reference backend
-- neutral visualization primitives, point adapters, and backend modules in `amsa.viz`
-
-
-## Development
-
-For local development after cloning the repository:
-
-```bash
-uv sync --extra dev --extra viz
-uv run pytest -q
-uv run ruff check .
-uv run mypy
-```
-
-Build the documentation:
-
-```bash
-uv run sphinx-build docs docs/_build
-```
-
 ## Current Operations
 
-| Category | Available now |
-| --- | --- |
+| Category | Operations |
+|---|---|
 | Binary arithmetic | `add`, `sub`, `mv + other`, `mv - other` |
 | Scalar arithmetic | `scalar * mv`, `mv * scalar`, `mv / scalar`, multivector-scalar add/sub |
-| Geometric products | geometric product `*`, outer product `^`, inner product `\|`, `scalar_product`, `commutator_product`, `anticommutator_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich`, `bulk_dual`, `weight_dual` |
-| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `exp`, `motor_exp`, `motor_log`, `norm_squared`, `norm`, `normalize`, `bulk_norm_squared`, `bulk_norm`, `weight_norm_squared`, `weight_norm`, `bulk_normalize`, `unitize`, `rigid_body_normalize`, unary `-mv` |
-| Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)` |
+| Geometric products | `*` (geometric), `^` (outer), `\|` (inner), `scalar_product`, `commutator_product`, `anticommutator_product`, `left_contraction`, `right_contraction`, `regressive_product`, `sandwich`, `bulk_dual`, `weight_dual` |
+| Unary operations | `neg`, `reverse`, `involute`, `conjugate`, `dual`, `undual`, `poincare_dual`, `poincare_undual`, `inverse`, `exp`, `motor_exp`, `motor_log`, `norm_squared`, `norm`, `normalize`, `bulk_norm_squared`, `bulk_norm`, `weight_norm_squared`, `weight_norm`, `bulk_normalize`, `unitize`, `rigid_body_normalize`, `-mv` |
+| Projection / inspection | `grade(...)`, `project_grades(...)`, `component(...)`, `as_dense()`, `to_layout(...)`, `show_cayley()`, `classify()` |
 | Storage operations | dense/CSR construction, `with_storage(...)`, `to_dense_storage(...)`, `to_csr_storage(...)` |
 | Constructors | `scalar`, `blade`, `multivector`, `vector`, `bivector`, `trivector`, `even`, `odd`, `pseudoscalar`, `zeros` |
-| Presets | `vga`, `vga2d`, `vga3d`, `pga2d`, `pga3d`, `Algebra.from_name(...)` |
+| CGA constructors | `origin`, `infinity`, `euclidean_vector`, `point`, `sphere`, `plane`, `translate`, `line_through_points`, `circle_through_points`, `distance_squared` |
+| CGA extraction | `extract_point`, `extract_sphere`, `extract_plane`, `extract_euclidean_vector` |
+| Presets | `vga`, `vga2d`, `vga3d`, `pga2d`, `pga3d`, `cga2d`, `cga3d`, `Algebra.from_name(...)` |
 
 ## Notes
 
@@ -344,7 +305,6 @@ Today it supports:
 - PGA2d motor-like even multivectors after rigid-body normalization
 - PGA3d unit-motor style multivectors with scalar, bivector, and optional pseudoscalar terms
 
-
 For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `bulk()` and `weight()` split components by whether they carry the null basis factor
 - `bulk_dual()` / `weight_dual()` apply Poincare complement duality to those parts
@@ -353,6 +313,29 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `rigid_body_normalize()` is a motor-oriented PGA helper that currently bulk-normalizes
   even grade-`0/2` multivectors without pretending to be a universal projective normalization
 
-Visualization note:
-- `amsa.viz`provides neutral primitives, point adapters for PGA points, and optional matplotlib/VisPy backends
+**CGA classification:** `alg.classify(mv)` inspects a multivector and returns an
+`EntityInfo` describing its geometric interpretation (kind, grades, nullity, normalization,
+invariants, geometric data, and storage metadata). Currently CGA-first; PGA and VGA
+classifiers are planned for a future pass. See `docs/cga.rst` and
+`examples/cga/cga_classify_overview.py`.
 
+Visualization note:
+- `amsa.viz` provides neutral primitives, point adapters for PGA points, and optional
+  matplotlib/VisPy backends
+
+## Development
+
+For local development after cloning the repository:
+
+```bash
+uv sync --extra dev --extra viz
+uv run pytest -q
+uv run ruff check .
+uv run mypy
+```
+
+Build the documentation:
+
+```bash
+uv run sphinx-build docs docs/_build
+```
