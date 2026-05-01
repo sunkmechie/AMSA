@@ -34,6 +34,8 @@ The following presets are built in:
 - ``Algebra.vga3d()`` — Euclidean 3D
 - ``Algebra.pga2d()`` — 2D Projective Geometric Algebra
 - ``Algebra.pga3d()`` — 3D Projective Geometric Algebra
+- ``Algebra.cga2d()`` — 2D Conformal Geometric Algebra
+- ``Algebra.cga3d()`` — 3D Conformal Geometric Algebra
 
 You can also construct arbitrary signatures:
 

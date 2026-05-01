@@ -304,6 +304,11 @@ class MVArray:
 
         return motor_log(self)
 
+    def log(self) -> MVArray:
+        from amsa.ops import log
+
+        return log(self)
+
     def bulk_norm_squared(self) -> MVArray:
         from amsa.ops import bulk_norm_squared
 

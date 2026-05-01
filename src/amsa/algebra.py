@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Number
 from typing import Any
 
@@ -114,11 +114,88 @@ from amsa.ops import (
     weight_norm_squared as weight_norm_squared_op,
 )
 from amsa.specs import AlgebraSpec
+from amsa.specs import cga2d as cga2d_spec
+from amsa.specs import cga3d as cga3d_spec
 from amsa.specs import pga2d as pga2d_spec
 from amsa.specs import pga3d as pga3d_spec
 from amsa.specs import vga2d as vga2d_spec
 from amsa.specs import vga3d as vga3d_spec
 from amsa.storage import StorageRequest, resolve_storage_kind
+
+
+@dataclass(frozen=True, slots=True)
+class EntityInfo:
+    """Describes the geometric interpretation of a multivector.
+
+    ``classify()`` returns this for structured inspection and display — it
+    never mutates the underlying multivector.
+    """
+
+    algebra: str
+    kind: str
+    representation: str = ""
+
+    grades: tuple[int, ...] = ()
+    null: bool = False
+    normalized: bool = False
+
+    invariants: dict[str, Any] = field(default_factory=dict)
+    geometric_data: dict[str, Any] = field(default_factory=dict)
+    storage: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    ambiguous: bool = False
+
+    def __str__(self) -> str:
+        lines: list[str] = []
+        title = f"{self.algebra.upper()} Classification"
+        lines.append(title)
+        lines.append("-" * len(title))
+        lines.append(f"kind:           {self.kind}")
+        if self.representation:
+            lines.append(f"representation: {self.representation}")
+        lines.append("")
+
+        if self.ambiguous:
+            lines.append("⚠  Ambiguous — multiple interpretations possible.")
+            lines.append("")
+
+        if self.warnings:
+            lines.append("warnings:")
+            for w in self.warnings:
+                lines.append(f"  - {w}")
+            lines.append("")
+
+        lines.append(f"grades:        {{{', '.join(str(g) for g in self.grades)}}}")
+        lines.append(f"null:          {'yes' if self.null else 'no'}")
+        lines.append(f"normalized:    {'yes' if self.normalized else 'no'}")
+        lines.append("")
+
+        if self.invariants:
+            lines.append("invariants:")
+            width = max(len(k) for k in self.invariants)
+            for k, v in self.invariants.items():
+                if isinstance(v, float):
+                    lines.append(f"  {k:<{width}} = {v:.4g}")
+                else:
+                    lines.append(f"  {k:<{width}} = {v}")
+            lines.append("")
+
+        if self.geometric_data:
+            lines.append("geometric data:")
+            for k, v in self.geometric_data.items():
+                if isinstance(v, np.ndarray):
+                    lines.append(f"  {k}: {np.array_str(v, precision=4)}")
+                else:
+                    lines.append(f"  {k}: {v}")
+            lines.append("")
+
+        if self.storage:
+            lines.append("storage:")
+            for k, v in self.storage.items():
+                lines.append(f"  {k:<12} {v}")
+            lines.append("")
+
+        return "\n".join(lines)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +221,14 @@ class Algebra:
         return cls(pga3d_spec())
 
     @classmethod
+    def cga2d(cls) -> Algebra:
+        return cls(cga2d_spec())
+
+    @classmethod
+    def cga3d(cls) -> Algebra:
+        return cls(cga3d_spec())
+
+    @classmethod
     def from_name(cls, name: str) -> Algebra:
         normalized = "".join(char for char in name.casefold() if char.isalnum())
         presets = {
@@ -153,6 +238,10 @@ class Algebra:
             "2dpga": pga2d_spec,
             "pga3d": pga3d_spec,
             "3dpga": pga3d_spec,
+            "cga2d": cga2d_spec,
+            "2dcga": cga2d_spec,
+            "cga3d": cga3d_spec,
+            "3dcga": cga3d_spec,
         }
         try:
             return cls(presets[normalized]())
@@ -336,6 +425,101 @@ class Algebra:
     def pseudoscalar(self, value: Any = 0.0, *, backend: StorageRequest = "auto") -> MVArray:
         return self.multivector([value], layout=self.grade_layout(self.dimension), backend=backend)
 
+    def _validate_cga(self) -> int:
+        if self.dimension < 3 or self.signature[-2:] != (1, -1):
+            raise ValueError("CGA helpers require an AMSA CGA algebra with signature (1^n, 1, -1).")
+        return self.dimension - 2
+
+    def origin(self, *, backend: StorageRequest = "auto") -> MVArray:
+        """Return the conformal null origin vector ``n_o``."""
+        from amsa.cga import origin as _cga_origin
+        return _cga_origin(self, backend=backend)
+
+    def infinity(self, *, backend: StorageRequest = "auto") -> MVArray:
+        """Return the conformal null infinity vector ``n_inf``."""
+        from amsa.cga import infinity as _cga_infinity
+        return _cga_infinity(self, backend=backend)
+
+    def euclidean_vector(
+        self, coordinates: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Embed Euclidean coordinates in the Euclidean vector subspace of a CGA algebra."""
+        from amsa.cga import euclidean_vector as _cga_euclidean_vector
+        return _cga_euclidean_vector(self, coordinates, backend=backend)
+
+    def point(
+        self, coordinates: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return the conformal point ``X = n_o + x + 0.5 * (x·x) n_inf``."""
+        from amsa.cga import point as _cga_point
+        return _cga_point(self, coordinates, backend=backend)
+
+    def sphere(
+        self, center: Any, radius: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a dual sphere ``S = C - 0.5 r^2 n_inf``."""
+        from amsa.cga import sphere as _cga_sphere
+        return _cga_sphere(self, center, radius, backend=backend)
+
+    def plane(
+        self, normal: Any, distance: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a dual plane ``P = n + d n_inf`` with Euclidean unit normal ``n``."""
+        from amsa.cga import plane as _cga_plane
+        return _cga_plane(self, normal, distance, backend=backend)
+
+    def translate(
+        self, displacement: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return the CGA translator ``T = 1 - 0.5 t n_inf``."""
+        from amsa.cga import translate as _cga_translate
+        return _cga_translate(self, displacement, backend=backend)
+
+    def line_through_points(self, a: MVArray, b: MVArray) -> MVArray:
+        """Return the direct line through two conformal points."""
+        from amsa.cga import line_through_points as _cga_line_through_points
+        return _cga_line_through_points(self, a, b)
+
+    def circle_through_points(self, a: MVArray, b: MVArray, c: MVArray) -> MVArray:
+        """Return the direct circle through three conformal points."""
+        from amsa.cga import circle_through_points as _cga_circle_through_points
+        return _cga_circle_through_points(self, a, b, c)
+
+    def distance_squared(self, a: MVArray, b: MVArray) -> Any:
+        """Return Euclidean squared distance from normalized conformal points."""
+        from amsa.cga import distance_squared as _cga_distance_squared
+        return _cga_distance_squared(self, a, b)
+
+    def extract_point(self, mv: MVArray) -> np.ndarray:
+        """Return Euclidean point coordinates from a conformal point MV."""
+        from amsa.cga import extract_point as _cga_extract_point
+        return _cga_extract_point(mv)
+
+    def extract_sphere(self, mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+        """Return (center, radius) from a dual-sphere MV."""
+        from amsa.cga import extract_sphere as _cga_extract_sphere
+        return _cga_extract_sphere(mv)
+
+    def extract_plane(self, mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+        """Return (normal, signed_distance) from a dual-plane MV."""
+        from amsa.cga import extract_plane as _cga_extract_plane
+        return _cga_extract_plane(mv)
+
+    def extract_euclidean_vector(self, mv: MVArray) -> np.ndarray:
+        """Return Euclidean coordinates from a Euclidean vector subspace MV."""
+        from amsa.cga import extract_euclidean_vector as _cga_extract_euclidean_vector
+        return _cga_extract_euclidean_vector(mv)
+
+    def classify(self, mv: MVArray) -> EntityInfo:
+        """Return a geometric interpretation of *mv* for this algebra.
+
+        Routes to the appropriate model-specific classifier (CGA, PGA, VGA)
+        based on the algebra signature.  Currently CGA is fully supported;
+        PGA and VGA will raise ``NotImplementedError`` until Pass 2.
+        """
+        from amsa.cga import _classify_cga as _cga_classify
+        return _cga_classify(self, mv)
+
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs
 
@@ -383,6 +567,11 @@ class Algebra:
 
     def motor_log(self, mv: MVArray) -> MVArray:
         return motor_log_op(mv)
+
+    def log(self, mv: MVArray) -> MVArray:
+        from amsa.ops import log as log_op
+
+        return log_op(mv)
 
     def bulk_norm_squared(self, mv: MVArray) -> MVArray:
         return bulk_norm_squared_op(mv)

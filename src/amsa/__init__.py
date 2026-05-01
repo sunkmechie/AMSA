@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from amsa.algebra import Algebra
+from amsa.algebra import Algebra, EntityInfo
 
 # Register the NumPy IR backend as the default execution engine.
 from amsa.backends.numpy import NumpyBackend
@@ -37,6 +37,7 @@ from amsa.ops import (
     inverse,
     involute,
     left_contraction,
+    log,
     motor_exp,
     motor_log,
     neg,
@@ -61,7 +62,17 @@ from amsa.ops import (
     weight_norm,
     weight_norm_squared,
 )
-from amsa.specs import AlgebraSpec, grade_of_blade, pga2d, pga3d, vga, vga2d, vga3d
+from amsa.specs import (
+    AlgebraSpec,
+    cga2d,
+    cga3d,
+    grade_of_blade,
+    pga2d,
+    pga3d,
+    vga,
+    vga2d,
+    vga3d,
+)
 
 register_backend("numpy", NumpyBackend())
 
@@ -77,6 +88,7 @@ init(use="cpu")
 __all__ = [
     "Algebra",
     "AlgebraSpec",
+    "EntityInfo",
     "MVArray",
     "MVLayout",
     "get_device",
@@ -99,6 +111,7 @@ __all__ = [
     "inverse",
     "involute",
     "left_contraction",
+    "log",
     "motor_exp",
     "motor_log",
     "neg",
@@ -108,6 +121,8 @@ __all__ = [
     "outer_product",
     "pga2d",
     "pga3d",
+    "cga2d",
+    "cga3d",
     "poincare_dual",
     "poincare_undual",
     "project_grades",
