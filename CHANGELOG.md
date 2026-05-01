@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-05-02
+
+### Added
+- CGA geometry methods on `Algebra`: `point`, `sphere`, `plane`, `translate`,
+  `line_through_points`, `circle_through_points`, `origin`, `infinity`,
+  `euclidean_vector`, `distance_squared`
+- CGA extraction utilities: `extract_point`, `extract_sphere`, `extract_plane`,
+  `extract_euclidean_vector` — recover Euclidean parameters from CGA MVs
+- Geometric classification: `alg.classify(mv)` returns `EntityInfo` with
+  structured geometric interpretation (12 recognized CGA entity types,
+  invariants, geometric data, storage metadata)
+- `EntityInfo` dataclass with pretty-printed output and programmatic access
+- 4 new CGA examples in `examples/cga/`: primitives, batched distance,
+  classify overview, versor actions
+- `examples/inspection/README.md`; fixed `examples/robotics/README.md`
+- `docs/cga.rst` covering CGA constructors, extraction, and classification
+- 3-pass CGA operations roadmap in `plans.md`
+
+### Changed
+- README : VGA/PGA/CGA quick start snippets, Supported Algebras
+  table, Examples directory listing
+
+
 ## [0.2.1] - 2026-04-26
 
 Performance optimization with IR fusion for NumPy backend.
