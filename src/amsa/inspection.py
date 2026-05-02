@@ -472,7 +472,7 @@ def _pga_extract_point(mv: MVArray, is_2d: bool) -> np.ndarray:
 
 
 def classify_vga(alg: Algebra, mv: MVArray) -> EntityInfo:
-    """Classify a multivector in a VGA algebra.  (Stub — full pass 3.)"""
+    """Classify a multivector in a VGA algebra."""
     rank = alg.dimension
 
     def _info(**overrides: Any) -> EntityInfo:
@@ -519,7 +519,15 @@ def classify_vga(alg: Algebra, mv: MVArray) -> EntityInfo:
             return EntityInfo(**{**kw, **overrides})
 
         if only_scalar_bivector:
-            kw["kind"] = "even versor"
+            try:
+                norm_sq = float((mv * mv.reverse()).component(0))
+                kw["invariants"]["‖R‖²"] = float(norm_sq)
+                if np.allclose(norm_sq, 1.0, atol=_TOL):
+                    kw["kind"] = "rotor"
+                else:
+                    kw["kind"] = "even versor"
+            except Exception:
+                kw["kind"] = "even versor"
             return EntityInfo(**{**kw, **overrides})
 
         if grades_set.issubset({0, 2, 4}):
