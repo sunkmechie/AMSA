@@ -15,6 +15,14 @@ Geometry
 - ``examples/geometry/signed_volume_3d.py`` — scalar triple product
 - ``examples/geometry/orientation_batch_2d.py`` — batched orientation tests
 
+CGA
+---
+
+- ``examples/cga/cga_primitives.py`` — all CGA primitives in cga3d and cga2d
+- ``examples/cga/cga_point_distance_batch.py`` — batched pairwise distance via inner product
+- ``examples/cga/cga_classify_overview.py`` — every primitive through ``classify()``
+- ``examples/cga/cga_versor_actions.py`` — translate and reflect with classify before/after
+
 Inspection
 ----------
 
@@ -49,6 +57,8 @@ Robotics
 - ``examples/robotics/robot_rotation_comparison_2d.py`` — rotor vs matrix/quaternion comparison
 - ``examples/robotics/trilateration_localization_2d.py`` — PGA2d localization with optional viz
 - ``examples/robotics/vector_projection_2d.py`` — corridor-axis projection
+- ``examples/robotics/cga_fk_3link.py`` — CGA FK for a 3-link non-planar arm
+- ``examples/robotics/cga_fk_ur5.py`` — CGA FK for a UR5 6-DOF industrial arm
 
 All examples can be run directly:
 
