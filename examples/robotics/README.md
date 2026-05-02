@@ -28,6 +28,20 @@ Projects a robot's position onto a corridor axis using the inner product, a comm
 ### [3D Kinematic Chain (PGA 3D)](pga3d_kinematic_chain.py)
 Animated 3D robot arm using PGA3D motors and VisPy. Demonstrates forward kinematics with joint motors, coordinate frame rendering, and real-time animation.
 
+### [CGA FK — 3-Link Non-Planar Arm](cga_fk_3link.py)
+Computes forward kinematics for a 3-DOF arm with a twisted joint (α = π/3) using Denavit–Hartenberg motor composition. Shows that the CGA formulation handles non-planar kinematics without matrices.
+
+```bash
+uv run python examples/robotics/cga_fk_3link.py
+```
+
+### [CGA FK — UR5 6-DOF Industrial Arm](cga_fk_ur5.py)
+Computes forward kinematics for a Universal Robots UR5 using the official DH parameters from UR documentation. Demonstrates CGA FK on a real industrial 6-DOF manipulator.
+
+```bash
+uv run python examples/robotics/cga_fk_ur5.py
+```
+
 ## How to run
 You can run any of these examples using `uv`:
 

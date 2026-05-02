@@ -23,6 +23,49 @@ Current scope:
 - ``dump_crobot(model)`` and ``load_crobot(path)`` for the draft Clifford-native
   robot JSON shape.
 - ``ik(..., solver="planar_two_link")`` as a minimal smoke-test solver.
+- ``fk(alg, dh_params, *, joint_types)`` for CGA forward kinematics using
+  Denavit–Hartenberg motor composition.
+
+Forward kinematics
+------------------
+
+``fk()`` computes world-frame link positions for an N-DOF serial chain using
+the CGA motor formulation from Bayro-Corrochano & Zamora-Esquivel (2007).
+Each link-joint pair is defined by four DH parameters ``(α, a, d, θ)``:
+
+.. code-block:: text
+
+   M_i = M_{i-1} · T_z(d) · R_z(θ) · T_x(a) · R_x(α)
+
+.. code-block:: python
+
+   import amsa.robo as robo
+   from amsa import Algebra
+
+   alg = Algebra.cga3d()
+
+   # Revolute joints: θ varies; prismatic: d varies
+   results = robo.fk(alg, [
+       (α₁, a₁, d₁, θ₁),   # joint 1
+       (α₂, a₂, d₂, θ₂),   # joint 2
+       ...
+   ])
+
+   for motor, tip in results:
+       print(alg.extract_point(tip))
+
+Parameters:
+
+- ``α`` — link twist about x-axis (radians)
+- ``a`` — link length along x-axis
+- ``d`` — joint offset along z-axis
+- ``θ`` — joint rotation about z-axis (radians, variable for revolute)
+
+For prismatic joints pass ``joint_types=["prismatic", ...]``.
+
+Citation: Bayro-Corrochano and Zamora-Esquivel (2007), "Differential and
+inverse kinematics of robot devices using conformal geometric algebra",
+Robotica 25(1), pp. 43–61.  See also Dorst et al. (2007), *GACS*, §15.5.
 
 Draft ``.crobot`` direction
 ---------------------------
