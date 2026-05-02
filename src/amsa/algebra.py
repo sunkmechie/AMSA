@@ -442,12 +442,21 @@ class Algebra:
         """Return a geometric interpretation of *mv* for this algebra.
 
         Routes to the appropriate model-specific classifier (CGA, PGA, VGA)
-        based on the algebra signature.  Currently CGA is fully supported;
-        PGA and VGA will raise ``NotImplementedError`` until Pass 2.
+        based on the algebra signature.
         """
-        from amsa.inspection import classify_cga
+        signature = self.signature
 
-        return classify_cga(self, mv)
+        if len(signature) >= 2 and signature[-2:] == (1, -1):
+            from amsa.inspection import classify_cga
+            return classify_cga(self, mv)
+
+        if signature[0] == 0:
+            from amsa.inspection import classify_pga
+            return classify_pga(self, mv)
+
+        from amsa.inspection import classify_vga
+
+        return classify_vga(self, mv)
 
     def gp(self, lhs: MVArray, rhs: MVArray) -> MVArray:
         return lhs * rhs

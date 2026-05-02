@@ -346,3 +346,111 @@ def test_classify_reflected_point() -> None:
     assert info.kind == "conformal point"
     assert info.null
     assert np.allclose(info.geometric_data["coordinates"], [-3.0, 2.0, 1.0])
+
+
+# -- PGA classify --------------------------------------------------------------
+
+
+def test_classify_pga2d_point() -> None:
+    alg = amsa.Algebra.pga2d()
+    point = alg.multivector({"e12": 1.0, "e01": 2.0, "e02": 3.0})
+    info = alg.classify(point)
+    assert info.kind == "normalized Euclidean point"
+    assert np.allclose(info.geometric_data["coordinates"], [2.0, 3.0])
+
+
+def test_classify_pga2d_ideal_point() -> None:
+    alg = amsa.Algebra.pga2d()
+    point = alg.multivector({"e12": 0.0, "e01": 1.0, "e02": 2.0})
+    info = alg.classify(point)
+    assert info.kind == "ideal point"
+    assert "direction" in info.geometric_data
+
+
+def test_classify_pga2d_line() -> None:
+    alg = amsa.Algebra.pga2d()
+    line = alg.multivector({"e0": 2.0, "e1": 1.0, "e2": 0.0})
+    info = alg.classify(line)
+    assert info.kind == "line"
+    assert info.representation == "dual"
+
+
+def test_classify_pga2d_rotor() -> None:
+    alg = amsa.Algebra.pga2d()
+    rotor = alg.multivector({"e": 0.7071, "e12": 0.7071})
+    info = alg.classify(rotor)
+    assert info.kind == "rotor"
+    assert 0 in info.grades and 2 in info.grades
+
+
+def test_classify_pga3d_point() -> None:
+    alg = amsa.Algebra.pga3d()
+    point = alg.multivector({"e123": 1.0, "e012": -1.0, "e013": 2.0, "e023": -3.0})
+    info = alg.classify(point)
+    assert info.kind == "normalized Euclidean point"
+    assert np.allclose(info.geometric_data["coordinates"], [3.0, 2.0, 1.0])
+
+
+def test_classify_pga3d_plane() -> None:
+    alg = amsa.Algebra.pga3d()
+    plane = alg.multivector({"e0": 5.0, "e1": 0.0, "e2": 0.0, "e3": 1.0})
+    info = alg.classify(plane)
+    assert info.kind == "plane"
+
+
+def test_classify_pga3d_line() -> None:
+    alg = amsa.Algebra.pga3d()
+    line = alg.multivector({"e01": 1.0, "e02": 2.0, "e03": 3.0, "e12": 0.0, "e13": 0.0, "e23": 1.0})
+    info = alg.classify(line)
+    assert info.kind == "line"
+
+
+def test_classify_pga2d_str_output() -> None:
+    alg = amsa.Algebra.pga2d()
+    info = alg.classify(alg.multivector({"e12": 1.0, "e01": 2.0, "e02": 3.0}))
+    text = str(info)
+    assert "PGA2D Classification" in text
+    assert "normalized Euclidean point" in text
+
+
+def test_classify_vga_vector() -> None:
+    alg = amsa.Algebra.vga3d()
+    info = alg.classify(alg.vector([1.0, 2.0, 3.0]))
+    assert info.kind == "vector"
+    assert 1 in info.grades
+
+
+def test_classify_vga_bivector() -> None:
+    alg = amsa.Algebra.vga2d()
+    info = alg.classify(alg.bivector([1.0]))
+    assert info.kind == "bivector"
+
+
+def test_classify_vga_scalar() -> None:
+    alg = amsa.Algebra.vga3d()
+    info = alg.classify(alg.scalar(5.0))
+    assert info.kind == "scalar"
+
+
+def test_classify_vga_pseudoscalar() -> None:
+    alg = amsa.Algebra.vga3d()
+    info = alg.classify(alg.trivector([1.0]))
+    assert info.kind == "pseudoscalar"
+
+
+def test_classify_routing_pga() -> None:
+    alg = amsa.Algebra.pga2d()
+    info = alg.classify(alg.multivector({"e12": 1.0, "e01": 0.0, "e02": 0.0}))
+    assert info.algebra == "pga2d"
+
+
+def test_classify_routing_vga() -> None:
+    alg = amsa.Algebra.vga2d()
+    info = alg.classify(alg.scalar(1.0))
+    assert info.algebra == "vga2d"
+
+
+def test_classify_routing_cga() -> None:
+    alg = amsa.Algebra.cga3d()
+    info = alg.classify(alg.point([1.0, 2.0, 3.0]))
+    assert info.algebra == "cga3d"

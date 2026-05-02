@@ -313,3 +313,219 @@ def _cga_any_blade_contains_conformal_axes(alg: Algebra, mv: MVArray) -> bool:
         if (blade & e4_bit) or (blade & e5_bit):
             return True
     return False
+
+
+# -- PGA classification --------------------------------------------------------
+
+
+def classify_pga(alg: Algebra, mv: MVArray) -> EntityInfo:
+    """Classify a multivector in a PGA algebra.
+
+    Returns an :class:`EntityInfo` with geometric interpretation, invariants,
+    and storage metadata.  Never mutates the input.
+    """
+    n = alg.dimension  # 3 for pga2d, 4 for pga3d
+    is_2d = n == 3
+    point_grade = 2 if is_2d else 3  # grade of a PGA point
+
+    def _info(**overrides: Any) -> EntityInfo:
+        kw: dict[str, Any] = {
+            "algebra": f"pga{n - 1}d",
+            "kind": "unknown multivector",
+            "representation": "",
+            "grades": tuple(sorted(_grades_of_nonzero(mv))),
+            "storage": {
+                "layout": mv.storage_kind,
+                "backend": "numpy",
+                "batch_shape": mv.batch_shape,
+                "dtype": str(mv.dtype),
+            },
+            "warnings": [],
+            "ambiguous": False,
+            "null": False,
+            "normalized": False,
+            "invariants": {},
+            "geometric_data": {},
+        }
+
+        kw["null"] = _is_null(mv)
+        sq = _scalar_square(mv)
+        kw["invariants"] = {"X²": float(sq) if sq is not None else float("nan")}
+
+        if _is_zero_mv(mv):
+            kw["kind"] = "zero multivector"
+            return EntityInfo(**{**kw, **overrides})
+
+        grades_set = set(kw["grades"])
+        single_grade = len(grades_set) == 1
+        has_e0 = _pga_any_blade_contains_e0(mv)
+        e0_coeff = float(mv.component(1))
+
+        if single_grade:
+            if grades_set == {point_grade}:
+                weight = _pga_point_weight(mv, is_2d)
+                kw["invariants"]["weight"] = float(weight)
+                kw["invariants"]["e₀ coefficient"] = e0_coeff
+
+                normalized = bool(np.allclose(weight, 1.0, atol=_TOL))
+                ideal = bool(np.allclose(weight, 0.0, atol=_TOL))
+
+                if ideal:
+                    kw["kind"] = "ideal point"
+                elif normalized:
+                    kw["kind"] = "normalized Euclidean point"
+                else:
+                    kw["kind"] = "Euclidean point"
+                kw["representation"] = "direct"
+
+                if not ideal:
+                    try:
+                        kw["geometric_data"] = {"coordinates": _pga_extract_point(mv, is_2d)}
+                    except Exception:
+                        kw["warnings"].append("could not extract point coordinates")
+                else:
+                    try:
+                        kw["geometric_data"] = {"direction": _pga_extract_point(mv, is_2d)}
+                    except Exception:
+                        pass
+                return EntityInfo(**{**kw, **overrides})
+
+            if grades_set == {1}:
+                if is_2d:
+                    kw["kind"] = "line"
+                else:
+                    kw["kind"] = "plane"
+                kw["representation"] = "dual"
+                return EntityInfo(**{**kw, **overrides})
+
+            if not is_2d and grades_set == {2}:
+                kw["kind"] = "line"
+                kw["representation"] = "direct"
+                return EntityInfo(**{**kw, **overrides})
+
+            kw["kind"] = "generic blade"
+            return EntityInfo(**{**kw, **overrides})
+
+        if is_2d:
+            even_versor_grades = {0, 2}
+            motor_grades = {0, 2}
+        else:
+            even_versor_grades = {0, 2, 4}
+            motor_grades = {0, 2, 4}
+
+        if grades_set == {0, 2}:
+            if has_e0:
+                kw["kind"] = "translator"
+                kw["representation"] = "direct"
+            else:
+                kw["kind"] = "rotor"
+                kw["representation"] = "direct"
+            return EntityInfo(**{**kw, **overrides})
+
+        if grades_set == motor_grades and 0 in grades_set:
+            kw["kind"] = "motor"
+            kw["representation"] = "direct"
+            return EntityInfo(**{**kw, **overrides})
+
+        if grades_set.issubset(even_versor_grades):
+            kw["kind"] = "even multivector"
+            return EntityInfo(**{**kw, **overrides})
+
+        return EntityInfo(**{**kw, **overrides})
+
+    return _info()
+
+
+def _pga_any_blade_contains_e0(mv: MVArray) -> bool:
+    e0_bit = 1
+    for blade in mv.layout.blades:
+        if blade == 0:
+            continue
+        if blade & e0_bit:
+            return True
+    return False
+
+
+def _pga_point_weight(mv: MVArray, is_2d: bool) -> float:
+    if is_2d:
+        return float(mv.component(6))
+    return float(mv.component(14))
+
+
+def _pga_extract_point(mv: MVArray, is_2d: bool) -> np.ndarray:
+    if is_2d:
+        w = float(mv.component(6))
+        x = float(mv.component(3))
+        y = float(mv.component(5))
+        return np.array([x, y]) / w if abs(w) > _TOL else np.array([x, y])
+    else:
+        w = float(mv.component(14))
+        x = -float(mv.component(13))
+        y = float(mv.component(11))
+        z = -float(mv.component(7))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            coords = np.array([x, y, z]) / w if abs(w) > _TOL else np.array([x, y, z])
+        return coords
+
+
+# -- VGA classification --------------------------------------------------------
+
+
+def classify_vga(alg: Algebra, mv: MVArray) -> EntityInfo:
+    """Classify a multivector in a VGA algebra.  (Stub — full pass 3.)"""
+    rank = alg.dimension
+
+    def _info(**overrides: Any) -> EntityInfo:
+        kw: dict[str, Any] = {
+            "algebra": f"vga{rank}d",
+            "kind": "unknown multivector",
+            "representation": "",
+            "grades": tuple(sorted(_grades_of_nonzero(mv))),
+            "storage": {
+                "layout": mv.storage_kind,
+                "backend": "numpy",
+                "batch_shape": mv.batch_shape,
+                "dtype": str(mv.dtype),
+            },
+            "warnings": [],
+            "ambiguous": False,
+            "null": False,
+            "normalized": False,
+            "invariants": {},
+            "geometric_data": {},
+        }
+
+        kw["null"] = _is_null(mv)
+        sq = _scalar_square(mv)
+        kw["invariants"] = {"X²": float(sq) if sq is not None else float("nan")}
+
+        if _is_zero_mv(mv):
+            kw["kind"] = "zero multivector"
+            return EntityInfo(**{**kw, **overrides})
+
+        grades_set = set(kw["grades"])
+        single_grade = len(grades_set) == 1
+        only_scalar_bivector = grades_set.issubset({0, 2})
+
+        if single_grade:
+            grade = next(iter(grades_set))
+            names = {0: "scalar", 1: "vector", 2: "bivector"}
+            if rank > 2:
+                names[3] = "trivector"
+            if grade == rank and rank >= 3:
+                kw["kind"] = "pseudoscalar"
+            else:
+                kw["kind"] = names.get(grade, "generic blade")
+            return EntityInfo(**{**kw, **overrides})
+
+        if only_scalar_bivector:
+            kw["kind"] = "even versor"
+            return EntityInfo(**{**kw, **overrides})
+
+        if grades_set.issubset({0, 2, 4}):
+            kw["kind"] = "even multivector"
+            return EntityInfo(**{**kw, **overrides})
+
+        return EntityInfo(**{**kw, **overrides})
+
+    return _info()
