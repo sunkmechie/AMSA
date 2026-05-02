@@ -5,6 +5,7 @@ import numpy as np
 
 import amsa.robo as robo
 from amsa import Algebra
+from tests._utils import assert_allclose
 
 
 def test_planar_two_link_ik_reaches_target() -> None:
@@ -56,15 +57,15 @@ def test_fk_two_link_zero_angles() -> None:
     alg = Algebra.cga3d()
     # dh_params: (α, a, d, θ) — zero twist, link along x, θ varies
     results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)])
-    assert np.allclose(_extract(results, 0), [1.0, 0.0, 0.0])
-    assert np.allclose(_extract(results, 1), [2.0, 0.0, 0.0])
+    assert_allclose(_extract(results, 0), [1.0, 0.0, 0.0], atol=1e-15)
+    assert_allclose(_extract(results, 1), [2.0, 0.0, 0.0], atol=1e-15)
 
 
 def test_fk_two_link_half_pi() -> None:
     alg = Algebra.cga3d()
     results = robo.fk(alg, [(0.0, 1.0, 0.0, math.pi / 2), (0.0, 1.0, 0.0, 0.0)])
-    assert np.allclose(_extract(results, 0), [0.0, 1.0, 0.0])
-    assert np.allclose(_extract(results, 1), [0.0, 2.0, 0.0])
+    assert_allclose(_extract(results, 0), [0.0, 1.0, 0.0], atol=1e-15)
+    assert_allclose(_extract(results, 1), [0.0, 2.0, 0.0], atol=1e-15)
 
 
 def test_fk_two_link_full() -> None:
@@ -77,8 +78,8 @@ def test_fk_two_link_full() -> None:
     expected_p2 = np.array(
         [math.cos(t1) + math.cos(t1 + t2), math.sin(t1) + math.sin(t1 + t2)]
     )
-    assert np.allclose(p1, expected_p1)
-    assert np.allclose(p2, expected_p2)
+    assert_allclose(p1, expected_p1, atol=1e-15)
+    assert_allclose(p2, expected_p2, atol=1e-15)
 
 
 def test_fk_three_link() -> None:
@@ -109,7 +110,7 @@ def test_fk_twisted_joint_alpha_pi_over_2() -> None:
     # After α twist, the second link goes along y (was z before twist, then x translation)
     # At θ1=0, α twist makes the next frame's z point along old -y
     p1 = _extract(results, 0)
-    assert np.allclose(p1, [0.0, 0.0, 1.0], atol=1e-10)
+    assert_allclose(p1, [0.0, 0.0, 1.0], atol=1e-10)
     assert _extract(results, 1).shape == (3,)
 
 
@@ -120,8 +121,8 @@ def test_fk_prismatic_joint() -> None:
         [(0.0, 0.0, 2.0, 0.0), (0.0, 1.0, 0.0, 0.0)],
         joint_types=["prismatic", "revolute"],
     )
-    assert np.allclose(_extract(results, 0), [0.0, 0.0, 2.0])
-    assert np.allclose(_extract(results, 1), [1.0, 0.0, 2.0])
+    assert_allclose(_extract(results, 0), [0.0, 0.0, 2.0], atol=1e-15)
+    assert_allclose(_extract(results, 1), [1.0, 0.0, 2.0], atol=1e-15)
 
 
 def test_fk_five_dof() -> None:

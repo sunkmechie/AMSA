@@ -15,6 +15,7 @@ import numpy as np
 
 from amsa.algebra import Algebra
 from amsa.mv import MVArray
+from amsa.ops import scale
 
 EXPERIMENTAL_WARNING = (
     "amsa.robo is experimental and not ready for production robotics use. "
@@ -231,13 +232,16 @@ def fk(
 
 def _rotor_axis(alg: Algebra, angle: float, axis: str) -> MVArray:
     """Return a CGA rotor for rotation by ``angle`` about ``axis``."""
+    half_angle = -0.5 * angle
     if axis == "z":
-        return alg.exp(-0.5 * float(angle) * (alg.blade("e1") ^ alg.blade("e2")))
-    if axis == "x":
-        return alg.exp(-0.5 * float(angle) * (alg.blade("e2") ^ alg.blade("e3")))
-    if axis == "y":
-        return alg.exp(-0.5 * float(angle) * (alg.blade("e3") ^ alg.blade("e1")))
-    raise ValueError(f"Unknown axis '{axis}'. Use 'x', 'y', or 'z'.")
+        B = alg.blade("e1") ^ alg.blade("e2")
+    elif axis == "x":
+        B = alg.blade("e2") ^ alg.blade("e3")
+    elif axis == "y":
+        B = alg.blade("e3") ^ alg.blade("e1")
+    else:
+        raise ValueError(f"Unknown axis '{axis}'. Use 'x', 'y', or 'z'.")
+    return alg.exp(scale(B, half_angle))
 
 
 def _sandwich(motor: MVArray, target: MVArray) -> MVArray:
