@@ -13,6 +13,9 @@ from typing import Any
 
 import numpy as np
 
+from amsa.algebra import Algebra
+from amsa.mv import MVArray
+
 EXPERIMENTAL_WARNING = (
     "amsa.robo is experimental and not ready for production robotics use. "
     "APIs and file formats may change before amsa-robo is split out."
@@ -167,12 +170,89 @@ def planar_two_link_ik(
     return q1, q2
 
 
+def fk(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    *,
+    joint_types: list[str] | None = None,
+) -> list[tuple[MVArray, MVArray]]:
+    """CGA forward kinematics via Denavit–Hartenberg motor composition.
+
+    Each joint-link pair is defined by four DH parameters ``(α, a, d, θ)``
+    and composed as the product of four motors:
+
+        M_i = M_{i-1} · T_z(d) · R_z(θ) · T_x(a) · R_x(α)
+
+    where ``T_{axis}(distance)`` translates along the axis and
+    ``R_{axis}(angle)`` rotates about the axis.  For revolute joints
+    *θ* is the variable; for prismatic joints *d* is the variable.
+    The tip of each link is the motor applied to the conformal origin.
+
+    This formulation handles arbitrary N‑DOF serial chains including
+    non‑planar arms with twisted joint axes (*α* ≠ 0), unlike matrix‑based
+    Jacobian methods that require per‑configuration derivatives.
+
+    Citation: Bayro‑Corrochano and Zamora‑Esquivel (2007), "Differential
+    and inverse kinematics of robot devices using conformal geometric
+    algebra", Robotica 25(1), pp. 43–61 — motor‑based DH parameterization
+    for CGA serial chains (§3.1, eqs. 15–20).
+
+    See also: Dorst, Fontijne, Mann (2007), *Geometric Algebra for
+    Computer Science*, Morgan Kaufmann, §15.5 (versors for Euclidean
+    motion).
+    """
+    n = len(dh_params)
+    if joint_types is None:
+        joint_types = ["revolute"] * n
+
+    motor: MVArray = alg.scalar(1.0)
+    origin = alg.origin()
+    results: list[tuple[MVArray, MVArray]] = []
+
+    for i in range(n):
+        alpha, a, d, theta = dh_params[i]
+
+        if joint_types[i] == "prismatic":
+            T_z = alg.translate([0.0, 0.0, float(d)])
+            R_z = alg.scalar(1.0)
+        else:
+            T_z = alg.translate([0.0, 0.0, float(d)])
+            R_z = _rotor_axis(alg, theta, "z")
+
+        T_x = alg.translate([float(a), 0.0, 0.0])
+        R_x = _rotor_axis(alg, alpha, "x") if abs(alpha) > 1e-15 else alg.scalar(1.0)
+
+        motor = motor * T_z * R_z * T_x * R_x
+        tip = _sandwich(motor, origin)
+        results.append((motor, tip))
+
+    return results
+
+
+def _rotor_axis(alg: Algebra, angle: float, axis: str) -> MVArray:
+    """Return a CGA rotor for rotation by ``angle`` about ``axis``."""
+    if axis == "z":
+        return alg.exp(-0.5 * float(angle) * (alg.blade("e1") ^ alg.blade("e2")))
+    if axis == "x":
+        return alg.exp(-0.5 * float(angle) * (alg.blade("e2") ^ alg.blade("e3")))
+    if axis == "y":
+        return alg.exp(-0.5 * float(angle) * (alg.blade("e3") ^ alg.blade("e1")))
+    raise ValueError(f"Unknown axis '{axis}'. Use 'x', 'y', or 'z'.")
+
+
+def _sandwich(motor: MVArray, target: MVArray) -> MVArray:
+    from amsa.ops import sandwich as _op_sandwich
+
+    return _op_sandwich(motor, target)
+
+
 __all__ = [
     "EXPERIMENTAL_WARNING",
     "Joint",
     "Link",
     "RobotModel",
     "dump_crobot",
+    "fk",
     "ik",
     "importurdf",
     "load_crobot",
