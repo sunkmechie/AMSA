@@ -112,7 +112,7 @@ print(alg.show_cayley())
 #    e12  +   e12 -1  e2  +  e1 -1   e
 ```
 
-**Geometric classification (CGA):**
+**Geometric classification (all algebras):**
 
 ```python
 alg = Algebra.cga3d()
@@ -216,8 +216,9 @@ See the documentation for details on execution backends.
 - `src/amsa/ir.py` — IR definitions and backend registry
 - `src/amsa/backends/` — execution backend implementations
 - `src/amsa/ops.py` — public operator layer
-- `src/amsa/algebra.py` — user-facing algebra handle, constructors, `EntityInfo`, `classify()`
-- `src/amsa/cga.py` — CGA geometry helpers (point, sphere, plane, translator, extraction, classification)
+- `src/amsa/algebra.py` — user-facing algebra handle, constructors, `classify()` routing
+- `src/amsa/inspection.py` — `EntityInfo` dataclass and geometric classification (CGA, future PGA/VGA)
+- `src/amsa/cga.py` — CGA geometry helpers (point, sphere, plane, translator, extraction)
 - `src/amsa/viz/` — visualization adapters, neutral primitives, and optional backends
 
 ## Documentation
@@ -313,11 +314,10 @@ For the current PGA presets, AMSA also exposes explicit bulk/weight helpers:
 - `rigid_body_normalize()` is a motor-oriented PGA helper that currently bulk-normalizes
   even grade-`0/2` multivectors without pretending to be a universal projective normalization
 
-**CGA classification:** `alg.classify(mv)` inspects a multivector and returns an
-`EntityInfo` describing its geometric interpretation (kind, grades, nullity, normalization,
-invariants, geometric data, and storage metadata). Currently CGA-first; PGA and VGA
-classifiers are planned for a future pass. See `docs/cga.rst` and
-`examples/cga/cga_classify_overview.py`.
+**Classification:** ``alg.classify(mv)`` inspects a multivector and returns an
+``EntityInfo`` describing its geometric interpretation (kind, grades, nullity, normalization,
+invariants, geometric data, and storage metadata). Supports CGA, PGA, and VGA algebras.
+See ``docs/cga.rst`` and ``examples/cga/cga_classify_overview.py``.
 
 Visualization note:
 - `amsa.viz` provides neutral primitives, point adapters for PGA points, and optional

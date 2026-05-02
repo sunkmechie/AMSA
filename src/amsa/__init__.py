@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from amsa.algebra import Algebra, EntityInfo
+from amsa.algebra import Algebra
 
 # Register the NumPy IR backend as the default execution engine.
 from amsa.backends.numpy import NumpyBackend
+from amsa.inspection import EntityInfo
 from amsa.ir import get_device, init, register_backend
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
