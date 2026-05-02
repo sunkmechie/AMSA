@@ -216,8 +216,9 @@ See the documentation for details on execution backends.
 - `src/amsa/ir.py` — IR definitions and backend registry
 - `src/amsa/backends/` — execution backend implementations
 - `src/amsa/ops.py` — public operator layer
-- `src/amsa/algebra.py` — user-facing algebra handle, constructors, `EntityInfo`, `classify()`
-- `src/amsa/cga.py` — CGA geometry helpers (point, sphere, plane, translator, extraction, classification)
+- `src/amsa/algebra.py` — user-facing algebra handle, constructors, `classify()` routing
+- `src/amsa/inspection.py` — `EntityInfo` dataclass and geometric classification (CGA, future PGA/VGA)
+- `src/amsa/cga.py` — CGA geometry helpers (point, sphere, plane, translator, extraction)
 - `src/amsa/viz/` — visualization adapters, neutral primitives, and optional backends
 
 ## Documentation
