@@ -176,7 +176,7 @@ def fk(
     dh_params: list[tuple[float, float, float, float]],
     *,
     joint_types: list[str] | None = None,
-) -> list[tuple[MVArray, MVArray]]:
+) -> list[dict[str, object]]:
     """CGA forward kinematics via Denavit–Hartenberg motor composition.
 
     Each joint-link pair is defined by four DH parameters ``(α, a, d, θ)``
@@ -187,7 +187,16 @@ def fk(
     where ``T_{axis}(distance)`` translates along the axis and
     ``R_{axis}(angle)`` rotates about the axis.  For revolute joints
     *θ* is the variable; for prismatic joints *d* is the variable.
-    The tip of each link is the motor applied to the conformal origin.
+
+    Returns a list of dictionaries, one per link:
+
+    .. code-block:: python
+
+        {
+            "motor":       MVArray,        # CGA motor (full pose)
+            "position":    np.ndarray,      # (x, y, z)
+            "orientation": np.ndarray,      # quaternion (w, x, y, z)
+        }
 
     This formulation handles arbitrary N‑DOF serial chains including
     non‑planar arms with twisted joint axes (*α* ≠ 0), unlike matrix‑based
@@ -207,8 +216,7 @@ def fk(
         joint_types = ["revolute"] * n
 
     motor: MVArray = alg.scalar(1.0)
-    origin = alg.origin()
-    results: list[tuple[MVArray, MVArray]] = []
+    results: list[dict[str, object]] = []
 
     for i in range(n):
         alpha, a, d, theta = dh_params[i]
@@ -224,8 +232,13 @@ def fk(
         R_x = _rotor_axis(alg, alpha, "x") if abs(alpha) > 1e-15 else alg.scalar(1.0)
 
         motor = motor * T_z * R_z * T_x * R_x
-        tip = _sandwich(motor, origin)
-        results.append((motor, tip))
+        pos = motor_to_position(motor, alg)
+        quat = motor_to_quaternion(motor, alg)
+        results.append({
+            "motor": motor,
+            "position": pos,
+            "orientation": quat,
+        })
 
     return results
 
@@ -250,6 +263,71 @@ def _sandwich(motor: MVArray, target: MVArray) -> MVArray:
     return _op_sandwich(motor, target)
 
 
+def motor_to_quaternion(motor: MVArray, alg: Algebra) -> np.ndarray:
+    """Extract the orientation quaternion (w, x, y, z) from a CGA motor.
+
+    Applies the motor to the canonical Euclidean basis vectors to recover
+    the rotation matrix, then converts to a unit quaternion.
+
+    Citation: Perwass (2009), *Geometric Algebra with Applications in
+    Engineering*, Springer, §4.3 (versor-to-matrix decomposition).
+    """
+    R = motor_to_matrix(motor, alg)
+    return _matrix_to_quaternion(R)
+
+
+def motor_to_matrix(motor: MVArray, alg: Algebra) -> np.ndarray:
+    """Extract the 3×3 rotation matrix from a CGA motor."""
+    e1 = _sandwich(motor, alg.euclidean_vector([1.0, 0.0, 0.0]))
+    e2 = _sandwich(motor, alg.euclidean_vector([0.0, 1.0, 0.0]))
+    e3 = _sandwich(motor, alg.euclidean_vector([0.0, 0.0, 1.0]))
+    r1 = alg.extract_euclidean_vector(e1)
+    r2 = alg.extract_euclidean_vector(e2)
+    r3 = alg.extract_euclidean_vector(e3)
+    return np.column_stack((r1, r2, r3))
+
+
+def motor_to_position(motor: MVArray, alg: Algebra) -> np.ndarray:
+    """Extract the translational position (x, y, z) from a CGA motor."""
+    origin = alg.origin()
+    tip = _sandwich(motor, origin)
+    return alg.extract_point(tip)
+
+
+def _matrix_to_quaternion(R: np.ndarray) -> np.ndarray:
+    """Convert a 3×3 rotation matrix to a unit quaternion (w, x, y, z).
+
+    Uses the numerically stable trace-based method from
+    Shepperd (1978), "Quaternion from Rotation Matrix", JGCD 1(3).
+    """
+    t = float(np.trace(R))
+    if t > 0:
+        s = 0.5 / np.sqrt(t + 1.0)
+        w = 0.25 / s
+        x = (R[2, 1] - R[1, 2]) * s
+        y = (R[0, 2] - R[2, 0]) * s
+        z = (R[1, 0] - R[0, 1]) * s
+    elif R[0, 0] > R[1, 1] and R[0, 0] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2])
+        w = (R[2, 1] - R[1, 2]) / s
+        x = 0.25 * s
+        y = (R[0, 1] + R[1, 0]) / s
+        z = (R[0, 2] + R[2, 0]) / s
+    elif R[1, 1] > R[2, 2]:
+        s = 2.0 * np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2])
+        w = (R[0, 2] - R[2, 0]) / s
+        x = (R[0, 1] + R[1, 0]) / s
+        y = 0.25 * s
+        z = (R[1, 2] + R[2, 1]) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1])
+        w = (R[1, 0] - R[0, 1]) / s
+        x = (R[0, 2] + R[2, 0]) / s
+        y = (R[1, 2] + R[2, 1]) / s
+        z = 0.25 * s
+    return np.array([w, x, y, z])
+
+
 __all__ = [
     "EXPERIMENTAL_WARNING",
     "Joint",
@@ -260,5 +338,8 @@ __all__ = [
     "ik",
     "importurdf",
     "load_crobot",
+    "motor_to_matrix",
+    "motor_to_position",
+    "motor_to_quaternion",
     "planar_two_link_ik",
 ]

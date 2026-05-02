@@ -26,11 +26,10 @@ print("\n=== CGA FK — 3-Link Non-Planar Arm ===\n")
 alg = Algebra.cga3d()
 
 # DH parameters: (α, a, d, θ)
-# Joint 2 has α = π/3 twist, rotating the arm out of the xy-plane.
 dh = [
-    (0.0,        1.0,   0.0,   0.0),       # joint 1: revolute, link along x
-    (math.pi / 3, 0.8,   0.0,   0.0),       # joint 2: revolute, twisted by 60°
-    (0.0,        0.5,   0.0,   0.0),       # joint 3: revolute, link along x
+    (0.0,        1.0,   0.0,   0.0),
+    (math.pi / 3, 0.8,   0.0,   0.0),
+    (0.0,        0.5,   0.0,   0.0),
 ]
 
 # ---- Configuration 1: all zeros -----------------------------------------
@@ -38,11 +37,9 @@ angles = [(α, a, d, 0.0) for α, a, d, _ in dh]
 results = robo.fk(alg, angles)
 
 print("Configuration: all θ = 0")
-for i, (_, tip) in enumerate(results):
-    print(f"  link {i + 1}: {alg.extract_point(tip)}")
-# Link 1: [1.0, 0, 0] — straight along x
-# Link 2: [1.0, 0.4, 0.6928] — twisted 60° about x
-# Link 3: [1.4, 0.4, 0.7789] — further along local x
+for i, r in enumerate(results):
+    p = r['position']
+    print(f"  link {i + 1}: pos ({p[0]:.4f}, {p[1]:.4f}, {p[2]:.4f})")
 
 # ---- Configuration 2: some rotation -------------------------------------
 angles2 = [
@@ -53,10 +50,11 @@ angles2 = [
 results2 = robo.fk(alg, angles2)
 
 print("\nConfiguration: θ₁=π/4, θ₂=π/6, θ₃=-π/3")
-for i, (_, tip) in enumerate(results2):
-    print(f"  link {i + 1}: {alg.extract_point(tip)}")
+for i, r in enumerate(results2):
+    p = r["position"]
+    print(f"  link {i + 1}: pos ({p[0]:.4f}, {p[1]:.4f}, {p[2]:.4f})")
 
 # ---- Verify: motors are proper even-grade versors -----------------------
 print("\nMotor grades (should be subset of {0, 2, 4}):")
-for i, (motor, _) in enumerate(results2):
-    print(f"  motor {i + 1}: {set(motor.grades)}")
+for i, r in enumerate(results2):
+    print(f"  motor {i + 1}: {set(r['motor'].grades)}")

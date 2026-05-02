@@ -7,21 +7,21 @@ AMSA Example
 Topic: CGA forward kinematics — UR5 6-DOF industrial arm
 Algebra: 3D Conformal Geometric Algebra (CGA)
 
-Computes world-frame joint positions for a Universal Robots UR5 using
-classic Denavit–Hartenberg parameters from the official UR documentation.
+Input: joint angles (θ₁…θ₆) applied to UR5 Denavit–Hartenberg parameters
+Output: end-effector Cartesian pose — position + quaternion orientation
 
-DH source: https://www.universal-robots.com/articles/ur/
-  application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
-
-Each joint-link pair uses the CGA motor composition per
-Bayro-Corrochano & Zamora-Esquivel (2007):
+Each DH tuple (α, a, d, θ) is composed into a CGA motor:
 
     M_i = M_{i-1} · T_z(d) · R_z(θ) · T_x(a) · R_x(α)
 
-Two configurations are shown: home (all zeros) and a working pose.
+The motor M_6 encodes the full pose.  ``robo.fk()`` pre‑computes
+the position and orientation (quaternion) for each link.
 
-Verification: at the home configuration, the end-effector position matches
-the known UR5 kinematic chain geometry (base offset + link lengths).
+DH source: Universal Robots official documentation
+  https://www.universal-robots.com/articles/ur/
+    application-installation/dh-parameters-for-calculations-of-kinematics-and-dynamics/
+
+Citation: Bayro-Corrochano & Zamora-Esquivel (2007), Robotica 25(1), pp. 43–61.
 """
 
 import math
@@ -33,30 +33,45 @@ print("\n=== CGA FK — UR5 6-DOF Arm ===\n")
 
 alg = Algebra.cga3d()
 
-# UR5 classic DH parameters (SI units: metres, radians)
-# Format: (α, a, d, θ)
+# UR5 classic DH parameters (metres, radians)
+# (α, a, d, θ) — θ varies per configuration
 UR5_DH = [
-    (math.pi / 2,  0.0,       0.089159,  0.0),   # joint 1
-    (0.0,         -0.42500,   0.0,        0.0),   # joint 2
-    (0.0,         -0.39225,   0.0,        0.0),   # joint 3
-    (math.pi / 2,  0.0,       0.10915,   0.0),   # joint 4
-    (-math.pi / 2, 0.0,       0.09465,   0.0),   # joint 5
-    (0.0,          0.0,       0.08230,   0.0),   # joint 6
+    (math.pi / 2,  0.0,       0.089159,  0.0),
+    (0.0,         -0.42500,   0.0,        0.0),
+    (0.0,         -0.39225,   0.0,        0.0),
+    (math.pi / 2,  0.0,       0.10915,   0.0),
+    (-math.pi / 2, 0.0,       0.09465,   0.0),
+    (0.0,          0.0,       0.08230,   0.0),
 ]
 
-# ---- Home configuration (all θ = 0) -------------------------------------
-print("--- Home (all θ = 0) ---")
-home = [(α, a, d, 0.0) for α, a, d, _ in UR5_DH]
-results = robo.fk(alg, home)
 
-for i, (motor, tip) in enumerate(results):
-    p = alg.extract_point(tip)
-    grades = set(motor.grades)
-    print(f"  joint {i + 1}: {p[0]:8.4f}  {p[1]:8.4f}  {p[2]:8.4f}  | grades {grades}")
+def _fmt_vec(v, width: int = 8) -> str:
+    return ", ".join(f"{x:{width}.4f}" for x in v)
 
-# ---- Working pose -------------------------------------------------------
-print("\n--- Working pose (θ = 0, -π/4, -π/2, 0, π/4, 0) ---")
-pose = [
+
+# ---- Home configuration (all θ = 0) -----------------------------------------
+
+print("--- Joint Input: home (θ = 0, 0, 0, 0, 0, 0) ---\n")
+angles = [(α, a, d, 0.0) for α, a, d, _ in UR5_DH]
+results = robo.fk(alg, angles)
+
+for i, r in enumerate(results):
+    p = r["position"]
+    print(f"  joint {i + 1}: pos ({_fmt_vec(p)})")
+
+# End-effector pose
+ee = results[5]
+print("\n  Cartesian output (end-effector pose):")
+print(f"    position:    ({_fmt_vec(ee['position'])})")
+print(f"    orientation: ({_fmt_vec(ee['orientation'])}  )  ← quaternion (w, x, y, z)")
+
+# ---- Working configuration --------------------------------------------------
+
+print("""
+
+--- Joint Input: working (θ = 0, -π/4, -π/2, 0,  π/4, 0) ---
+""")
+angles2 = [
     (math.pi / 2,  0.0,       0.089159,  0.0),
     (0.0,         -0.42500,   0.0,       -math.pi / 4),
     (0.0,         -0.39225,   0.0,       -math.pi / 2),
@@ -64,14 +79,23 @@ pose = [
     (-math.pi / 2, 0.0,       0.09465,   math.pi / 4),
     (0.0,          0.0,       0.08230,   0.0),
 ]
-results2 = robo.fk(alg, pose)
+results2 = robo.fk(alg, angles2)
 
-for i, (_, tip) in enumerate(results2):
-    p = alg.extract_point(tip)
-    print(f"  joint {i + 1}: {p[0]:8.4f}  {p[1]:8.4f}  {p[2]:8.4f}")
+for i, r in enumerate(results2):
+    p = r["position"]
+    print(f"  joint {i + 1}: pos ({_fmt_vec(p)})")
 
-# ---- Classify each motor ------------------------------------------------
-print("\n--- Motor classification ---")
-for i, (motor, _) in enumerate(results2):
-    info = alg.classify(motor)
-    print(f"  motor {i + 1}: {info.kind}")
+ee2 = results2[5]
+print("\n  Cartesian output (end-effector pose):")
+print(f"    position:    ({_fmt_vec(ee2['position'])})")
+print(f"    orientation: ({_fmt_vec(ee2['orientation'])}  )  ← quaternion (w, x, y, z)")
+
+# ---- Rotation matrix (via motor_to_matrix) ----------------------------------
+print("\n  Full rotation matrix (via robo.motor_to_matrix):")
+R = robo.motor_to_matrix(ee2["motor"], alg)
+for j in range(3):
+    print(f"    | {_fmt_vec(R[:, j], width=9)} |")
+
+# ---- Verify quaternion ↔ matrix round-trip ----------------------------------
+q = robo.motor_to_quaternion(ee2["motor"], alg)
+print(f"\n  Quaternion norm: {sum(x * x for x in q):.6f}  (should be 1.0)")

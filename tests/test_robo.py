@@ -49,35 +49,28 @@ def test_importurdf_and_crobot_roundtrip_shape(tmp_path) -> None:
 # -- DH-parameterized FK tests -------------------------------------------------
 
 
-def _extract(results, i):
-    return Algebra.cga3d().extract_point(results[i][1])
-
-
 def test_fk_two_link_zero_angles() -> None:
     alg = Algebra.cga3d()
-    # dh_params: (α, a, d, θ) — zero twist, link along x, θ varies
     results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)])
-    assert_allclose(_extract(results, 0), [1.0, 0.0, 0.0], atol=1e-15)
-    assert_allclose(_extract(results, 1), [2.0, 0.0, 0.0], atol=1e-15)
+    assert_allclose(results[0]["position"], [1.0, 0.0, 0.0], atol=1e-15)
+    assert_allclose(results[1]["position"], [2.0, 0.0, 0.0], atol=1e-15)
 
 
 def test_fk_two_link_half_pi() -> None:
     alg = Algebra.cga3d()
     results = robo.fk(alg, [(0.0, 1.0, 0.0, math.pi / 2), (0.0, 1.0, 0.0, 0.0)])
-    assert_allclose(_extract(results, 0), [0.0, 1.0, 0.0], atol=1e-15)
-    assert_allclose(_extract(results, 1), [0.0, 2.0, 0.0], atol=1e-15)
+    assert_allclose(results[0]["position"], [0.0, 1.0, 0.0], atol=1e-15)
+    assert_allclose(results[1]["position"], [0.0, 2.0, 0.0], atol=1e-15)
 
 
 def test_fk_two_link_full() -> None:
     alg = Algebra.cga3d()
     t1, t2 = math.pi / 4, math.pi / 4
     results = robo.fk(alg, [(0.0, 1.0, 0.0, t1), (0.0, 1.0, 0.0, t2)])
-    p1 = _extract(results, 0)[:2]
-    p2 = _extract(results, 1)[:2]
+    p1 = results[0]["position"][:2]
+    p2 = results[1]["position"][:2]
     expected_p1 = np.array([math.cos(t1), math.sin(t1)])
-    expected_p2 = np.array(
-        [math.cos(t1) + math.cos(t1 + t2), math.sin(t1) + math.sin(t1 + t2)]
-    )
+    expected_p2 = np.array([math.cos(t1) + math.cos(t1 + t2), math.sin(t1) + math.sin(t1 + t2)])
     assert_allclose(p1, expected_p1, atol=1e-15)
     assert_allclose(p2, expected_p2, atol=1e-15)
 
@@ -92,26 +85,23 @@ def test_fk_three_link() -> None:
             (0.0, 0.3, 0.0, math.pi / 4),
         ],
     )
-    p3 = _extract(results, 2)
+    p3 = results[2]["position"]
     assert p3.shape == (3,)
 
 
 def test_fk_motor_is_even() -> None:
     alg = Algebra.cga3d()
     results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.5), (0.0, 0.8, 0.0, -0.3)])
-    for motor, _ in results:
-        assert set(motor.grades).issubset({0, 2, 4})
+    for r in results:
+        assert set(r["motor"].grades).issubset({0, 2, 4})
 
 
 def test_fk_twisted_joint_alpha_pi_over_2() -> None:
     alg = Algebra.cga3d()
-    # α=π/2 twists the next joint axis from z to y
     results = robo.fk(alg, [(math.pi / 2, 0.0, 1.0, 0.0), (0.0, 1.0, 0.0, math.pi / 2)])
-    # After α twist, the second link goes along y (was z before twist, then x translation)
-    # At θ1=0, α twist makes the next frame's z point along old -y
-    p1 = _extract(results, 0)
+    p1 = results[0]["position"]
     assert_allclose(p1, [0.0, 0.0, 1.0], atol=1e-10)
-    assert _extract(results, 1).shape == (3,)
+    assert results[1]["position"].shape == (3,)
 
 
 def test_fk_prismatic_joint() -> None:
@@ -121,8 +111,8 @@ def test_fk_prismatic_joint() -> None:
         [(0.0, 0.0, 2.0, 0.0), (0.0, 1.0, 0.0, 0.0)],
         joint_types=["prismatic", "revolute"],
     )
-    assert_allclose(_extract(results, 0), [0.0, 0.0, 2.0], atol=1e-15)
-    assert_allclose(_extract(results, 1), [1.0, 0.0, 2.0], atol=1e-15)
+    assert_allclose(results[0]["position"], [0.0, 0.0, 2.0], atol=1e-15)
+    assert_allclose(results[1]["position"], [1.0, 0.0, 2.0], atol=1e-15)
 
 
 def test_fk_five_dof() -> None:
@@ -138,5 +128,20 @@ def test_fk_five_dof() -> None:
         ],
     )
     assert len(results) == 5
-    p5 = _extract(results, 4)
+    p5 = results[4]["position"]
     assert p5.shape == (3,)
+
+
+def test_fk_orientation_is_unit_quaternion() -> None:
+    alg = Algebra.cga3d()
+    results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.5), (0.0, 0.8, 0.0, -0.3)])
+    for r in results:
+        q = r["orientation"]
+        assert_allclose(np.linalg.norm(q), 1.0, atol=1e-15)
+
+
+def test_fk_home_orientation_is_identity() -> None:
+    alg = Algebra.cga3d()
+    results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.0)])
+    q = results[0]["orientation"]
+    assert_allclose(q, [1.0, 0.0, 0.0, 0.0], atol=1e-15)
