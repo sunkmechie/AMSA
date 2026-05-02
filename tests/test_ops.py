@@ -109,7 +109,15 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
 
 
 def _naive_regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
-    return (lhs.poincare_dual() ^ rhs.poincare_dual()).poincare_undual()
+    """Regressive product via Poincaré dual and geometric product.
+
+    A ∨ B = poincare_undual(poincare_dual(A) * poincare_dual(B))
+
+    Uses the full geometric product of the duals rather than just the outer
+    product, so that interior terms survive when Poincaré-dual grades exceed
+    the algebra dimension (e.g. CGA grade-1 dual spheres in 5D).
+    """
+    return (lhs.poincare_dual() * rhs.poincare_dual()).poincare_undual()
 
 
 @pytest.mark.parametrize(
@@ -256,7 +264,8 @@ def test_contractions_reduce_to_scalar_multiplication_for_grade_zero() -> None:
     assert_mv_allclose(right_contraction(mv, scalar), mv * scalar)
 
 
-def test_regressive_product_matches_poincare_dual_outer_identity() -> None:
+def test_regressive_product_matches_poincare_dual_identity() -> None:
+    """Regressive product matches poincare_undual(poincare_dual(A) * poincare_dual(B))."""
     algebra = Algebra.vga3d()
     lhs = algebra.multivector({"e1": 1.0, "e23": -2.0})
     rhs = algebra.multivector({"e2": 3.0, "e12": 4.0})

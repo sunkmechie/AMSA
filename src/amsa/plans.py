@@ -122,6 +122,22 @@ def _build_regressive_plan(
     lhs_blades: tuple[int, ...],
     rhs_blades: tuple[int, ...],
 ) -> OpPlan:
+    """Build the plan for the regressive (meet) product.
+
+    Defined as ``A ∨ B = poincare_undual(poincare_dual(A) * poincare_dual(B))``
+    where the dual is the basis complement (blade XOR with pseudoscalar) and the
+    product of duals is the full geometric product (not just the outer product).
+    For CGA and other non-degenerate algebras the geometric product includes
+    interior terms that survive when Poincaré-dual grades exceed the algebra
+    dimension, preserving the correct meet result.
+
+    Citation: Perwass (2009), *Geometric Algebra with Applications in
+    Engineering*, Springer, §4.3.4 — the meet is defined via the dual of the
+    join of the duals.
+
+    See also: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
+    Science*, Morgan Kaufmann, §5.6 — De Morgan's law for meet via dual.
+    """
     pseudoscalar = algebra.pseudoscalar_blade
     table = algebra.basis_product_table
     support: set[int] = set()
@@ -138,7 +154,9 @@ def _build_regressive_plan(
             rhs_dual_blade = rhs_blade ^ pseudoscalar
             if table is not None:
                 rhs_dual_coefficient = int(table.coefficients[rhs_blade, rhs_dual_blade])
-                dual_outer_coefficient = int(table.coefficients[lhs_dual_blade, rhs_dual_blade])
+                dual_outer_coefficient = int(
+                    table.coefficients[lhs_dual_blade, rhs_dual_blade]
+                )
                 dual_output_blade = int(table.output_blades[lhs_dual_blade, rhs_dual_blade])
             else:
                 rhs_dual_coefficient, _ = algebra.blade_product(rhs_blade, rhs_dual_blade)
@@ -147,16 +165,6 @@ def _build_regressive_plan(
                     rhs_dual_blade,
                 )
             if dual_outer_coefficient == 0:
-                continue
-            if table is not None:
-                dual_output_grade = int(table.grades[dual_output_blade])
-                lhs_dual_grade = int(table.grades[lhs_dual_blade])
-                rhs_dual_grade = int(table.grades[rhs_dual_blade])
-            else:
-                dual_output_grade = grade_of_blade(dual_output_blade)
-                lhs_dual_grade = grade_of_blade(lhs_dual_blade)
-                rhs_dual_grade = grade_of_blade(rhs_dual_blade)
-            if dual_output_grade != (lhs_dual_grade + rhs_dual_grade):
                 continue
 
             out_blade = dual_output_blade ^ pseudoscalar
