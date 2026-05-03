@@ -328,14 +328,344 @@ def _matrix_to_quaternion(R: np.ndarray) -> np.ndarray:
     return np.array([w, x, y, z])
 
 
+# ---------------------------------------------------------------------------
+# Numerical Inverse Kinematics (DLS)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class IKResult:
+    """Result of a numerical inverse-kinematics solve.
+
+    Attributes
+    ----------
+    success : bool
+        Whether the solver converged within tolerances.
+    joint_angles : np.ndarray
+        The solved joint angles (radians for revolute, metres for prismatic).
+    motor : MVArray or None
+        The CGA motor at the solved configuration (end-effector pose).
+    position : np.ndarray or None
+        The achieved end-effector position (x, y, z) in metres.
+    orientation : np.ndarray or None
+        The achieved end-effector orientation as a unit quaternion (w, x, y, z).
+    iterations : int
+        Number of iterations taken.
+    position_error : float
+        Final Euclidean position error in metres.
+    orientation_error : float
+        Final orientation error in radians (axis-angle magnitude).
+    converged_position : bool
+        Whether the position tolerance was met.
+    converged_orientation : bool
+        Whether the orientation tolerance was met.
+    """
+
+    success: bool
+    joint_angles: np.ndarray
+    motor: MVArray | None = None
+    position: np.ndarray | None = None
+    orientation: np.ndarray | None = None
+    iterations: int = 0
+    position_error: float = float("inf")
+    orientation_error: float = float("inf")
+    converged_position: bool = False
+    converged_orientation: bool = False
+
+
+def _rotation_matrix_to_axis_angle(R: np.ndarray) -> tuple[float, np.ndarray]:
+    """Extract axis-angle representation from a 3×3 rotation matrix.
+
+    Returns ``(angle, axis)`` where ``axis`` is a unit 3-vector and
+    ``angle`` is in radians in [0, pi].
+    """
+    cos_theta = np.clip((np.trace(R) - 1.0) / 2.0, -1.0, 1.0)
+    angle = float(np.arccos(cos_theta))
+
+    if angle < 1e-12:
+        return 0.0, np.array([0.0, 0.0, 1.0])
+
+    if np.pi - angle < 1e-12:
+        A = R + np.eye(3)
+        for j in range(3):
+            v = A[:, j]
+            nrm = np.linalg.norm(v)
+            if nrm > 1e-10:
+                return float(np.pi), v / nrm
+        return float(np.pi), np.array([0.0, 0.0, 1.0])
+
+    skew = np.array([
+        R[2, 1] - R[1, 2],
+        R[0, 2] - R[2, 0],
+        R[1, 0] - R[0, 1],
+    ])
+    axis = skew / (2.0 * np.sin(angle))
+    nrm = np.linalg.norm(axis)
+    if nrm < 1e-12:
+        return 0.0, np.array([0.0, 0.0, 1.0])
+    return angle, axis / nrm
+
+
+def _fk_frames(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    joint_angles: np.ndarray,
+    *,
+    joint_types: list[str] | None = None,
+) -> tuple[list[np.ndarray], list[np.ndarray], np.ndarray, np.ndarray, MVArray]:
+    """Compute per-joint world-frame data for Jacobian construction.
+
+    Returns ``(joint_positions, joint_z_axes, ee_position, ee_rotation, ee_motor)``.
+    ``joint_positions[i]`` and ``joint_z_axes[i]`` are the origin and Z-axis
+    of frame {i-1} in world coordinates — i.e. the state *before* joint ``i``'s
+    motion is applied.  This matches the standard DH convention where joint ``i``
+    acts about Z_{i-1}.
+    """
+    n = len(dh_params)
+    if joint_types is None:
+        joint_types = ["revolute"] * n
+
+    motor: MVArray = alg.scalar(1.0)
+    joint_positions: list[np.ndarray] = []
+    joint_z_axes: list[np.ndarray] = []
+
+    for i in range(n):
+        joint_positions.append(motor_to_position(motor, alg))
+        R_prev = motor_to_matrix(motor, alg)
+        joint_z_axes.append(R_prev[:, 2])
+
+        alpha, a, d, _theta = dh_params[i]
+
+        if joint_types[i] == "prismatic":
+            T_z = alg.translate([0.0, 0.0, float(joint_angles[i])])
+            R_z = alg.scalar(1.0)
+        else:
+            T_z = alg.translate([0.0, 0.0, float(d)])
+            R_z = _rotor_axis(alg, float(joint_angles[i]), "z")
+
+        T_x = alg.translate([float(a), 0.0, 0.0])
+        R_x = _rotor_axis(alg, float(alpha), "x") if abs(float(alpha)) > 1e-15 else alg.scalar(1.0)
+
+        motor = motor * T_z * R_z * T_x * R_x
+
+    ee_position = motor_to_position(motor, alg)
+    ee_rotation = motor_to_matrix(motor, alg)
+
+    return joint_positions, joint_z_axes, ee_position, ee_rotation, motor
+
+
+def _geometric_jacobian(
+    joint_positions: list[np.ndarray],
+    joint_z_axes: list[np.ndarray],
+    ee_position: np.ndarray,
+    *,
+    joint_types: list[str] | None = None,
+) -> np.ndarray:
+    """Build the 6 × n geometric Jacobian in world-frame coordinates."""
+    n = len(joint_positions)
+    if joint_types is None:
+        joint_types = ["revolute"] * n
+
+    J = np.zeros((6, n))
+
+    for i in range(n):
+        z = np.asarray(joint_z_axes[i], dtype=float)
+        p = np.asarray(joint_positions[i], dtype=float)
+
+        if joint_types[i] == "prismatic":
+            J[:3, i] = z
+        else:
+            J[:3, i] = np.cross(z, ee_position - p)
+            J[3:, i] = z
+
+    return J
+
+
+def _task_error(
+    p_current: np.ndarray,
+    R_current: np.ndarray,
+    p_target: np.ndarray,
+    R_target: np.ndarray,
+) -> np.ndarray:
+    """Compute the 6‑vector task‑space error.
+
+    First three components are position error ``p_target - p_current``,
+    last three are the axis‑angle representation of the orientation error
+    ``R_target @ R_current.T``.
+    """
+    pos_err = np.asarray(p_target, dtype=float) - np.asarray(p_current, dtype=float)
+    R_err = np.asarray(R_target, dtype=float) @ np.asarray(R_current, dtype=float).T
+    angle, axis = _rotation_matrix_to_axis_angle(R_err)
+    orient_err = float(angle) * np.asarray(axis, dtype=float)
+    return np.concatenate([pos_err, orient_err])
+
+
+def ik_dls(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    target_motor: MVArray,
+    *,
+    joint_types: list[str] | None = None,
+    initial_angles: np.ndarray | None = None,
+    max_iterations: int = 100,
+    position_tolerance: float = 1e-6,
+    orientation_tolerance: float = 1e-6,
+    damping: float = 0.1,
+    min_damping: float = 1e-6,
+    damping_factor: float = 0.5,
+    joint_limits: list[tuple[float, float]] | None = None,
+) -> IKResult:
+    """Damped least-squares inverse kinematics for a DH-parameterised serial chain.
+
+    Parameters
+    ----------
+    alg : Algebra
+        A CGA algebra (e.g. ``Algebra.cga3d()``).
+    dh_params : list of (α, a, d, θ)
+        DH parameters. For revolute joints *θ* is replaced by the solver;
+        for prismatic joints *d* is replaced (the tuple value is ignored).
+    target_motor : MVArray
+        The desired end-effector pose expressed as a CGA motor.
+    joint_types : list of str, optional
+        ``"revolute"`` (default) or ``"prismatic"``.
+    initial_angles : ndarray, optional
+        Starting joint configuration. Defaults to all zeros.
+    max_iterations : int
+        Maximum solver iterations (default 100).
+    position_tolerance : float
+        Convergence threshold for Euclidean position error in metres.
+    orientation_tolerance : float
+        Convergence threshold for axis‑angle orientation error in radians.
+    damping : float
+        Initial damping factor λ for the Levenberg‑Marquardt step.
+    min_damping : float
+        Floor for damping reduction.
+    damping_factor : float
+        Multiplier for adaptive damping (0 < factor < 1 to reduce, factor > 1
+        is used as 1/factor when error improves).
+    joint_limits : list of (min, max), optional
+        Per-joint limits. Joints are clamped after every iteration.
+
+    Returns
+    -------
+    IKResult
+    """
+    n = len(dh_params)
+    if joint_types is None:
+        joint_types = ["revolute"] * n
+
+    p_target = motor_to_position(target_motor, alg)
+    R_target = motor_to_matrix(target_motor, alg)
+
+    q = np.asarray(initial_angles, dtype=float) if initial_angles is not None else np.zeros(n)
+    lam = float(damping)
+    _decay = 1.0 / float(damping_factor) if damping_factor > 0 else 2.0
+
+    for iteration in range(max_iterations):
+        joint_pos, joint_z, p_curr, R_curr, _ = _fk_frames(
+            alg, dh_params, q, joint_types=joint_types,
+        )
+
+        e = _task_error(p_curr, R_curr, p_target, R_target)
+        pos_err = float(np.linalg.norm(e[:3]))
+        orient_err = float(np.linalg.norm(e[3:]))
+
+        converged_pos = pos_err < position_tolerance
+        converged_orient = orient_err < orientation_tolerance
+
+        if converged_pos and converged_orient:
+            motor, pos, quat = _resolve_fk_result(alg, dh_params, q, joint_types)
+            return IKResult(
+                success=True,
+                joint_angles=q,
+                motor=motor,
+                position=pos,
+                orientation=quat,
+                iterations=iteration + 1,
+                position_error=pos_err,
+                orientation_error=orient_err,
+                converged_position=True,
+                converged_orientation=True,
+            )
+
+        J = _geometric_jacobian(joint_pos, joint_z, p_curr, joint_types=joint_types)
+
+        A = J @ J.T + lam * lam * np.eye(6)
+        try:
+            dq = J.T @ np.linalg.solve(A, e)
+        except np.linalg.LinAlgError:
+            lam = max(lam * 2.0, 1e-6)
+            continue
+
+        q_new = q + dq
+
+        if joint_limits is not None:
+            for j in range(n):
+                lo, hi = joint_limits[j]
+                q_new[j] = float(np.clip(q_new[j], lo, hi))
+
+        _, _, p_new, R_new, _ = _fk_frames(
+            alg, dh_params, q_new, joint_types=joint_types,
+        )
+        e_new = _task_error(p_new, R_new, p_target, R_target)
+        err_new = float(np.linalg.norm(e_new))
+        err_old = float(np.linalg.norm(e))
+
+        if err_new < err_old:
+            q = q_new
+            lam = max(lam * damping_factor, min_damping)
+        else:
+            lam = lam * 2.0
+            if lam > 1e3:
+                q = q_new
+                lam = max(lam * damping_factor, min_damping)
+
+        if float(np.linalg.norm(dq)) < 1e-12:
+            break
+
+    joint_pos, joint_z, p_curr, R_curr, motor = _fk_frames(
+        alg, dh_params, q, joint_types=joint_types,
+    )
+    e = _task_error(p_curr, R_curr, p_target, R_target)
+    pos_err = float(np.linalg.norm(e[:3]))
+    orient_err = float(np.linalg.norm(e[3:]))
+
+    return IKResult(
+        success=False,
+        joint_angles=q,
+        motor=motor,
+        position=p_curr,
+        orientation=motor_to_quaternion(motor, alg),
+        iterations=iteration + 1,
+        position_error=pos_err,
+        orientation_error=orient_err,
+        converged_position=pos_err < position_tolerance,
+        converged_orientation=orient_err < orientation_tolerance,
+    )
+
+
+def _resolve_fk_result(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    joint_angles: np.ndarray,
+    joint_types: list[str],
+) -> tuple[MVArray, np.ndarray, np.ndarray]:
+    """Run FK for given angles and return ``(motor, position, quaternion)``."""
+    _, _, pos, rot, motor = _fk_frames(alg, dh_params, joint_angles, joint_types=joint_types)
+    quat = motor_to_quaternion(motor, alg)
+    return motor, pos, quat
+
+
 __all__ = [
     "EXPERIMENTAL_WARNING",
+    "IKResult",
     "Joint",
     "Link",
     "RobotModel",
     "dump_crobot",
     "fk",
     "ik",
+    "ik_dls",
     "importurdf",
     "load_crobot",
     "motor_to_matrix",

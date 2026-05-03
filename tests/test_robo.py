@@ -145,3 +145,192 @@ def test_fk_home_orientation_is_identity() -> None:
     results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.0)])
     q = results[0]["orientation"]
     assert_allclose(q, [1.0, 0.0, 0.0, 0.0], atol=1e-15)
+
+
+# -- DLS IK tests -------------------------------------------------------------
+
+
+def test_ik_dls_two_link_zero_angle_target() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    target = robo.fk(alg, dh)[-1]["motor"]
+    result = robo.ik_dls(alg, dh, target, position_tolerance=1e-8, orientation_tolerance=1e-8)
+    assert result.success
+    assert result.iterations <= 5
+    assert_allclose(result.joint_angles, [0.0, 0.0], atol=1e-6)
+
+
+def test_ik_dls_two_link_vs_analytic() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+
+    q1_target, q2_target = 0.4, 0.6
+    target = robo.fk(alg, [(0.0, 1.0, 0.0, q1_target), (0.0, 1.0, 0.0, q2_target)])[-1]["motor"]
+
+    result = robo.ik_dls(alg, dh, target, position_tolerance=1e-8, orientation_tolerance=1e-8)
+    assert result.success
+    assert_allclose(result.joint_angles, [q1_target, q2_target], atol=1e-5)
+
+
+def test_ik_dls_two_link_target_position() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    fk_params = [(0.0, 1.0, 0.0, math.pi / 6), (0.0, 1.0, 0.0, math.pi / 3)]
+    target_motor = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(alg, dh, target_motor)
+    assert result.success
+    q0, q1 = result.joint_angles[0], result.joint_angles[1]
+    fk_check = robo.fk(alg, [(0.0, 1.0, 0.0, q0), (0.0, 1.0, 0.0, q1)])
+    assert_allclose(fk_check[-1]["position"], result.position, atol=1e-6)
+
+
+def test_ik_dls_three_link_converges() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 0.5, 0.0, 0.0), (0.0, 0.3, 0.0, 0.0)]
+    target_angles = [0.3, -0.5, 0.7]
+    fk_params = [
+        (0.0, 1.0, 0.0, target_angles[0]),
+        (0.0, 0.5, 0.0, target_angles[1]),
+        (0.0, 0.3, 0.0, target_angles[2]),
+    ]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    assert result.success
+    assert result.position_error < 1e-6
+    assert result.orientation_error < 1e-6
+
+
+def test_ik_dls_identity_target() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 0.5, 0.0, 0.0)]
+    fk_params = [(0.0, 1.0, 0.0, math.pi), (0.0, 0.5, 0.0, 0.0)]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    assert result.success
+    assert result.position_error < 1e-6
+
+
+def test_ik_dls_from_near_singularity() -> None:
+    """Solver should escape a near-singular starting configuration."""
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    fk_params = [(0.0, 1.0, 0.0, 0.5), (0.0, 1.0, 0.0, -0.3)]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        initial_angles=np.array([0.01, 0.01]),
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    assert result.success
+
+
+def test_ik_dls_joint_limits() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    fk_params = [(0.0, 1.0, 0.0, 2.0), (0.0, 1.0, 0.0, -0.5)]
+    target_motor = robo.fk(alg, fk_params)[-1]["motor"]
+    limits = [(-1.0, 1.0), (-1.0, 1.0)]
+    result = robo.ik_dls(
+        alg, dh, target_motor,
+        joint_limits=limits, position_tolerance=1e-6,
+    )
+    for i, (lo, hi) in enumerate(limits):
+        assert lo - 1e-10 <= result.joint_angles[i] <= hi + 1e-10
+
+
+def test_ik_dls_unreachable_target() -> None:
+    """Target outside the reachable workspace should not converge."""
+    alg = Algebra.cga3d()
+    dh = [(0.0, 0.5, 0.0, 0.0), (0.0, 0.5, 0.0, 0.0)]
+    far_motor = alg.translate([3.0, 0.0, 0.0])
+    result = robo.ik_dls(
+        alg, dh, far_motor,
+        initial_angles=np.array([0.1, 0.1]),
+        position_tolerance=1e-6, max_iterations=200,
+    )
+    assert not result.success or result.position_error > 1e-2
+
+
+def test_ik_dls_prismatic() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 0.0, 1.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    joint_types = ["prismatic", "revolute"]
+    fk_params = [(0.0, 0.0, 0.5, 0.0), (0.0, 1.0, 0.0, 0.3)]
+    target = robo.fk(alg, fk_params, joint_types=joint_types)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        joint_types=joint_types,
+        position_tolerance=1e-6, orientation_tolerance=1e-6,
+    )
+    assert result.success
+    assert_allclose(result.joint_angles[0], 0.5, atol=1e-4)
+    assert_allclose(result.joint_angles[1], 0.3, atol=1e-4)
+
+
+def test_ik_dls_motor_roundtrip() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 0.6, 0.0, 0.0), (0.0, 0.3, 0.0, 0.0)]
+    target_angles = [0.5, -0.3, 0.8]
+    fk_params = [
+        (0.0, 1.0, 0.0, target_angles[0]),
+        (0.0, 0.6, 0.0, target_angles[1]),
+        (0.0, 0.3, 0.0, target_angles[2]),
+    ]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    assert result.success
+    q0, q1, q2 = result.joint_angles[0], result.joint_angles[1], result.joint_angles[2]
+    fk_check = robo.fk(
+        alg,
+        [(0.0, 1.0, 0.0, q0), (0.0, 0.6, 0.0, q1), (0.0, 0.3, 0.0, q2)],
+    )
+    assert_allclose(fk_check[-1]["position"], result.position, atol=1e-6)
+
+
+def test_ik_dls_initial_guess_used() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    fk_params = [(0.0, 1.0, 0.0, 0.5), (0.0, 1.0, 0.0, -0.3)]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result_from_zero = robo.ik_dls(
+        alg, dh, target,
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    result_from_near = robo.ik_dls(
+        alg, dh, target,
+        initial_angles=np.array([0.5, -0.3]),
+        position_tolerance=1e-8, orientation_tolerance=1e-8,
+    )
+    assert result_from_near.success
+    assert result_from_near.iterations <= result_from_zero.iterations + 2
+
+
+def test_ik_dls_nonzero_alpha_joint() -> None:
+    alg = Algebra.cga3d()
+    dh = [
+        (0.0, 0.0, 1.0, 0.0),
+        (math.pi / 2, 0.5, 0.0, 0.0),
+        (0.0, 0.3, 0.0, 0.0),
+    ]
+    fk_params = [
+        (0.0, 0.0, 1.0, 0.4),
+        (math.pi / 2, 0.5, 0.0, 0.6),
+        (0.0, 0.3, 0.0, -0.3),
+    ]
+    target = robo.fk(alg, fk_params)[-1]["motor"]
+    result = robo.ik_dls(
+        alg, dh, target,
+        position_tolerance=1e-6, orientation_tolerance=1e-6,
+    )
+    assert result.success
+    assert result.position_error < 1e-5
+    assert result.orientation_error < 1e-5
