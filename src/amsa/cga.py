@@ -201,9 +201,12 @@ def extract_sphere(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
     """
     alg = Algebra(mv.algebra)
     n = _euclidean_dimension(alg)
-    center = _extract_euclidean_blade_components(mv, n)
+    no_weight = _no_coefficient(alg, mv)
+    if np.any(np.isclose(no_weight, 0.0)):
+        raise ValueError("extract_sphere() requires a nonzero n_o component.")
+    center = _extract_euclidean_blade_components(mv, n) / _expand_scale(no_weight)
     sq = (mv * mv).component(0)
-    radius = np.sqrt(np.abs(sq))
+    radius = np.sqrt(np.abs(sq)) / np.abs(no_weight)
     return center, radius
 
 
@@ -220,9 +223,22 @@ def extract_plane(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
     alg = Algebra(mv.algebra)
     n_axes = _euclidean_dimension(alg)
     normal = _extract_euclidean_blade_components(mv, n_axes)
-    n_inf_axis = n_axes
-    distance = mv.component(1 << n_inf_axis)
+    distance = _ninf_coefficient(alg, mv)
     return normal, distance
+
+
+def _no_coefficient(alg: Algebra, mv: MVArray) -> np.ndarray:
+    n = alg.dimension - 2
+    plus = np.asarray(mv.component(1 << n))
+    minus = np.asarray(mv.component(1 << (n + 1)))
+    return np.asarray(minus - plus)
+
+
+def _ninf_coefficient(alg: Algebra, mv: MVArray) -> np.ndarray:
+    n = alg.dimension - 2
+    plus = np.asarray(mv.component(1 << n))
+    minus = np.asarray(mv.component(1 << (n + 1)))
+    return np.asarray(0.5 * (plus + minus))
 
 
 __all__ = [

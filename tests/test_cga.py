@@ -136,12 +136,28 @@ def test_extract_sphere_origin() -> None:
     assert_allclose(radius, 2.5)
 
 
+def test_extract_scaled_sphere_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    s = 2.0 * alg.sphere([1.0, -2.0, 0.5], 3.0)
+    center, radius = alg.extract_sphere(s)
+    assert_allclose(center, [1.0, -2.0, 0.5])
+    assert_allclose(radius, 3.0)
+
+
 def test_extract_plane_round_trip() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.plane([0.0, 0.0, 1.0], 5.0)
     normal, distance = alg.extract_plane(p)
     assert_allclose(normal, [0.0, 0.0, 1.0])
     assert_allclose(distance, 5.0)
+
+
+def test_extract_plane_uses_conformal_infinity_coefficient() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.euclidean_vector([0.0, 0.0, 1.0]) + 4.0 * alg.infinity()
+    normal, distance = alg.extract_plane(p)
+    assert_allclose(normal, [0.0, 0.0, 1.0])
+    assert_allclose(distance, 4.0)
 
 
 def test_extract_plane_default_normal() -> None:

@@ -16,6 +16,11 @@ Current API
    data = robo.dump_crobot(model)
    q1, q2 = robo.ik((1.0, 1.0), (1.0, 1.0), solver="planar_two_link")
 
+   result = robo.ik_dls(alg, dh_params, target_motor,
+                         joint_limits=limits,
+                         position_tolerance=1e-6,
+                         orientation_tolerance=1e-6)
+
 Current scope:
 
 - ``Link``, ``Joint``, and ``RobotModel`` dataclasses.
@@ -25,6 +30,9 @@ Current scope:
 - ``ik(..., solver="planar_two_link")`` as a minimal smoke-test solver.
 - ``fk(alg, dh_params, *, joint_types)`` for CGA forward kinematics using
   Denavit–Hartenberg motor composition.
+- ``ik_dls(alg, dh_params, target_motor, ...)`` for damped least-squares
+  numerical inverse kinematics with adaptive damping and joint limits.
+- ``IKResult`` dataclass with position, orientation, and convergence metadata.
 - ``motor_to_position(motor, alg)``, ``motor_to_quaternion(motor, alg)``,
   ``motor_to_matrix(motor, alg)`` for extracting Cartesian pose from CGA motors.
 
@@ -92,6 +100,165 @@ to extract pose components:
 Citation: Bayro-Corrochano and Zamora-Esquivel (2007), "Differential and
 inverse kinematics of robot devices using conformal geometric algebra",
 Robotica 25(1), pp. 43–61.  See also Dorst et al. (2007), *GACS*, §15.5.
+
+Inverse kinematics
+------------------
+
+``ik_dls()`` solves the inverse kinematics problem for a DH-parameterised
+serial chain using the damped least-squares (Levenberg-Marquardt) method.
+It takes a target end-effector CGA motor and returns joint angles that
+drive the forward kinematics to that pose.
+
+.. code-block:: python
+
+   import amsa.robo as robo
+   from amsa import Algebra
+
+   alg = Algebra.cga3d()
+
+   # UR5 DH parameters
+   dh_params = [
+       (π/2,  0.0,     0.089159, 0.0),
+       (0.0, -0.42500, 0.0,      0.0),
+       (0.0, -0.39225, 0.0,      0.0),
+       (π/2,  0.0,     0.10915,  0.0),
+       (-π/2, 0.0,     0.09465,  0.0),
+       (0.0,  0.0,     0.08230,  0.0),
+   ]
+
+   # Compute a target motor via FK
+   target = robo.fk(alg, dh_target)[-1]["motor"]
+
+   # Solve IK
+   result = robo.ik_dls(
+       alg,
+       dh_params,
+       target,
+       joint_limits=[(-2π, 2π)] * 6,
+       position_tolerance=1e-6,
+       orientation_tolerance=1e-6,
+   )
+
+   if result.success:
+       print("Converged in", result.iterations, "iterations")
+       print("Joint angles:", result.joint_angles)
+       print("Position:", result.position)
+       print("Orientation (quaternion):", result.orientation)
+
+Algorithm
+^^^^^^^^^
+
+At each iteration the solver:
+
+1. Runs FK to obtain per-joint world-frame positions, Z-axis directions,
+   and the current end-effector pose.
+2. Computes the 6-vector task-space error:
+   ``e = [p_target - p_current,  axis_angle(R_target @ R_current^T)]``.
+3. Builds the 6×n geometric Jacobian *J*:
+
+   - Revolute column: ``[z_i × (p_ee − p_i);  z_i]``
+   - Prismatic column: ``[z_i; 0]``
+
+4. Applies the Levenberg-Marquardt update:
+
+   .. math::
+
+      Δθ = J^\\mathsf{T} (J J^\\mathsf{T} + λ^2 I)^{-1} e
+
+5. Steps forward and adjusts the damping factor λ:
+
+   - Error decreases → multiply λ by ``damping_factor`` (reduce damping).
+   - Error increases → multiply λ by 2 (increase damping, reject step).
+
+6. Clamps joint angles to ``joint_limits``.
+
+Parameters
+^^^^^^^^^^
+
+.. list-table::
+   :header-rows: 1
+
+   * - Parameter
+     - Type
+     - Default
+     - Description
+   * - ``alg``
+     - ``Algebra``
+     - required
+     - CGA algebra instance (e.g. ``Algebra.cga3d()``).
+   * - ``dh_params``
+     - ``list[tuple]``
+     - required
+     - Denavit-Hartenberg ``(α, a, d, θ)`` tuples.
+   * - ``target_motor``
+     - ``MVArray``
+     - required
+     - Desired end-effector pose as a CGA motor.
+   * - ``joint_types``
+     - ``list[str]``
+     - ``["revolute"] * n``
+     - ``"revolute"`` or ``"prismatic"`` per joint.
+   * - ``initial_angles``
+     - ``ndarray``
+     - ``zeros(n)``
+     - Starting joint configuration.
+   * - ``max_iterations``
+     - ``int``
+     - ``100``
+     - Maximum solver iterations.
+   * - ``position_tolerance``
+     - ``float``
+     - ``1e-6``
+     - Convergence threshold for position error (metres).
+   * - ``orientation_tolerance``
+     - ``float``
+     - ``1e-6``
+     - Convergence threshold for orientation error (radians).
+   * - ``damping``
+     - ``float``
+     - ``0.1``
+     - Initial Levenberg-Marquardt damping λ.
+   * - ``damping_factor``
+     - ``float``
+     - ``0.5``
+     - Multiplier for adaptive damping schedule.
+   * - ``joint_limits``
+     - ``list[tuple]``
+     - ``None``
+     - Per-joint (min, max) bounds in radians or metres.
+
+IKResult
+^^^^^^^^
+
+.. code-block:: python
+
+   @dataclass
+   class IKResult:
+       success: bool                # converged within tolerances?
+       joint_angles: np.ndarray     # solved angles
+       motor: MVArray | None        # CGA motor at solution
+       position: np.ndarray | None  # (x, y, z) end-effector position
+       orientation: np.ndarray | None  # (w, x, y, z) quaternion
+       iterations: int              # iterations taken
+       position_error: float        # final position error (metres)
+       orientation_error: float     # final orientation error (radians)
+       converged_position: bool     # position within tolerance?
+       converged_orientation: bool  # orientation within tolerance?
+
+References
+^^^^^^^^^^
+
+- Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
+  Transpose, Pseudoinverse and Damped Least Squares methods.  *IEEE JRA*.
+- Wampler, C. W. (1986).  Manipulator Inverse Kinematic Solutions Based on
+  Vector Formulations and Damped Least-Squares Methods.  *IEEE T-SMC* 16(1).
+- Nakamura, Y. & Hanafusa, H. (1986).  Inverse Kinematic Solutions With
+  Singularity Robustness for Robot Manipulator Control.  *JDSMC* 108(3).
+- Siciliano et al. (2010), *Robotics: Modelling, Planning and Control*,
+  Springer, §3.
+- Bayro-Corrochano & Zamora-Esquivel (2007), "Differential and inverse
+  kinematics of robot devices using conformal geometric algebra", *Robotica*
+  25(1), pp. 43–61.
 
 Draft ``.crobot`` direction
 ---------------------------

@@ -211,9 +211,9 @@ def fk(
     Computer Science*, Morgan Kaufmann, §15.5 (versors for Euclidean
     motion).
     """
+    _validate_cga3d(alg)
     n = len(dh_params)
-    if joint_types is None:
-        joint_types = ["revolute"] * n
+    joint_types = _validate_joint_types(n, joint_types)
 
     motor: MVArray = alg.scalar(1.0)
     results: list[dict[str, object]] = []
@@ -272,12 +272,16 @@ def motor_to_quaternion(motor: MVArray, alg: Algebra) -> np.ndarray:
     Citation: Perwass (2009), *Geometric Algebra with Applications in
     Engineering*, Springer, §4.3 (versor-to-matrix decomposition).
     """
+    _validate_cga3d(alg)
+    _validate_motor_algebra(motor, alg)
     R = motor_to_matrix(motor, alg)
     return _matrix_to_quaternion(R)
 
 
 def motor_to_matrix(motor: MVArray, alg: Algebra) -> np.ndarray:
-    """Extract the 3×3 rotation matrix from a CGA motor."""
+    """Extract a 3×3 rotation matrix from a CGA motor for interop/reporting."""
+    _validate_cga3d(alg)
+    _validate_motor_algebra(motor, alg)
     e1 = _sandwich(motor, alg.euclidean_vector([1.0, 0.0, 0.0]))
     e2 = _sandwich(motor, alg.euclidean_vector([0.0, 1.0, 0.0]))
     e3 = _sandwich(motor, alg.euclidean_vector([0.0, 0.0, 1.0]))
@@ -289,6 +293,8 @@ def motor_to_matrix(motor: MVArray, alg: Algebra) -> np.ndarray:
 
 def motor_to_position(motor: MVArray, alg: Algebra) -> np.ndarray:
     """Extract the translational position (x, y, z) from a CGA motor."""
+    _validate_cga3d(alg)
+    _validate_motor_algebra(motor, alg)
     origin = alg.origin()
     tip = _sandwich(motor, origin)
     return alg.extract_point(tip)
@@ -359,6 +365,12 @@ class IKResult:
         Whether the position tolerance was met.
     converged_orientation : bool
         Whether the orientation tolerance was met.
+
+    References
+    ----------
+    Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
+    Transpose, Pseudoinverse and Damped Least Squares methods.  IEEE Journal
+    of Robotics and Automation.
     """
 
     success: bool
@@ -421,9 +433,11 @@ def _fk_frames(
     motion is applied.  This matches the standard DH convention where joint ``i``
     acts about Z_{i-1}.
     """
+    _validate_cga3d(alg)
     n = len(dh_params)
-    if joint_types is None:
-        joint_types = ["revolute"] * n
+    joint_types = _validate_joint_types(n, joint_types)
+    if joint_angles.shape != (n,):
+        raise ValueError(f"Expected {n} joint values, got shape {joint_angles.shape}.")
 
     motor: MVArray = alg.scalar(1.0)
     joint_positions: list[np.ndarray] = []
@@ -461,10 +475,24 @@ def _geometric_jacobian(
     *,
     joint_types: list[str] | None = None,
 ) -> np.ndarray:
-    """Build the 6 × n geometric Jacobian in world-frame coordinates."""
+    """Build the 6 × n geometric Jacobian in world-frame coordinates.
+
+    For a revolute joint *i* with world-frame axis vector
+    :math:`\\mathbf{z}_i` and world-frame origin :math:`\\mathbf{p}_i`,
+    the linear-velocity column is
+    :math:`\\mathbf{z}_i \\times (\\mathbf{p}_{ee} - \\mathbf{p}_i)`
+    and the angular-velocity column is :math:`\\mathbf{z}_i`.
+    For a prismatic joint the linear column is :math:`\\mathbf{z}_i`
+    and the angular column is zero.
+
+    References
+    ----------
+    Siciliano, B., Sciavicco, L., Villani, L., & Oriolo, G. (2010).
+    *Robotics: Modelling, Planning and Control*, Springer, §3 (Differential
+    Kinematics and Statics).
+    """
     n = len(joint_positions)
-    if joint_types is None:
-        joint_types = ["revolute"] * n
+    joint_types = _validate_joint_types(n, joint_types)
 
     J = np.zeros((6, n))
 
@@ -517,6 +545,14 @@ def ik_dls(
 ) -> IKResult:
     """Damped least-squares inverse kinematics for a DH-parameterised serial chain.
 
+    The solver uses a Levenberg-Marquardt (damped pseudoinverse) method with
+    a geometric Jacobian built from CGA forward-kinematics frames.  At each
+    iteration the task-space error is decomposed into position error
+    (Euclidean) and orientation error (axis-angle of
+    :math:`\\mathbf{R}_{target} \\mathbf{R}_{current}^\\mathsf{T}`),
+    and the damping factor :math:`\\lambda` is adapted based on error
+    improvement.
+
     Parameters
     ----------
     alg : Algebra
@@ -549,17 +585,49 @@ def ik_dls(
     Returns
     -------
     IKResult
+
+    References
+    ----------
+    Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
+    Transpose, Pseudoinverse and Damped Least Squares methods.  *IEEE Journal
+    of Robotics and Automation*.
+
+    Wampler, C. W. (1986).  Manipulator Inverse Kinematic Solutions Based on
+    Vector Formulations and Damped Least-Squares Methods.  *IEEE Transactions
+    on Systems, Man, and Cybernetics* 16(1).
+
+    Nakamura, Y. & Hanafusa, H. (1986).  Inverse Kinematic Solutions With
+    Singularity Robustness for Robot Manipulator Control.  *Journal of Dynamic
+    Systems, Measurement, and Control* 108(3).
+
+    The geometric Jacobian formulation follows Siciliano et al. (2010),
+    *Robotics: Modelling, Planning and Control*, Springer, §3.
+
+    The Denavit-Hartenberg parameterisation and motor composition are drawn
+    from Bayro-Corrochano & Zamora-Esquivel (2007), "Differential and inverse
+    kinematics of robot devices using conformal geometric algebra", *Robotica*
+    25(1), pp. 43–61.
     """
+    _validate_cga3d(alg)
+    _validate_motor_algebra(target_motor, alg)
     n = len(dh_params)
-    if joint_types is None:
-        joint_types = ["revolute"] * n
+    joint_types = _validate_joint_types(n, joint_types)
+    if joint_limits is not None and len(joint_limits) != n:
+        raise ValueError(f"Expected {n} joint limits, got {len(joint_limits)}.")
 
     p_target = motor_to_position(target_motor, alg)
     R_target = motor_to_matrix(target_motor, alg)
 
     q = np.asarray(initial_angles, dtype=float) if initial_angles is not None else np.zeros(n)
+    if q.shape != (n,):
+        raise ValueError(f"Expected {n} initial joint values, got shape {q.shape}.")
     lam = float(damping)
-    _decay = 1.0 / float(damping_factor) if damping_factor > 0 else 2.0
+    if damping < 0.0 or min_damping < 0.0:
+        raise ValueError("Damping values must be non-negative.")
+    if damping_factor <= 0.0:
+        raise ValueError("damping_factor must be positive.")
+
+    iteration = -1
 
     for iteration in range(max_iterations):
         joint_pos, joint_z, p_curr, R_curr, _ = _fk_frames(
@@ -636,7 +704,7 @@ def ik_dls(
         motor=motor,
         position=p_curr,
         orientation=motor_to_quaternion(motor, alg),
-        iterations=iteration + 1,
+        iterations=max(iteration + 1, 0),
         position_error=pos_err,
         orientation_error=orient_err,
         converged_position=pos_err < position_tolerance,
@@ -673,3 +741,24 @@ __all__ = [
     "motor_to_quaternion",
     "planar_two_link_ik",
 ]
+
+
+def _validate_cga3d(alg: Algebra) -> None:
+    if alg.dimension != 5 or alg.signature != (1, 1, 1, 1, -1):
+        raise ValueError("Experimental robotics CGA helpers require Algebra.cga3d().")
+
+
+def _validate_motor_algebra(motor: MVArray, alg: Algebra) -> None:
+    if motor.algebra != alg.spec:
+        raise ValueError("Motor must belong to the provided algebra.")
+
+
+def _validate_joint_types(n: int, joint_types: list[str] | None) -> list[str]:
+    resolved = ["revolute"] * n if joint_types is None else list(joint_types)
+    if len(resolved) != n:
+        raise ValueError(f"Expected {n} joint types, got {len(resolved)}.")
+    invalid = sorted(set(resolved) - {"revolute", "prismatic"})
+    if invalid:
+        names = ", ".join(repr(item) for item in invalid)
+        raise ValueError(f"Unsupported joint type(s): {names}.")
+    return resolved

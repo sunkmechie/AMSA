@@ -2,6 +2,7 @@ import json
 import math
 
 import numpy as np
+import pytest
 
 import amsa.robo as robo
 from amsa import Algebra
@@ -147,6 +148,23 @@ def test_fk_home_orientation_is_identity() -> None:
     assert_allclose(q, [1.0, 0.0, 0.0, 0.0], atol=1e-15)
 
 
+def test_fk_rejects_non_cga3d() -> None:
+    with pytest.raises(ValueError, match="cga3d"):
+        robo.fk(Algebra.cga2d(), [(0.0, 1.0, 0.0, 0.0)])
+
+
+def test_fk_rejects_bad_joint_types() -> None:
+    alg = Algebra.cga3d()
+    with pytest.raises(ValueError, match="Expected 2 joint types"):
+        robo.fk(
+            alg,
+            [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)],
+            joint_types=["revolute"],
+        )
+    with pytest.raises(ValueError, match="Unsupported joint type"):
+        robo.fk(alg, [(0.0, 1.0, 0.0, 0.0)], joint_types=["helical"])
+
+
 # -- DLS IK tests -------------------------------------------------------------
 
 
@@ -158,6 +176,28 @@ def test_ik_dls_two_link_zero_angle_target() -> None:
     assert result.success
     assert result.iterations <= 5
     assert_allclose(result.joint_angles, [0.0, 0.0], atol=1e-6)
+
+
+def test_ik_dls_zero_iterations_returns_failure_result() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0)]
+    target = robo.fk(alg, dh)[-1]["motor"]
+    result = robo.ik_dls(alg, dh, target, max_iterations=0)
+    assert not result.success
+    assert result.iterations == 0
+    assert result.position is not None
+
+
+def test_ik_dls_rejects_invalid_shapes_and_algebras() -> None:
+    alg = Algebra.cga3d()
+    dh = [(0.0, 1.0, 0.0, 0.0)]
+    target = robo.fk(alg, dh)[-1]["motor"]
+    with pytest.raises(ValueError, match="initial joint"):
+        robo.ik_dls(alg, dh, target, initial_angles=np.array([0.0, 0.0]))
+    with pytest.raises(ValueError, match="joint limits"):
+        robo.ik_dls(alg, dh, target, joint_limits=[])
+    with pytest.raises(ValueError, match="provided algebra"):
+        robo.ik_dls(alg, dh, Algebra.cga2d().translate([1.0, 0.0]))
 
 
 def test_ik_dls_two_link_vs_analytic() -> None:

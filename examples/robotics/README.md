@@ -42,6 +42,13 @@ Computes forward kinematics for a Universal Robots UR5 using the official DH par
 uv run python examples/robotics/cga_fk_ur5.py
 ```
 
+### [CGA IK — UR5 6-DOF Industrial Arm (DLS)](cga_ik_ur5.py)
+Solves inverse kinematics for the UR5 using damped least-squares (Levenberg-Marquardt) numerical IK. Demonstrates motor-space target specification, geometric Jacobian construction, adaptive damping, joint-limit enforcement, and self-consistency round-trip verification.
+
+```bash
+uv run python examples/robotics/cga_ik_ur5.py
+```
+
 ## How to run
 You can run any of these examples using `uv`:
 
