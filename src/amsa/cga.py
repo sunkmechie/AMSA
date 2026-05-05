@@ -5,6 +5,12 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from __future__ import annotations
 
@@ -147,10 +153,8 @@ def ensure_same_cga(*values: MVArray) -> None:
 def extract_euclidean_vector(mv: MVArray) -> np.ndarray:
     """Return the Euclidean coordinates stored in the blade coefficients.
 
-    Citation: In the AMSA CGA convention, Euclidean basis blade components
-    ``e1..en`` directly carry the vector coordinates.  See Dorst, Fontijne,
-    Mann (2007), *Geometric Algebra for Computer Science*, Table 13.1
-    (conformal point representation).
+    In the AMSA CGA convention, Euclidean basis blade components ``e1..en``
+    directly carry the vector coordinates.  See ``docs/references.rst#cga``.
     """
     alg = Algebra(mv.algebra)
     n = _euclidean_dimension(alg)
@@ -166,9 +170,7 @@ def extract_point(mv: MVArray) -> np.ndarray:
     the point may need re-normalization, so this function divides by
     ``-(X · n_inf)`` before extracting.
 
-    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
-    Science*, Morgan Kaufmann, Table 13.1 (conformal point representation),
-    and the inverse mapping in Perwass (2009), §4.3.2.
+    See ``docs/references.rst#cga`` for the conformal point references.
     """
     alg = Algebra(mv.algebra)
     _euclidean_dimension(alg)
@@ -195,9 +197,7 @@ def extract_sphere(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
 
     The dual sphere ``S = C - 0.5 r² n_inf`` stores the Euclidean center
     coordinates in the ``e1..en`` coefficients, and ``r = sqrt(S²)``.
-
-    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
-    Science*, Morgan Kaufmann, Table 13.2 (dual sphere representation).
+    See ``docs/references.rst#cga``.
     """
     alg = Algebra(mv.algebra)
     n = _euclidean_dimension(alg)
@@ -215,10 +215,7 @@ def extract_plane(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
 
     The dual plane ``P = n + d n_inf`` stores the Euclidean normal ``n``
     in the ``e1..en`` coefficients and the signed distance ``d`` in the
-    ``n_inf`` basis coefficient.
-
-    Citation: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
-    Science*, Morgan Kaufmann, Table 13.2 (dual plane representation).
+    ``n_inf`` coefficient.  See ``docs/references.rst#cga``.
     """
     alg = Algebra(mv.algebra)
     n_axes = _euclidean_dimension(alg)

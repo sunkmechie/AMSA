@@ -198,18 +198,9 @@ def fk(
             "orientation": np.ndarray,      # quaternion (w, x, y, z)
         }
 
-    This formulation handles arbitrary N‑DOF serial chains including
-    non‑planar arms with twisted joint axes (*α* ≠ 0), unlike matrix‑based
-    Jacobian methods that require per‑configuration derivatives.
-
-    Citation: Bayro‑Corrochano and Zamora‑Esquivel (2007), "Differential
-    and inverse kinematics of robot devices using conformal geometric
-    algebra", Robotica 25(1), pp. 43–61 — motor‑based DH parameterization
-    for CGA serial chains (§3.1, eqs. 15–20).
-
-    See also: Dorst, Fontijne, Mann (2007), *Geometric Algebra for
-    Computer Science*, Morgan Kaufmann, §15.5 (versors for Euclidean
-    motion).
+    This formulation supports arbitrary-length serial DH chains, including
+    non-planar arms with twisted joint axes (*α* != 0).  It does not yet model
+    arbitrary robot graphs.  See ``docs/references.rst#robotics``.
     """
     _validate_cga3d(alg)
     n = len(dh_params)
@@ -267,10 +258,8 @@ def motor_to_quaternion(motor: MVArray, alg: Algebra) -> np.ndarray:
     """Extract the orientation quaternion (w, x, y, z) from a CGA motor.
 
     Applies the motor to the canonical Euclidean basis vectors to recover
-    the rotation matrix, then converts to a unit quaternion.
-
-    Citation: Perwass (2009), *Geometric Algebra with Applications in
-    Engineering*, Springer, §4.3 (versor-to-matrix decomposition).
+    an interop rotation matrix, then converts to a unit quaternion.
+    See ``docs/references.rst#robotics``.
     """
     _validate_cga3d(alg)
     _validate_motor_algebra(motor, alg)
@@ -303,8 +292,8 @@ def motor_to_position(motor: MVArray, alg: Algebra) -> np.ndarray:
 def _matrix_to_quaternion(R: np.ndarray) -> np.ndarray:
     """Convert a 3×3 rotation matrix to a unit quaternion (w, x, y, z).
 
-    Uses the numerically stable trace-based method from
-    Shepperd (1978), "Quaternion from Rotation Matrix", JGCD 1(3).
+    Uses a numerically stable trace-based method.  See
+    ``docs/references.rst#robotics``.
     """
     t = float(np.trace(R))
     if t > 0:
@@ -366,11 +355,7 @@ class IKResult:
     converged_orientation : bool
         Whether the orientation tolerance was met.
 
-    References
-    ----------
-    Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
-    Transpose, Pseudoinverse and Damped Least Squares methods.  IEEE Journal
-    of Robotics and Automation.
+    See ``docs/references.rst#robotics`` for the DLS IK references.
     """
 
     success: bool
@@ -485,11 +470,7 @@ def _geometric_jacobian(
     For a prismatic joint the linear column is :math:`\\mathbf{z}_i`
     and the angular column is zero.
 
-    References
-    ----------
-    Siciliano, B., Sciavicco, L., Villani, L., & Oriolo, G. (2010).
-    *Robotics: Modelling, Planning and Control*, Springer, §3 (Differential
-    Kinematics and Statics).
+    See ``docs/references.rst#robotics``.
     """
     n = len(joint_positions)
     joint_types = _validate_joint_types(n, joint_types)
@@ -586,27 +567,8 @@ def ik_dls(
     -------
     IKResult
 
-    References
-    ----------
-    Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
-    Transpose, Pseudoinverse and Damped Least Squares methods.  *IEEE Journal
-    of Robotics and Automation*.
-
-    Wampler, C. W. (1986).  Manipulator Inverse Kinematic Solutions Based on
-    Vector Formulations and Damped Least-Squares Methods.  *IEEE Transactions
-    on Systems, Man, and Cybernetics* 16(1).
-
-    Nakamura, Y. & Hanafusa, H. (1986).  Inverse Kinematic Solutions With
-    Singularity Robustness for Robot Manipulator Control.  *Journal of Dynamic
-    Systems, Measurement, and Control* 108(3).
-
-    The geometric Jacobian formulation follows Siciliano et al. (2010),
-    *Robotics: Modelling, Planning and Control*, Springer, §3.
-
-    The Denavit-Hartenberg parameterisation and motor composition are drawn
-    from Bayro-Corrochano & Zamora-Esquivel (2007), "Differential and inverse
-    kinematics of robot devices using conformal geometric algebra", *Robotica*
-    25(1), pp. 43–61.
+    See ``docs/references.rst#robotics`` for the DLS, geometric Jacobian, and
+    CGA motor-DH references.
     """
     _validate_cga3d(alg)
     _validate_motor_algebra(target_motor, alg)

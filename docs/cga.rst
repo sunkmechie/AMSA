@@ -131,17 +131,13 @@ Recognized CGA entities
 
 .. warning::
 
-   ``classify()`` provides a *structured geometric interpretation*, not a
-   mathematical proof.  It uses numerical tolerance (1e-10) and may classify
-   near-null or near-degenerate objects approximately.  It never mutates the
+   ``classify()`` provides a *structured geometric interpretation*. It uses numerical tolerance (1e-10) 
+   and may classify near-null or near-degenerate objects approximately.  It never mutates the
    input multivector.
 
 .. note::
 
-   Extraction is documented in Dorst, Fontijne, Mann (2007), *Geometric Algebra
-   for Computer Science*, Morgan Kaufmann, Tables 13.1–13.4.
-   ``extract_point`` normalizes using the inverse mapping from Perwass (2009),
-   §4.3.2.
+   Extraction conventions are collected in :doc:`references`.
 
 Standalone ``amsa.cga`` module (secondary API)
 ----------------------------------------------
@@ -188,7 +184,8 @@ Null basis identities: ``n_o^2 = 0``, ``n_inf^2 = 0``, ``n_o · n_inf = -1``.
 Operator status
 ---------------
 
-The constructors use existing AMSA products and layouts. NumPy execution is
-covered by tests; dense JAX parity follows the same operation layer where the
-underlying operation is already traceable. There is no matrix representation or
-basis-change table in the CGA implementation.
+(The constructors use existing AMSA products and layouts. NumPy execution is
+covered by tests. Dense JAX parity follows the same operation layer where the
+underlying operation is already traceable, but CGA constructor and extraction
+helper traceability still needs a dedicated audit. There is no matrix
+representation or basis-change table in the CGA implementation.)

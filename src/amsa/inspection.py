@@ -28,14 +28,11 @@ if TYPE_CHECKING:
 _TOL = 1e-10
 
 
-# -- EntityInfo ----------------------------------------------------------------
-
 @dataclass(frozen=True, slots=True)
 class EntityInfo:
     """Describes the geometric interpretation of a multivector.
 
-    ``classify()`` returns this for structured inspection and display — it
-    never mutates the underlying multivector.
+    ``classify()`` returns this for structured inspection and display
     """
 
     algebra: str
@@ -105,9 +102,6 @@ class EntityInfo:
         return "\n".join(lines)
 
 
-# -- general inspection helpers ------------------------------------------------
-
-
 def _is_null(mv: MVArray) -> bool:
     sq = _scalar_square(mv)
     if sq is None:
@@ -144,9 +138,6 @@ def _is_zero_mv(mv: MVArray) -> bool:
     if mv.layout.size == 0:
         return True
     return bool(np.allclose(mv.values, 0.0, atol=_TOL))
-
-
-# -- CGA classification --------------------------------------------------------
 
 
 def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
@@ -315,9 +306,6 @@ def _cga_any_blade_contains_conformal_axes(alg: Algebra, mv: MVArray) -> bool:
     return False
 
 
-# -- PGA classification --------------------------------------------------------
-
-
 def classify_pga(alg: Algebra, mv: MVArray) -> EntityInfo:
     """Classify a multivector in a PGA algebra.
 
@@ -466,9 +454,6 @@ def _pga_extract_point(mv: MVArray, is_2d: bool) -> np.ndarray:
         with np.errstate(divide="ignore", invalid="ignore"):
             coords = np.array([x, y, z]) / w if abs(w) > _TOL else np.array([x, y, z])
         return coords
-
-
-# -- VGA classification --------------------------------------------------------
 
 
 def classify_vga(alg: Algebra, mv: MVArray) -> EntityInfo:

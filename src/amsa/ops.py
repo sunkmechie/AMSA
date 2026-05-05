@@ -755,14 +755,7 @@ def regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
     geometric product (rather than just the outer product) preserves
     interior terms when Poincaré-dual grades exceed the algebra dimension,
     e.g. for CGA meet of dual spheres in 5D.
-
-    Citation: Perwass (2009), *Geometric Algebra with Applications in
-    Engineering*, Springer, §4.3.4 — the meet of blades A and B is
-    defined via the dual of the join of their duals.
-
-    See also: Dorst, Fontijne, Mann (2007), *Geometric Algebra for
-    Computer Science*, Morgan Kaufmann, §5.6 — De Morgan's law for
-    the meet via dual.
+    See ``docs/references.rst#operations``.
     """
     return _execute_binary_product(lhs, rhs, "regressive")
 

@@ -130,13 +130,7 @@ def _build_regressive_plan(
     For CGA and other non-degenerate algebras the geometric product includes
     interior terms that survive when Poincaré-dual grades exceed the algebra
     dimension, preserving the correct meet result.
-
-    Citation: Perwass (2009), *Geometric Algebra with Applications in
-    Engineering*, Springer, §4.3.4 — the meet is defined via the dual of the
-    join of the duals.
-
-    See also: Dorst, Fontijne, Mann (2007), *Geometric Algebra for Computer
-    Science*, Morgan Kaufmann, §5.6 — De Morgan's law for meet via dual.
+    See ``docs/references.rst#operations``.
     """
     pseudoscalar = algebra.pseudoscalar_blade
     table = algebra.basis_product_table

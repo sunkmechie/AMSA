@@ -39,8 +39,8 @@ Current scope:
 Forward kinematics
 ------------------
 
-``fk()`` computes world-frame Cartesian poses for an N-DOF serial chain using
-the CGA motor formulation from Bayro-Corrochano & Zamora-Esquivel (2007).
+``fk()`` computes world-frame Cartesian poses for an N-DOF serial DH chain using
+CGA motor composition.  References are collected in :doc:`references`.
 Each link-joint pair is defined by four DH parameters ``(α, a, d, θ)``:
 
 .. code-block:: text
@@ -93,13 +93,9 @@ to extract pose components:
 
 - ``motor_to_position`` — applies the motor to the conformal origin.
 - ``motor_to_quaternion`` — recovers the rotation matrix from basis vectors,
-  then converts to a unit quaternion via Shepperd (1978), JGCD 1(3).
+  then converts to a unit quaternion.
 - ``motor_to_matrix`` — sandwiches the motor with the canonical Euclidean
   basis vectors ``e₁, e₂, e₃`` to recover the rotation matrix columns.
-
-Citation: Bayro-Corrochano and Zamora-Esquivel (2007), "Differential and
-inverse kinematics of robot devices using conformal geometric algebra",
-Robotica 25(1), pp. 43–61.  See also Dorst et al. (2007), *GACS*, §15.5.
 
 Inverse kinematics
 ------------------
@@ -248,23 +244,14 @@ IKResult
 References
 ^^^^^^^^^^
 
-- Buss, S. R. (2004).  Introduction to Inverse Kinematics with Jacobian
-  Transpose, Pseudoinverse and Damped Least Squares methods.  *IEEE JRA*.
-- Wampler, C. W. (1986).  Manipulator Inverse Kinematic Solutions Based on
-  Vector Formulations and Damped Least-Squares Methods.  *IEEE T-SMC* 16(1).
-- Nakamura, Y. & Hanafusa, H. (1986).  Inverse Kinematic Solutions With
-  Singularity Robustness for Robot Manipulator Control.  *JDSMC* 108(3).
-- Siciliano et al. (2010), *Robotics: Modelling, Planning and Control*,
-  Springer, §3.
-- Bayro-Corrochano & Zamora-Esquivel (2007), "Differential and inverse
-  kinematics of robot devices using conformal geometric algebra", *Robotica*
-  25(1), pp. 43–61.
+See :doc:`references` for the DLS, geometric Jacobian, and CGA motor-DH
+references.
 
 Draft ``.crobot`` direction
 ---------------------------
 
 URDF is still useful as an interchange bridge, but AMSA's native robotics format
-should describe robot geometry in Clifford terms:
+will describe robot geometry in Clifford terms:
 
 - Algebra model: ``cga3d`` for points, spheres, lines, planes, motors, and joint
   constraints.
@@ -275,6 +262,5 @@ should describe robot geometry in Clifford terms:
 - Limits: scalar ranges attached to generator parameters.
 - Frames: derived from motors, not stored as homogeneous matrices.
 
-This draft deliberately avoids promising complete execution support. It exists
-to keep the future ``amsa-robo`` surface aligned with AMSA's blade/layout/storage
-boundaries before the package is split out.
+This draft exists to keep the future ``amsa-robo`` surface aligned with AMSA's 
+blade/layout/storage boundaries before the package is split out.
