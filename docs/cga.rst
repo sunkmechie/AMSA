@@ -45,6 +45,8 @@ Extraction utilities
 
 Extract Euclidean parameters from CGA multivectors.  ``extract_point``
 normalizes via ``-(X · n_inf)`` so it works correctly after versor actions.
+These helpers return NumPy arrays for reporting and interop; they are not a
+JAX-traceable API contract.
 
 .. code-block:: python
 

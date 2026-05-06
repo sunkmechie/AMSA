@@ -18,6 +18,54 @@ def test_planar_two_link_ik_reaches_target() -> None:
     assert math.isclose(y, 1.0, abs_tol=1e-12)
 
 
+def test_cga_sphere_sphere_returns_intersection_circle() -> None:
+    alg = Algebra.cga3d()
+    s1 = alg.sphere([0.0, 0.0, 0.0], 1.0)
+    s2 = alg.sphere([1.0, 0.0, 0.0], 1.0)
+
+    circle = robo.sphere_sphere(s1, s2)
+    p = alg.point([0.5, math.sqrt(0.75), 0.0])
+
+    assert 3 in circle.grades
+    assert_allclose((p ^ circle).values, np.zeros_like((p ^ circle).values), atol=1e-12)
+    assert_allclose(robo.ik(s1, s2, solver="cga_sphere_sphere").values, circle.values)
+
+
+def test_cga_line_plane_returns_intersection_point() -> None:
+    alg = Algebra.cga3d()
+    line = alg.line_through_points(
+        alg.point([0.0, 0.0, 0.0]),
+        alg.point([1.0, 0.0, 0.0]),
+    )
+    plane = alg.plane([1.0, 0.0, 0.0], 2.0)
+
+    point = robo.line_plane(line, plane)
+
+    assert_allclose(alg.extract_point(point), [2.0, 0.0, 0.0], atol=1e-12)
+
+
+def test_cga_point_circle_projection() -> None:
+    alg = Algebra.cga3d()
+    circle = alg.circle_through_points(
+        alg.point([1.0, 0.0, 0.0]),
+        alg.point([0.0, 1.0, 0.0]),
+        alg.point([-1.0, 0.0, 0.0]),
+    )
+    point = alg.point([2.0, 2.0, 3.0])
+
+    projected = robo.point_circle_projection(point, circle)
+
+    coords = alg.extract_point(projected)
+    inv_sqrt2 = 1.0 / math.sqrt(2.0)
+    assert_allclose(coords, [inv_sqrt2, inv_sqrt2, 0.0], atol=1e-12)
+    incidence = projected ^ circle
+    assert_allclose(incidence.values, np.zeros_like(incidence.values), atol=1e-12)
+    assert_allclose(
+        robo.ik(point, circle, solver="cga_point_circle").values,
+        projected.values,
+    )
+
+
 def test_importurdf_and_crobot_roundtrip_shape(tmp_path) -> None:
     path = tmp_path / "arm.urdf"
     path.write_text(

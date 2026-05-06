@@ -145,6 +145,11 @@ def _predicate(function: str, *values: Any) -> bool:
     return cast(bool, _execute_sequence_value(dict(zip(inputs, values, strict=True)), ir))
 
 
+def _is_jax_tracer(value: Any) -> bool:
+    value_type = type(value)
+    return "jax" in value_type.__module__ and "Tracer" in value_type.__name__
+
+
 def _exp_coefficients(scalar_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     ir = SequenceIR(
         name="exp_coefficients",
@@ -768,7 +773,10 @@ def sandwich(actor: MVArray, target: MVArray) -> MVArray:
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
     scalar_blade = 0
     resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_value = np.asarray(_component_values(mv, scalar_blade), dtype=resolved_dtype)
+    scalar_value_raw = _component_values(mv, scalar_blade)
+    if _is_jax_tracer(scalar_value_raw):
+        return scalar_value_raw
+    scalar_value = np.asarray(scalar_value_raw, dtype=resolved_dtype)
 
     if mv.layout.size == 0:
         raise ValueError(f"{name} is zero and therefore non-invertible.")
@@ -790,9 +798,10 @@ def inverse(mv: MVArray) -> MVArray:
     left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
     right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
 
-    if not _predicate("allclose", left_norm, right_norm):
+    traced_norm = _is_jax_tracer(left_norm) or _is_jax_tracer(right_norm)
+    if not traced_norm and not _predicate("allclose", left_norm, right_norm):
         raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
-    if _predicate("any_close_zero", left_norm):
+    if not traced_norm and _predicate("any_close_zero", left_norm):
         raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
     reciprocals = _elementwise_values("reciprocal", left_norm)

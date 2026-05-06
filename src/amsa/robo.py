@@ -146,10 +146,16 @@ def dump_crobot(model: RobotModel) -> dict[str, Any]:
 
 def ik(*args: Any, **kwargs: Any) -> Any:
     """Experimental inverse-kinematics namespace entry point."""
-    if kwargs.get("solver") == "planar_two_link" and len(args) >= 2:
+    solver = kwargs.get("solver")
+    if solver == "planar_two_link" and len(args) >= 2:
         return planar_two_link_ik(args[0], args[1], elbow=kwargs.get("elbow", "up"))
+    if solver == "cga_sphere_sphere" and len(args) >= 2:
+        return sphere_sphere(args[0], args[1])
+    if solver == "cga_point_circle" and len(args) >= 2:
+        return point_circle_projection(args[0], args[1])
     raise NotImplementedError(
-        "amsa.robo.ik is experimental; currently use solver='planar_two_link'."
+        "amsa.robo.ik is experimental; supported solvers are "
+        "'planar_two_link', 'cga_sphere_sphere', and 'cga_point_circle'."
     )
 
 
@@ -169,6 +175,93 @@ def planar_two_link_ik(
     q2 = math.atan2(sin_q2, float(cos_q2))
     q1 = math.atan2(y, x) - math.atan2(l2 * sin_q2, l1 + l2 * float(cos_q2))
     return q1, q2
+
+
+def sphere_sphere(lhs: MVArray, rhs: MVArray) -> MVArray:
+    """Return the direct circle where two CGA dual spheres meet."""
+    _validate_same_cga(lhs, rhs)
+    return lhs.regress(rhs)
+
+
+def line_plane(line: MVArray, plane: MVArray) -> MVArray:
+    """Return the conformal point where a direct CGA line meets a dual plane."""
+    _validate_same_cga(line, plane)
+    alg = Algebra(line.algebra)
+    point_on_line, direction = _line_geometry(line)
+    normal, distance = alg.extract_plane(plane)
+    denominator = float(np.dot(normal, direction))
+    if abs(denominator) < 1e-12:
+        raise ValueError("CGA line and plane are parallel or coincident.")
+    t = (float(distance) - float(np.dot(normal, point_on_line))) / denominator
+    return alg.point(point_on_line + t * direction)
+
+
+def point_circle_projection(point: MVArray, circle: MVArray) -> MVArray:
+    """Project a conformal point onto a direct CGA circle."""
+    _validate_same_cga(point, circle)
+    alg = Algebra(point.algebra)
+    _validate_cga3d(alg)
+
+    point_coords = alg.extract_point(point)
+    center, radius, normal = _circle_geometry(circle)
+    radial = point_coords - center
+    radial = radial - np.dot(radial, normal) * normal
+    radial_norm = float(np.linalg.norm(radial))
+    if radial_norm < 1e-12:
+        radial = _perpendicular_unit(normal)
+    else:
+        radial = radial / radial_norm
+    return alg.point(center + radius * radial)
+
+
+def _circle_geometry(circle: MVArray) -> tuple[np.ndarray, float, np.ndarray]:
+    alg = Algebra(circle.algebra)
+    _validate_cga3d(alg)
+    ninf = alg.infinity()
+    center_point = circle * ninf * circle
+    center = alg.extract_point(center_point)
+
+    scale_value = float(-(center_point.inner(ninf)).component(0))
+    norm_value = float((circle * circle).component(0))
+    if abs(scale_value) < 1e-12:
+        raise ValueError("Cannot extract geometry from a degenerate CGA circle.")
+    radius_sq = 2.0 * abs(norm_value) / abs(scale_value)
+    radius = math.sqrt(max(radius_sq, 0.0))
+
+    plane = (circle ^ ninf) * alg.inverse(alg.pseudoscalar(1.0))
+    normal, _ = alg.extract_plane(plane)
+    normal_norm = float(np.linalg.norm(normal))
+    if normal_norm < 1e-12:
+        raise ValueError("Cannot extract a support plane from a degenerate CGA circle.")
+    return center, radius, normal / normal_norm
+
+
+def _line_geometry(line: MVArray) -> tuple[np.ndarray, np.ndarray]:
+    alg = Algebra(line.algebra)
+    _validate_cga3d(alg)
+    direction = np.array([
+        line.component("e145"),
+        line.component("e245"),
+        line.component("e345"),
+    ], dtype=float)
+    direction_norm_sq = float(np.dot(direction, direction))
+    if direction_norm_sq < 1e-24:
+        raise ValueError("Cannot extract geometry from a degenerate CGA line.")
+    moment = np.array([
+        0.5 * (line.component("e234") + line.component("e235")),
+        -0.5 * (line.component("e134") + line.component("e135")),
+        0.5 * (line.component("e124") + line.component("e125")),
+    ], dtype=float)
+    point = np.cross(direction, moment) / direction_norm_sq
+    return point, direction
+
+
+def _perpendicular_unit(normal: np.ndarray) -> np.ndarray:
+    axis = np.array([1.0, 0.0, 0.0])
+    if abs(float(np.dot(axis, normal))) > 0.9:
+        axis = np.array([0.0, 1.0, 0.0])
+    vector = axis - np.dot(axis, normal) * normal
+    return np.asarray(vector / np.linalg.norm(vector), dtype=float)
 
 
 def fk(
@@ -697,11 +790,14 @@ __all__ = [
     "ik",
     "ik_dls",
     "importurdf",
+    "line_plane",
     "load_crobot",
     "motor_to_matrix",
     "motor_to_position",
     "motor_to_quaternion",
     "planar_two_link_ik",
+    "point_circle_projection",
+    "sphere_sphere",
 ]
 
 
@@ -713,6 +809,17 @@ def _validate_cga3d(alg: Algebra) -> None:
 def _validate_motor_algebra(motor: MVArray, alg: Algebra) -> None:
     if motor.algebra != alg.spec:
         raise ValueError("Motor must belong to the provided algebra.")
+
+
+def _validate_same_cga(*values: MVArray) -> None:
+    if not values:
+        return
+    algebra = values[0].algebra
+    alg = Algebra(algebra)
+    _validate_cga3d(alg)
+    for value in values:
+        if value.algebra != algebra:
+            raise ValueError("CGA objects must belong to the same algebra.")
 
 
 def _validate_joint_types(n: int, joint_types: list[str] | None) -> list[str]:

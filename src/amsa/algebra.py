@@ -123,7 +123,7 @@ from amsa.specs import pga2d as pga2d_spec
 from amsa.specs import pga3d as pga3d_spec
 from amsa.specs import vga2d as vga2d_spec
 from amsa.specs import vga3d as vga3d_spec
-from amsa.storage import StorageRequest, resolve_storage_kind
+from amsa.storage import StorageRequest, is_jax_array, resolve_storage_kind
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,7 +323,7 @@ class Algebra:
                 result[..., index] = np.broadcast_to(v_arr, final_batch_shape)
             return MVArray.from_array(self.spec, layout, result, backend=backend)
 
-        array = np.asarray(data)
+        array = data if is_jax_array(data) else np.asarray(data)
         if layout is None:
             layout = self.dense_layout()
         # Arrays carry their own batch shape and dtype.

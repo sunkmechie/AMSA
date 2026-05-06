@@ -21,7 +21,7 @@ import numpy as np
 from amsa.algebra import Algebra
 from amsa.mv import MVArray
 from amsa.ops import row_scale, scale
-from amsa.storage import StorageRequest
+from amsa.storage import StorageRequest, is_jax_array
 
 
 def _euclidean_dimension(alg: Algebra) -> int:
@@ -32,6 +32,10 @@ def _euclidean_dimension(alg: Algebra) -> int:
 
 def _basis_vector(alg: Algebra, axis: int, *, backend: StorageRequest = "auto") -> MVArray:
     return alg.blade(1 << axis, backend=backend)
+
+
+def _coefficient_array(value: Any) -> Any:
+    return value if is_jax_array(value) else np.asarray(value)
 
 
 def origin(alg: Algebra, *, backend: StorageRequest = "auto") -> MVArray:
@@ -58,7 +62,7 @@ def euclidean_vector(
 ) -> MVArray:
     """Embed Euclidean coordinates in the Euclidean vector subspace of a CGA algebra."""
     n = _euclidean_dimension(alg)
-    values = np.asarray(coordinates)
+    values = _coefficient_array(coordinates)
     if values.shape[-1:] != (n,):
         raise ValueError(f"Expected coordinates with trailing dimension {n}.")
     layout = alg.sparse_layout(tuple(1 << i for i in range(n)))
@@ -72,13 +76,36 @@ def point(
     backend: StorageRequest = "auto",
 ) -> MVArray:
     """Return the conformal point ``X = n_o + x + 0.5 * (x·x) n_inf``."""
-    x = euclidean_vector(alg, coordinates, backend=backend)
-    coords = np.asarray(coordinates)
-    radius_sq = np.sum(coords * coords, axis=-1)
-    return origin(alg, backend=backend) + x + row_scale(
-        infinity(alg, backend=backend),
-        0.5 * radius_sq,
+    n = _euclidean_dimension(alg)
+    coords = _coefficient_array(coordinates)
+    if coords.shape[-1:] != (n,):
+        raise ValueError(f"Expected coordinates with trailing dimension {n}.")
+    radius_sq = (coords * coords).sum(axis=-1)
+    xp = _array_namespace(coords)
+    conformal = xp.concatenate(
+        [
+            coords,
+            _trailing_column(-0.5 + 0.5 * radius_sq),
+            _trailing_column(0.5 + 0.5 * radius_sq),
+        ],
+        axis=-1,
     )
+    layout = alg.sparse_layout(tuple(1 << i for i in range(n + 2)))
+    return alg.multivector(conformal, layout=layout, backend=backend)
+
+
+def _array_namespace(value: Any) -> Any:
+    if is_jax_array(value):
+        import jax.numpy as jnp
+
+        return jnp
+    return np
+
+
+def _trailing_column(value: Any) -> Any:
+    if value.ndim == 0:
+        return value[None]
+    return value[..., np.newaxis]
 
 
 def sphere(
@@ -91,7 +118,7 @@ def sphere(
     """Return a dual sphere ``S = C - 0.5 r^2 n_inf``."""
     return point(alg, center, backend=backend) - row_scale(
         infinity(alg, backend=backend),
-        0.5 * np.asarray(radius) ** 2,
+        0.5 * _coefficient_array(radius) ** 2,
     )
 
 
@@ -105,7 +132,7 @@ def plane(
     """Return a dual plane ``P = n + d n_inf`` with Euclidean unit normal ``n``."""
     return euclidean_vector(alg, normal, backend=backend) + row_scale(
         infinity(alg, backend=backend),
-        np.asarray(distance),
+        _coefficient_array(distance),
     )
 
 
