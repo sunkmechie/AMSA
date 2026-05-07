@@ -149,13 +149,27 @@ def ik(*args: Any, **kwargs: Any) -> Any:
     solver = kwargs.get("solver")
     if solver == "planar_two_link" and len(args) >= 2:
         return planar_two_link_ik(args[0], args[1], elbow=kwargs.get("elbow", "up"))
+    if solver in {"cga_spherical_wrist", "cga_full_chain"} and len(args) >= 3:
+        return ik_cga_spherical_wrist(
+            args[0],
+            args[1],
+            args[2],
+            joint_types=kwargs.get("joint_types"),
+            initial_angles=kwargs.get("initial_angles"),
+            max_iterations=kwargs.get("max_iterations", 100),
+            position_tolerance=kwargs.get("position_tolerance", 1e-6),
+            orientation_tolerance=kwargs.get("orientation_tolerance", 1e-6),
+            damping=kwargs.get("damping", 0.1),
+            joint_limits=kwargs.get("joint_limits"),
+        )
     if solver == "cga_sphere_sphere" and len(args) >= 2:
         return sphere_sphere(args[0], args[1])
     if solver == "cga_point_circle" and len(args) >= 2:
         return point_circle_projection(args[0], args[1])
     raise NotImplementedError(
         "amsa.robo.ik is experimental; supported solvers are "
-        "'planar_two_link', 'cga_sphere_sphere', and 'cga_point_circle'."
+        "'planar_two_link', 'cga_spherical_wrist', 'cga_full_chain', "
+        "'cga_sphere_sphere', and 'cga_point_circle'."
     )
 
 
@@ -767,6 +781,125 @@ def ik_dls(
     )
 
 
+def ik_cga_spherical_wrist(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    target_motor: MVArray,
+    *,
+    joint_types: list[str] | None = None,
+    initial_angles: np.ndarray | None = None,
+    max_iterations: int = 100,
+    position_tolerance: float = 1e-6,
+    orientation_tolerance: float = 1e-6,
+    damping: float = 0.1,
+    joint_limits: list[tuple[float, float]] | None = None,
+) -> IKResult:
+    """Full-chain CGA IK for DH serial arms with a spherical wrist.
+
+    The solver follows the CGA spherical-wrist split used in the robotics
+    references: construct the wrist-centre target as a conformal point, build
+    shoulder/elbow branch seeds from sphere intersections, then solve the full
+    end-effector motor target with the CGA-frame DLS solver.  The returned
+    object is an ``IKResult`` with joint values, not an intermediate meet.
+    """
+    _validate_cga3d(alg)
+    _validate_motor_algebra(target_motor, alg)
+    n = len(dh_params)
+    joint_types = _validate_joint_types(n, joint_types)
+    if n < 6:
+        raise ValueError("cga_spherical_wrist expects at least 6 DH joints.")
+    if any(kind != "revolute" for kind in joint_types):
+        raise ValueError("cga_spherical_wrist currently supports revolute joints.")
+    if joint_limits is not None and len(joint_limits) != n:
+        raise ValueError(f"Expected {n} joint limits, got {len(joint_limits)}.")
+
+    seeds = _cga_spherical_wrist_seeds(alg, dh_params, target_motor)
+    if initial_angles is not None:
+        q0 = np.asarray(initial_angles, dtype=float)
+        if q0.shape != (n,):
+            raise ValueError(f"Expected {n} initial joint values, got shape {q0.shape}.")
+        seeds.insert(0, q0)
+
+    best: IKResult | None = None
+    for seed in seeds:
+        result = ik_dls(
+            alg,
+            dh_params,
+            target_motor,
+            joint_types=joint_types,
+            initial_angles=seed,
+            max_iterations=max_iterations,
+            position_tolerance=position_tolerance,
+            orientation_tolerance=orientation_tolerance,
+            damping=damping,
+            joint_limits=joint_limits,
+        )
+        if best is None or _ik_result_error(result) < _ik_result_error(best):
+            best = result
+        if result.success:
+            return result
+
+    assert best is not None
+    return best
+
+
+def _ik_result_error(result: IKResult) -> float:
+    return float(result.position_error + result.orientation_error)
+
+
+def _cga_spherical_wrist_seeds(
+    alg: Algebra,
+    dh_params: list[tuple[float, float, float, float]],
+    target_motor: MVArray,
+) -> list[np.ndarray]:
+    n = len(dh_params)
+    target_pos = motor_to_position(target_motor, alg)
+    target_rot = motor_to_matrix(target_motor, alg)
+    d6 = float(dh_params[5][2])
+    wrist = target_pos - d6 * target_rot[:, 2]
+
+    base_z = float(dh_params[0][2])
+    shoulder = np.array([0.0, 0.0, base_z])
+    a2 = abs(float(dh_params[1][1]))
+    a3 = abs(float(dh_params[2][1]))
+
+    seeds: list[np.ndarray] = [np.zeros(n)]
+    if a2 < 1e-12 or a3 < 1e-12:
+        return seeds
+
+    # CGA branch construction: the elbow lies on the intersection circle of
+    # the shoulder and wrist reach spheres.  The angles below are only seeds;
+    # the final motor target is solved by CGA-frame DLS.
+    shoulder_sphere = alg.sphere(shoulder, a2)
+    wrist_sphere = alg.sphere(wrist, a3)
+    try:
+        circle = sphere_sphere(shoulder_sphere, wrist_sphere)
+    except Exception:
+        circle = None
+
+    q1_base = math.atan2(float(wrist[1]), float(wrist[0]))
+    for q1 in (q1_base, q1_base + math.pi):
+        c1 = math.cos(q1)
+        s1 = math.sin(q1)
+        radial = c1 * wrist[0] + s1 * wrist[1]
+        z = wrist[2] - base_z
+        r = math.hypot(float(radial), float(z))
+        if r < 1e-12:
+            continue
+        cos_q3 = np.clip((r * r - a2 * a2 - a3 * a3) / (2.0 * a2 * a3), -1.0, 1.0)
+        for sign in (1.0, -1.0):
+            sin_q3 = sign * math.sqrt(max(0.0, 1.0 - float(cos_q3 * cos_q3)))
+            q3 = math.atan2(sin_q3, float(cos_q3))
+            q2 = math.atan2(z, radial) - math.atan2(a3 * sin_q3, a2 + a3 * float(cos_q3))
+            seed = np.zeros(n)
+            seed[:3] = [q1, q2, q3]
+            if circle is not None:
+                seed[3] = -q2 - q3
+            seeds.append(seed)
+
+    return seeds
+
+
 def _resolve_fk_result(
     alg: Algebra,
     dh_params: list[tuple[float, float, float, float]],
@@ -788,6 +921,7 @@ __all__ = [
     "dump_crobot",
     "fk",
     "ik",
+    "ik_cga_spherical_wrist",
     "ik_dls",
     "importurdf",
     "line_plane",

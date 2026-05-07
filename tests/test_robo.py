@@ -422,3 +422,40 @@ def test_ik_dls_nonzero_alpha_joint() -> None:
     assert result.success
     assert result.position_error < 1e-5
     assert result.orientation_error < 1e-5
+
+
+def test_ik_cga_spherical_wrist_ur5_returns_joint_angles() -> None:
+    alg = Algebra.cga3d()
+    dh = [
+        (math.pi / 2, 0.0, 0.089159, 0.0),
+        (0.0, -0.42500, 0.0, 0.0),
+        (0.0, -0.39225, 0.0, 0.0),
+        (math.pi / 2, 0.0, 0.10915, 0.0),
+        (-math.pi / 2, 0.0, 0.09465, 0.0),
+        (0.0, 0.0, 0.08230, 0.0),
+    ]
+    target_angles = np.array([0.45, -1.05, 0.85, -0.35, 0.65, -0.40])
+    target = robo.fk(
+        alg,
+        [
+            (alpha, a, d, float(theta))
+            for (alpha, a, d, _), theta in zip(dh, target_angles, strict=True)
+        ],
+    )[-1]["motor"]
+
+    result = robo.ik(
+        alg,
+        dh,
+        target,
+        solver="cga_spherical_wrist",
+        joint_limits=[(-2.0 * math.pi, 2.0 * math.pi)] * 6,
+        position_tolerance=1e-8,
+        orientation_tolerance=1e-8,
+        max_iterations=200,
+    )
+
+    assert result.success
+    assert result.joint_angles.shape == (6,)
+    assert_allclose(result.joint_angles, target_angles, atol=1e-5)
+    assert result.position_error < 1e-8
+    assert result.orientation_error < 1e-8

@@ -59,6 +59,8 @@ Robotics
 - ``examples/robotics/vector_projection_2d.py`` — corridor-axis projection
 - ``examples/robotics/cga_fk_3link.py`` — CGA FK for a 3-link non-planar arm
 - ``examples/robotics/cga_fk_ur5.py`` — CGA FK for a UR5 6-DOF industrial arm
+- ``examples/robotics/cga_ik_ur5.py`` — DLS IK for a UR5 6-DOF industrial arm
+- ``examples/robotics/cga_ik_ur5_solver_comparison.py`` — UR5 DLS and CGA geometric IK primitive comparison
 
 All examples can be run directly:
 

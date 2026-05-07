@@ -28,6 +28,9 @@ Current scope:
 - ``dump_crobot(model)`` and ``load_crobot(path)`` for the draft Clifford-native
   robot JSON shape.
 - ``ik(..., solver="planar_two_link")`` as a minimal smoke-test solver.
+- ``ik(..., solver="cga_sphere_sphere")`` for a CGA sphere-sphere reach meet.
+- ``ik(..., solver="cga_point_circle")`` for selecting a point on a direct CGA
+  circle.
 - ``fk(alg, dh_params, *, joint_types)`` for CGA forward kinematics using
   Denavit–Hartenberg motor composition.
 - ``ik_dls(alg, dh_params, target_motor, ...)`` for damped least-squares
@@ -246,6 +249,25 @@ References
 
 See :doc:`references` for the DLS, geometric Jacobian, and CGA motor-DH
 references.
+
+Solver comparison
+^^^^^^^^^^^^^^^^^
+
+AMSA currently has two kinds of IK support:
+
+- ``ik_dls()`` is the full serial-chain solver. It uses a damped least-squares
+  update over the geometric Jacobian and targets a complete CGA end-effector
+  motor. See :doc:`references` for the DLS, singularity-robust IK, geometric
+  Jacobian, and CGA motor-DH references.
+- ``ik(..., solver="cga_sphere_sphere")`` and
+  ``ik(..., solver="cga_point_circle")`` are geometric IK primitives. They are
+  useful for reach and branch-selection subproblems, but they are not yet a
+  complete closed-form UR5 solver.
+
+The runnable example
+``examples/robotics/cga_ik_ur5_solver_comparison.py`` compares these surfaces
+on UR5 geometry: DLS solves the full end-effector pose, while the CGA primitive
+solvers recover elbow geometry from the same target chain.
 
 Draft ``.crobot`` direction
 ---------------------------

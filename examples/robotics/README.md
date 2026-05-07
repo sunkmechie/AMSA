@@ -49,6 +49,13 @@ Solves inverse kinematics for the UR5 using damped least-squares (Levenberg-Marq
 uv run python examples/robotics/cga_ik_ur5.py
 ```
 
+### [CGA IK — UR5 Solver Comparison](cga_ik_ur5_solver_comparison.py)
+Compares the full-chain UR5 DLS IK solver with the newer CGA geometric IK primitive solvers. DLS solves the complete end-effector motor target, while the CGA sphere-sphere and point-circle solver paths recover elbow geometry from the same UR5 target chain.
+
+```bash
+uv run python examples/robotics/cga_ik_ur5_solver_comparison.py
+```
+
 ## How to run
 You can run any of these examples using `uv`:
 
