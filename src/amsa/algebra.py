@@ -408,10 +408,31 @@ class Algebra:
         from amsa.cga import line_through_points as _cga_line_through_points
         return _cga_line_through_points(self, a, b)
 
+    def line_from_point_direction(
+        self, point_on_line: Any, direction: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a direct line from one Euclidean point and a direction vector."""
+        from amsa.cga import line_from_point_direction as _cga_line_from_point_direction
+        return _cga_line_from_point_direction(
+            self, point_on_line, direction, backend=backend,
+        )
+
     def circle_through_points(self, a: MVArray, b: MVArray, c: MVArray) -> MVArray:
         """Return the direct circle through three conformal points."""
         from amsa.cga import circle_through_points as _cga_circle_through_points
         return _cga_circle_through_points(self, a, b, c)
+
+    def circle(
+        self, center: Any, radius: Any, normal: Any, *, backend: StorageRequest = "auto"
+    ) -> MVArray:
+        """Return a direct circle from Euclidean center, radius, and support normal."""
+        from amsa.cga import circle as _cga_circle
+        return _cga_circle(self, center, radius, normal, backend=backend)
+
+    def point_pair(self, a: MVArray, b: MVArray) -> MVArray:
+        """Return the direct point pair through two conformal points."""
+        from amsa.cga import point_pair as _cga_point_pair
+        return _cga_point_pair(self, a, b)
 
     def distance_squared(self, a: MVArray, b: MVArray) -> Any:
         """Return Euclidean squared distance from normalized conformal points."""
@@ -432,6 +453,16 @@ class Algebra:
         """Return (normal, signed_distance) from a dual-plane MV."""
         from amsa.cga import extract_plane as _cga_extract_plane
         return _cga_extract_plane(mv)
+
+    def extract_line(self, mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+        """Return (point, direction) from a direct CGA3D line."""
+        from amsa.cga import extract_line as _cga_extract_line
+        return _cga_extract_line(mv)
+
+    def extract_circle(self, mv: MVArray) -> tuple[np.ndarray, float, np.ndarray]:
+        """Return (center, radius, normal) from a direct CGA3D circle."""
+        from amsa.cga import extract_circle as _cga_extract_circle
+        return _cga_extract_circle(mv)
 
     def extract_euclidean_vector(self, mv: MVArray) -> np.ndarray:
         """Return Euclidean coordinates from a Euclidean vector subspace MV."""

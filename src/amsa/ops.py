@@ -542,6 +542,14 @@ def normalize(mv: MVArray) -> MVArray:
 
 
 def _motor_exp_from_bivector(mv: MVArray) -> MVArray:
+    if len(mv.algebra.signature) >= 2 and mv.algebra.signature[-2:] == (1, -1):
+        if set(mv.grades) != {2}:
+            raise ValueError("motor_exp() requires a pure bivector generator.")
+        square = geometric_product(mv, mv)
+        scalar_values = _scalar_output_or_zero(square, name="mv * mv")
+        scalar_coefficients, linear_coefficients = _exp_coefficients(scalar_values)
+        return _scalar_mv(mv, scalar_coefficients) + _row_scale_mv(mv, linear_coefficients)
+
     if mv.algebra.signature != (0, 1, 1, 1):
         raise ValueError("motor_exp() currently supports PGA3d bivector generators.")
     if set(mv.grades) != {2}:
@@ -659,11 +667,20 @@ def _motor_log_pga3d(mv: MVArray) -> MVArray:
 
 
 def motor_log(mv: MVArray) -> MVArray:
+    if len(mv.algebra.signature) >= 2 and mv.algebra.signature[-2:] == (1, -1):
+        if not set(mv.grades).issubset({0, 2}):
+            raise ValueError(
+                "motor_log() currently supports CGA scalar+bivector Euclidean motors."
+            )
+        return _simple_bivector_log(mv)
     if mv.algebra.signature == (0, 1, 1):
         return _simple_bivector_log(rigid_body_normalize(mv))
     if mv.algebra.signature == (0, 1, 1, 1):
         return _motor_log_pga3d(mv)
-    raise ValueError("motor_log() currently supports PGA2d and PGA3d motor-like multivectors.")
+    raise ValueError(
+        "motor_log() currently supports CGA scalar+bivector Euclidean motors, "
+        "PGA2d, and PGA3d motor-like multivectors."
+    )
 
 
 def log(mv: MVArray) -> MVArray:

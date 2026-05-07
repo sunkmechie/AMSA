@@ -75,6 +75,14 @@ b = alg.point([3.0, 0.0, 0.0])
 L = alg.line_through_points(a, b)
 print(f"L = {L}")
 print(f"|L|^2 = {abs((L * L).component(0)):.1f}  (should be distance^2 = 9)")
+line_point, line_direction = alg.extract_line(L)
+print(f"extract_line(L) point={line_point}, direction={line_direction}")
+
+# -- Direct line from Euclidean point and direction --
+print("\n--- Direct line (point + direction) ---")
+Ld = alg.line_from_point_direction([1.0, 2.0, 3.0], [0.0, 0.0, 1.0])
+print(f"Ld = {Ld}")
+print(f"classify(Ld) = {alg.classify(Ld).kind}")
 
 # -- Direct circle through three points --
 print("\n--- Direct circle (through three points) ---")
@@ -84,11 +92,22 @@ c3 = alg.point([-1.0, 0.0, 0.0])
 C = alg.circle_through_points(c1, c2, c3)
 print(f"C = {C}")
 print(f"|C|^2 = {abs((C * C).component(0)):.1f}  (should be 4 * r^2 = 4)")
+center, radius, normal = alg.extract_circle(C)
+print(f"extract_circle(C) center={center}, radius={radius:.1f}, normal={normal}")
+
+# -- Direct circle from Euclidean data --
+print("\n--- Direct circle (center + radius + normal) ---")
+C2 = alg.circle([1.0, 2.0, 3.0], 2.0, [0.0, 0.0, 1.0])
+print(f"C2 = {C2}")
+print(f"classify(C2) = {alg.classify(C2).kind}")
 
 # -- Translator --
 print("\n--- Translator ---")
 T = alg.translate([5.0, 0.0, 0.0])
 print(f"T = {T}")
+T_log = amsa.motor_log(T)
+print(f"motor_log(T) = {T_log}")
+print(f"motor_exp(motor_log(T)) = {amsa.motor_exp(T_log)}")
 
 # -- Apply translator --
 print("\n--- Apply translator to point ---")

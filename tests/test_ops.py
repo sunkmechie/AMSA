@@ -431,8 +431,23 @@ def test_motor_log_round_trips_pga3d_twist_generators_and_ignores_scale() -> Non
 def test_motor_log_rejects_unsupported_algebras() -> None:
     algebra = Algebra.vga3d()
 
-    with pytest.raises(ValueError, match="PGA2d and PGA3d"):
+    with pytest.raises(ValueError, match="PGA2d"):
         motor_log(algebra.multivector({"e": 1.0, "e12": 0.25}))
+
+
+def test_cga_motor_log_round_trips_translator_and_rotor_generators() -> None:
+    algebra = Algebra.cga3d()
+    translator = algebra.translate([1.0, 2.0, 3.0])
+    translator_generator = motor_log(translator)
+
+    assert_mv_allclose(motor_exp(translator_generator), translator, tol=1e-12)
+    assert_mv_allclose(translator.log(), translator_generator, tol=1e-12)
+
+    rotation_generator = -0.25 * (algebra.blade("e1") ^ algebra.blade("e2"))
+    rotor = rotation_generator.exp()
+
+    assert_mv_allclose(motor_log(rotor), rotation_generator, tol=1e-12)
+    assert_mv_allclose(motor_exp(rotation_generator), rotor, tol=1e-12)
 
 
 def test_commutator_and_anticommutator_match_geometric_product_splits() -> None:

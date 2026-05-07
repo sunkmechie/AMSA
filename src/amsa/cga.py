@@ -152,6 +152,62 @@ def circle_through_points(alg: Algebra, a: MVArray, b: MVArray, c: MVArray) -> M
     return a ^ b ^ c
 
 
+def point_pair(alg: Algebra, a: MVArray, b: MVArray) -> MVArray:
+    """Return the direct point pair through two conformal points."""
+    _euclidean_dimension(alg)
+    if a.algebra != alg.spec or b.algebra != alg.spec:
+        raise ValueError("CGA objects must belong to the same algebra as the provided algebra.")
+    return a ^ b
+
+
+def line_from_point_direction(
+    alg: Algebra,
+    point_on_line: Any,
+    direction: Any,
+    *,
+    backend: StorageRequest = "auto",
+) -> MVArray:
+    """Return a direct line from one Euclidean point and a direction vector."""
+    p = _coefficient_array(point_on_line)
+    d = _coefficient_array(direction)
+    n = _euclidean_dimension(alg)
+    if p.shape[-1:] != (n,) or d.shape[-1:] != (n,):
+        raise ValueError(f"Expected point and direction with trailing dimension {n}.")
+    q = p + d
+    return line_through_points(alg, point(alg, p, backend=backend), point(alg, q, backend=backend))
+
+
+def circle(
+    alg: Algebra,
+    center: Any,
+    radius: Any,
+    normal: Any,
+    *,
+    backend: StorageRequest = "auto",
+) -> MVArray:
+    """Return a direct circle from Euclidean center, radius, and support normal."""
+    n = _euclidean_dimension(alg)
+    if n != 3:
+        raise ValueError("circle() currently requires Algebra.cga3d().")
+    c = np.asarray(center, dtype=float)
+    axis = np.asarray(normal, dtype=float)
+    if c.shape != (3,) or axis.shape != (3,):
+        raise ValueError("Expected 3D center and normal vectors.")
+    axis_norm = float(np.linalg.norm(axis))
+    if axis_norm < 1e-12:
+        raise ValueError("Circle normal must be nonzero.")
+    axis = axis / axis_norm
+    u = _perpendicular_unit(axis)
+    v = np.cross(axis, u)
+    r = float(radius)
+    return circle_through_points(
+        alg,
+        point(alg, c + r * u, backend=backend),
+        point(alg, c + r * v, backend=backend),
+        point(alg, c - r * u, backend=backend),
+    )
+
+
 def distance_squared(alg: Algebra, a: MVArray, b: MVArray) -> Any:
     """Return Euclidean squared distance from normalized conformal points."""
     _euclidean_dimension(alg)
@@ -251,6 +307,60 @@ def extract_plane(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
     return normal, distance
 
 
+def extract_line(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(point, direction)`` from a direct CGA3D line."""
+    alg = Algebra(mv.algebra)
+    if _euclidean_dimension(alg) != 3:
+        raise ValueError("extract_line() currently requires cga3d.")
+    direction = np.array([
+        mv.component("e145"),
+        mv.component("e245"),
+        mv.component("e345"),
+    ], dtype=float)
+    direction_norm_sq = float(np.dot(direction, direction))
+    if direction_norm_sq < 1e-24:
+        raise ValueError("Cannot extract geometry from a degenerate CGA line.")
+    moment = np.array([
+        0.5 * (mv.component("e234") + mv.component("e235")),
+        -0.5 * (mv.component("e134") + mv.component("e135")),
+        0.5 * (mv.component("e124") + mv.component("e125")),
+    ], dtype=float)
+    point_on_line = np.cross(direction, moment) / direction_norm_sq
+    return point_on_line, direction
+
+
+def extract_circle(mv: MVArray) -> tuple[np.ndarray, float, np.ndarray]:
+    """Return ``(center, radius, normal)`` from a direct CGA3D circle."""
+    alg = Algebra(mv.algebra)
+    if _euclidean_dimension(alg) != 3:
+        raise ValueError("extract_circle() currently requires cga3d.")
+    ninf = infinity(alg, backend=mv.storage_kind)
+    center_point = mv * ninf * mv
+    center = extract_point(center_point)
+
+    scale_value = float(-(center_point.inner(ninf)).component(0))
+    norm_value = float((mv * mv).component(0))
+    if abs(scale_value) < 1e-12:
+        raise ValueError("Cannot extract geometry from a degenerate CGA circle.")
+    radius_sq = 2.0 * abs(norm_value) / abs(scale_value)
+    radius = float(np.sqrt(max(radius_sq, 0.0)))
+
+    support_plane = (mv ^ ninf) * alg.inverse(alg.pseudoscalar(1.0))
+    normal, _ = extract_plane(support_plane)
+    normal_norm = float(np.linalg.norm(normal))
+    if normal_norm < 1e-12:
+        raise ValueError("Cannot extract a support plane from a degenerate CGA circle.")
+    return center, radius, normal / normal_norm
+
+
+def _perpendicular_unit(normal: np.ndarray) -> np.ndarray:
+    axis = np.array([1.0, 0.0, 0.0])
+    if abs(float(np.dot(axis, normal))) > 0.9:
+        axis = np.array([0.0, 1.0, 0.0])
+    vector = axis - np.dot(axis, normal) * normal
+    return np.asarray(vector / np.linalg.norm(vector), dtype=float)
+
+
 def _no_coefficient(alg: Algebra, mv: MVArray) -> np.ndarray:
     n = alg.dimension - 2
     plus = np.asarray(mv.component(1 << n))
@@ -267,17 +377,22 @@ def _ninf_coefficient(alg: Algebra, mv: MVArray) -> np.ndarray:
 
 __all__ = [
     "circle_through_points",
+    "circle",
     "distance_squared",
     "euclidean_vector",
     "extract_euclidean_vector",
     "extract_plane",
+    "extract_circle",
     "extract_point",
+    "extract_line",
     "extract_sphere",
     "infinity",
     "line_through_points",
+    "line_from_point_direction",
     "origin",
     "plane",
     "point",
+    "point_pair",
     "sphere",
     "translate",
 ]

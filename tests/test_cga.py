@@ -78,6 +78,31 @@ def test_algebra_circle_through_points() -> None:
     assert_allclose(np.abs(result.component(0)), 4.0)
 
 
+def test_cga_point_pair_and_line_from_point_direction() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([1.0, 2.0, 3.0])
+    b = alg.point([1.0, 2.0, 5.0])
+
+    pair = alg.point_pair(a, b)
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [0.0, 0.0, 2.0])
+
+    assert 2 in pair.grades
+    assert_allclose((a ^ pair).values, np.zeros_like((a ^ pair).values), atol=1e-12)
+    assert_allclose((b ^ line).values, np.zeros_like((b ^ line).values), atol=1e-12)
+
+
+def test_cga_circle_constructor_from_center_radius_normal() -> None:
+    alg = amsa.Algebra.cga3d()
+    circle = alg.circle([1.0, 2.0, 3.0], 2.0, [0.0, 0.0, 1.0])
+    point_on_circle = alg.point([3.0, 2.0, 3.0])
+
+    assert_allclose(
+        (point_on_circle ^ circle).values,
+        np.zeros_like((point_on_circle ^ circle).values),
+        atol=1e-12,
+    )
+
+
 def test_algebra_translate_returns_motor() -> None:
     alg = amsa.Algebra.cga3d()
     T = alg.translate([1.0, 2.0, 3.0])
@@ -152,6 +177,27 @@ def test_extract_plane_round_trip() -> None:
     assert_allclose(distance, 5.0)
 
 
+def test_extract_line_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [0.0, 0.0, 2.0])
+    point_on_line, direction = alg.extract_line(line)
+
+    assert_allclose(np.cross(direction, [0.0, 0.0, 1.0]), [0.0, 0.0, 0.0])
+    assert_allclose(point_on_line[:2], [1.0, 2.0])
+    incidence = alg.point([1.0, 2.0, 7.0]) ^ line
+    assert_allclose(incidence.values, np.zeros_like(incidence.values), atol=1e-12)
+
+
+def test_extract_circle_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    circle = alg.circle([1.0, 2.0, 3.0], 2.0, [0.0, 0.0, 1.0])
+    center, radius, normal = alg.extract_circle(circle)
+
+    assert_allclose(center, [1.0, 2.0, 3.0])
+    assert_allclose(radius, 2.0)
+    assert_allclose(np.abs(normal), [0.0, 0.0, 1.0])
+
+
 def test_extract_plane_uses_conformal_infinity_coefficient() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.euclidean_vector([0.0, 0.0, 1.0]) + 4.0 * alg.infinity()
@@ -211,7 +257,7 @@ def test_extract_cga2d() -> None:
 
 
 def test_extract_standalone_functions() -> None:
-    from amsa.cga import extract_plane, extract_point, extract_sphere
+    from amsa.cga import extract_circle, extract_line, extract_plane, extract_point, extract_sphere
 
     alg = amsa.Algebra.cga3d()
     p = alg.point([1.0, 2.0, 3.0])
@@ -226,6 +272,17 @@ def test_extract_standalone_functions() -> None:
     normal, distance = extract_plane(pl)
     assert_allclose(normal, [0.0, 0.0, 1.0])
     assert_allclose(distance, 2.0)
+
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [1.0, 0.0, 0.0])
+    point_on_line, direction = extract_line(line)
+    assert_allclose(point_on_line[1:], [2.0, 3.0])
+    assert_allclose(np.abs(direction), [1.0, 0.0, 0.0])
+
+    circ = alg.circle([0.0, 0.0, 0.0], 2.0, [0.0, 0.0, 1.0])
+    center, radius, normal = extract_circle(circ)
+    assert_allclose(center, [0.0, 0.0, 0.0])
+    assert_allclose(radius, 2.0)
+    assert_allclose(np.abs(normal), [0.0, 0.0, 1.0])
 
 
 def test_extract_rejects_non_cga() -> None:
@@ -316,6 +373,8 @@ def test_classify_line() -> None:
     info = alg.classify(alg.line_through_points(a, b))
     assert info.kind == "direct line"
     assert 3 in info.grades
+    assert "point" in info.geometric_data
+    assert "direction" in info.geometric_data
 
 
 def test_classify_circle() -> None:
@@ -324,11 +383,10 @@ def test_classify_circle() -> None:
     b = alg.point([0.0, 1.0, 0.0])
     c = alg.point([-1.0, 0.0, 0.0])
     info = alg.classify(alg.circle_through_points(a, b, c))
-    # Current heuristic cannot distinguish direct line from direct circle
-    # (both contain conformal axes in their blade content).
-    # TODO: L ^ n_inf == 0 check for line distinction.
-    assert info.kind in ("direct line", "direct circle")
+    assert info.kind == "direct circle"
     assert 3 in info.grades
+    assert_allclose(info.geometric_data["center"], [0.0, 0.0, 0.0])
+    assert_allclose(info.geometric_data["radius"], 1.0)
 
 
 def test_classify_cga2d() -> None:

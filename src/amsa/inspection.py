@@ -148,6 +148,8 @@ def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
     """
     from amsa.cga import (
         _euclidean_dimension,
+        extract_circle,
+        extract_line,
         extract_plane,
         extract_point,
         extract_sphere,
@@ -244,10 +246,27 @@ def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
                 return EntityInfo(**{**kw, **overrides})
 
             if grade3:
-                if has_ninf_in_support:
+                if _cga_outer_with_infinity_is_zero(alg, mv, infinity):
                     kw["kind"] = "direct line"
+                    try:
+                        point_on_line, direction = extract_line(mv)
+                        kw["geometric_data"] = {
+                            "point": point_on_line,
+                            "direction": direction,
+                        }
+                    except Exception:
+                        kw["warnings"].append("could not extract line parameters")
                 else:
                     kw["kind"] = "direct circle"
+                    try:
+                        circle_center, circle_radius, circle_normal = extract_circle(mv)
+                        kw["geometric_data"] = {
+                            "center": circle_center,
+                            "radius": circle_radius,
+                            "normal": circle_normal,
+                        }
+                    except Exception:
+                        kw["warnings"].append("could not extract circle parameters")
                 kw["representation"] = "direct"
                 return EntityInfo(**{**kw, **overrides})
 
@@ -304,6 +323,14 @@ def _cga_any_blade_contains_conformal_axes(alg: Algebra, mv: MVArray) -> bool:
         if (blade & e4_bit) or (blade & e5_bit):
             return True
     return False
+
+
+def _cga_outer_with_infinity_is_zero(alg: Algebra, mv: MVArray, infinity_fn: Any) -> bool:
+    try:
+        joined = mv ^ infinity_fn(alg, backend=mv.storage_kind)
+        return bool(np.allclose(joined.values, 0.0, atol=_TOL))
+    except Exception:
+        return False
 
 
 def classify_pga(alg: Algebra, mv: MVArray) -> EntityInfo:
