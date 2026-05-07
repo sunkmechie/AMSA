@@ -21,6 +21,7 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    viz
    examples
    probes
+   references
    changelog
 
 

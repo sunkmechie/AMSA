@@ -262,6 +262,97 @@ def test_jax_jit_dense_binary_products(operation, expected):
     assert_allclose(np.asarray(actual), expected, rtol=1e-5)
 
 
+def test_jax_cga_constructors_preserve_jax_payloads():
+    """CGA constructors should build dense JAX-backed coefficient payloads."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.cga3d()
+
+    try:
+        origin = alg.origin(backend="dense")
+        infinity = alg.infinity(backend="dense")
+        vector = alg.euclidean_vector(jnp.array([1.0, 2.0, 3.0]), backend="dense")
+        point = alg.point(jnp.array([1.0, 2.0, 3.0]), backend="dense")
+        sphere = alg.sphere(jnp.array([1.0, 0.0, 0.0]), jnp.array(2.0), backend="dense")
+        plane = alg.plane(jnp.array([0.0, 0.0, 1.0]), jnp.array(4.0), backend="dense")
+        translator = alg.translate(jnp.array([1.0, -2.0, 0.5]), backend="dense")
+    finally:
+        init(use="cpu")
+
+    for mv in (origin, infinity, vector, point, sphere, plane, translator):
+        leaves, _ = jax.tree_util.tree_flatten(mv)
+        assert len(leaves) == 1
+        assert leaves[0].__class__.__module__.startswith("jax")
+
+
+def test_jax_jit_cga_point_distance_from_dense_inputs():
+    """CGA point distance should trace when points are dense JAX MVArrays."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.cga3d()
+    lhs = alg.point(jnp.array([1.0, 2.0, 3.0]), backend="dense")
+    rhs = alg.point(jnp.array([2.0, 2.0, 3.0]), backend="dense")
+
+    try:
+        actual = jax.jit(lambda a, b: alg.distance_squared(a, b))(lhs, rhs)
+    finally:
+        init(use="cpu")
+
+    assert_allclose(np.asarray(actual), np.asarray(1.0), rtol=1e-5)
+
+
+def test_jax_jit_cga_translator_sandwich_from_dense_inputs():
+    """CGA translator sandwich should trace through dense JAX operations."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.cga2d()
+    point = alg.point(jnp.array([1.0, 2.0]), backend="dense")
+    translator = alg.translate(jnp.array([3.0, -1.0]), backend="dense")
+    expected = alg.point([4.0, 1.0], backend="dense")
+
+    try:
+        actual = jax.jit(lambda actor, target: amsa.sandwich(actor, target))(
+            translator,
+            point,
+        )
+    finally:
+        init(use="cpu")
+
+    assert_allclose(
+        np.asarray(actual.to_layout(expected.layout).values),
+        np.asarray(expected.values),
+        rtol=1e-5,
+    )
+
+
+def test_jax_jit_batched_cga_point_construction():
+    """Batched CGA point construction should trace with JAX coefficient payloads."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.cga3d()
+    coords = jnp.array([[1.0, 2.0, 3.0], [2.0, 0.0, -1.0]])
+
+    try:
+        actual = jax.jit(lambda values: alg.point(values, backend="dense").values)(coords)
+    finally:
+        init(use="cpu")
+
+    expected = alg.point(np.asarray(coords), backend="dense").values
+    assert_allclose(np.asarray(actual), expected, rtol=1e-5)
+
+
 def test_jax_jit_dense_regressive_product():
     """Regressive products should trace for dense nondegenerate algebras."""
     clear_backends()

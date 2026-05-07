@@ -109,7 +109,15 @@ def _naive_binary_product(lhs, rhs, *, kind: str):
 
 
 def _naive_regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
-    return (lhs.poincare_dual() ^ rhs.poincare_dual()).poincare_undual()
+    """Regressive product via Poincaré dual and geometric product.
+
+    A ∨ B = poincare_undual(poincare_dual(A) * poincare_dual(B))
+
+    Uses the full geometric product of the duals rather than just the outer
+    product, so that interior terms survive when Poincaré-dual grades exceed
+    the algebra dimension (e.g. CGA grade-1 dual spheres in 5D).
+    """
+    return (lhs.poincare_dual() * rhs.poincare_dual()).poincare_undual()
 
 
 @pytest.mark.parametrize(
@@ -256,7 +264,8 @@ def test_contractions_reduce_to_scalar_multiplication_for_grade_zero() -> None:
     assert_mv_allclose(right_contraction(mv, scalar), mv * scalar)
 
 
-def test_regressive_product_matches_poincare_dual_outer_identity() -> None:
+def test_regressive_product_matches_poincare_dual_identity() -> None:
+    """Regressive product matches poincare_undual(poincare_dual(A) * poincare_dual(B))."""
     algebra = Algebra.vga3d()
     lhs = algebra.multivector({"e1": 1.0, "e23": -2.0})
     rhs = algebra.multivector({"e2": 3.0, "e12": 4.0})
@@ -422,8 +431,23 @@ def test_motor_log_round_trips_pga3d_twist_generators_and_ignores_scale() -> Non
 def test_motor_log_rejects_unsupported_algebras() -> None:
     algebra = Algebra.vga3d()
 
-    with pytest.raises(ValueError, match="PGA2d and PGA3d"):
+    with pytest.raises(ValueError, match="PGA2d"):
         motor_log(algebra.multivector({"e": 1.0, "e12": 0.25}))
+
+
+def test_cga_motor_log_round_trips_translator_and_rotor_generators() -> None:
+    algebra = Algebra.cga3d()
+    translator = algebra.translate([1.0, 2.0, 3.0])
+    translator_generator = motor_log(translator)
+
+    assert_mv_allclose(motor_exp(translator_generator), translator, tol=1e-12)
+    assert_mv_allclose(translator.log(), translator_generator, tol=1e-12)
+
+    rotation_generator = -0.25 * (algebra.blade("e1") ^ algebra.blade("e2"))
+    rotor = rotation_generator.exp()
+
+    assert_mv_allclose(motor_log(rotor), rotation_generator, tol=1e-12)
+    assert_mv_allclose(motor_exp(rotation_generator), rotor, tol=1e-12)
 
 
 def test_commutator_and_anticommutator_match_geometric_product_splits() -> None:

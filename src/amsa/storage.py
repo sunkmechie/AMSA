@@ -26,6 +26,11 @@ StorageKind = Literal["dense", "csr"]
 StorageRequest = Literal["auto", "dense", "csr"]
 
 
+def is_jax_array(value: Any) -> bool:
+    module = type(value).__module__.partition(".")[0]
+    return module in {"jax", "jaxlib"}
+
+
 def _normalize_batch_shape(batch_shape: tuple[int, ...]) -> tuple[int, ...]:
     normalized: list[int] = []
     for size in batch_shape:
@@ -257,11 +262,7 @@ class DenseStorage:
     @classmethod
     def from_array(cls, array: ArrayLike) -> DenseStorage:
         """Create DenseStorage from an array-like object."""
-        values: Any = (
-            array
-            if all(hasattr(array, attr) for attr in ("shape", "dtype", "ndim"))
-            else np.asarray(array)
-        )
+        values: Any = array if is_jax_array(array) else np.asarray(array)
         if values.ndim == 0:
             raise ValueError("storage values must have at least one dimension.")
         return cls(_payload=NumPyPayload(array=cast(NDArray[Any], values)))
@@ -459,7 +460,7 @@ def storage_component(storage: MVStorage, column: int) -> NDArray[Any]:
         raise IndexError(f"Storage column {column} is out of bounds for width {storage.width}.")
 
     if isinstance(storage, DenseStorage):
-        return np.asarray(storage._payload.array[..., column], dtype=storage.dtype)
+        return storage._payload.array[..., column]
     if not isinstance(storage, CSRStorage):
         raise TypeError(f"Unsupported storage type: {type(storage)!r}")
 

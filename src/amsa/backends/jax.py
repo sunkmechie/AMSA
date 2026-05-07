@@ -183,6 +183,16 @@ def execute_sequence_ir(
             meta = step.metadata or {}
             factor = meta.get("factor", 1.0)
             mv = cast(MVArray, operands[0])
+            factor_array = jnp.asarray(factor)
+            if isinstance(mv.storage, DenseStorage):
+                storage = DenseStorage(
+                    _payload=NumPyPayload(
+                        array=cast(Any, mv.storage._payload.array * factor_array)
+                    )
+                )
+                result = MVArray(algebra=mv.algebra, layout=mv.layout, storage=storage)
+                env[step.output] = result
+                continue
             result = MVArray(
                 algebra=mv.algebra,
                 layout=mv.layout,
@@ -192,12 +202,25 @@ def execute_sequence_ir(
             meta = step.metadata or {}
             mv = cast(MVArray, operands[0])
             factors = meta.get("scales", operands[1] if len(operands) > 1 else 1.0)
+            factor_array = jnp.asarray(factors)
+            if isinstance(mv.storage, DenseStorage):
+                storage = DenseStorage(
+                    _payload=NumPyPayload(
+                        array=cast(
+                            Any,
+                            mv.storage._payload.array * factor_array[..., jnp.newaxis],
+                        )
+                    )
+                )
+                result = MVArray(algebra=mv.algebra, layout=mv.layout, storage=storage)
+                env[step.output] = result
+                continue
             result = MVArray(
                 algebra=mv.algebra,
                 layout=mv.layout,
                 storage=row_scale_storage(
                     mv.storage,
-                    jnp.asarray(factors),
+                    factor_array,
                 ),
             )
         elif step.kind == "add":

@@ -145,6 +145,11 @@ def _predicate(function: str, *values: Any) -> bool:
     return cast(bool, _execute_sequence_value(dict(zip(inputs, values, strict=True)), ir))
 
 
+def _is_jax_tracer(value: Any) -> bool:
+    value_type = type(value)
+    return "jax" in value_type.__module__ and "Tracer" in value_type.__name__
+
+
 def _exp_coefficients(scalar_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     ir = SequenceIR(
         name="exp_coefficients",
@@ -537,6 +542,14 @@ def normalize(mv: MVArray) -> MVArray:
 
 
 def _motor_exp_from_bivector(mv: MVArray) -> MVArray:
+    if len(mv.algebra.signature) >= 2 and mv.algebra.signature[-2:] == (1, -1):
+        if set(mv.grades) != {2}:
+            raise ValueError("motor_exp() requires a pure bivector generator.")
+        square = geometric_product(mv, mv)
+        scalar_values = _scalar_output_or_zero(square, name="mv * mv")
+        scalar_coefficients, linear_coefficients = _exp_coefficients(scalar_values)
+        return _scalar_mv(mv, scalar_coefficients) + _row_scale_mv(mv, linear_coefficients)
+
     if mv.algebra.signature != (0, 1, 1, 1):
         raise ValueError("motor_exp() currently supports PGA3d bivector generators.")
     if set(mv.grades) != {2}:
@@ -654,11 +667,20 @@ def _motor_log_pga3d(mv: MVArray) -> MVArray:
 
 
 def motor_log(mv: MVArray) -> MVArray:
+    if len(mv.algebra.signature) >= 2 and mv.algebra.signature[-2:] == (1, -1):
+        if not set(mv.grades).issubset({0, 2}):
+            raise ValueError(
+                "motor_log() currently supports CGA scalar+bivector Euclidean motors."
+            )
+        return _simple_bivector_log(mv)
     if mv.algebra.signature == (0, 1, 1):
         return _simple_bivector_log(rigid_body_normalize(mv))
     if mv.algebra.signature == (0, 1, 1, 1):
         return _motor_log_pga3d(mv)
-    raise ValueError("motor_log() currently supports PGA2d and PGA3d motor-like multivectors.")
+    raise ValueError(
+        "motor_log() currently supports CGA scalar+bivector Euclidean motors, "
+        "PGA2d, and PGA3d motor-like multivectors."
+    )
 
 
 def log(mv: MVArray) -> MVArray:
@@ -748,6 +770,15 @@ def right_contraction(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 
 def regressive_product(lhs: MVArray, rhs: MVArray) -> MVArray:
+    """Return the regressive (meet) product of two multivectors.
+
+    Defined as ``poincare_undual(poincare_dual(A) * poincare_dual(B))``
+    where ``*`` is the full geometric product of the duals.  Using the
+    geometric product (rather than just the outer product) preserves
+    interior terms when Poincaré-dual grades exceed the algebra dimension,
+    e.g. for CGA meet of dual spheres in 5D.
+    See ``docs/references.rst#operations``.
+    """
     return _execute_binary_product(lhs, rhs, "regressive")
 
 
@@ -759,7 +790,10 @@ def sandwich(actor: MVArray, target: MVArray) -> MVArray:
 def _require_scalar_output(mv: MVArray, *, name: str) -> np.ndarray:
     scalar_blade = 0
     resolved_dtype = np.result_type(mv.dtype, np.float64)
-    scalar_value = np.asarray(_component_values(mv, scalar_blade), dtype=resolved_dtype)
+    scalar_value_raw = _component_values(mv, scalar_blade)
+    if _is_jax_tracer(scalar_value_raw):
+        return scalar_value_raw
+    scalar_value = np.asarray(scalar_value_raw, dtype=resolved_dtype)
 
     if mv.layout.size == 0:
         raise ValueError(f"{name} is zero and therefore non-invertible.")
@@ -781,9 +815,10 @@ def inverse(mv: MVArray) -> MVArray:
     left_norm = _require_scalar_output(left_norm_mv, name="reverse(mv) * mv")
     right_norm = _require_scalar_output(right_norm_mv, name="mv * reverse(mv)")
 
-    if not _predicate("allclose", left_norm, right_norm):
+    traced_norm = _is_jax_tracer(left_norm) or _is_jax_tracer(right_norm)
+    if not traced_norm and not _predicate("allclose", left_norm, right_norm):
         raise ValueError("inverse() currently requires matching scalar left/right reverse norms.")
-    if _predicate("any_close_zero", left_norm):
+    if not traced_norm and _predicate("any_close_zero", left_norm):
         raise ValueError("inverse() is undefined for zero-norm or non-invertible multivectors.")
 
     reciprocals = _elementwise_values("reciprocal", left_norm)

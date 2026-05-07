@@ -108,3 +108,39 @@ For custom blade selection:
    #   e    e    e1   e2
    #   e1   e1   e    e12
    #   e2   e2  -e12  e
+
+Geometric classification
+------------------------
+
+``alg.classify(mv)`` inspects a multivector and returns an
+:class:`~amsa.inspection.EntityInfo` describing its geometric interpretation
+across CGA, PGA, and VGA algebras:
+
+.. code-block:: python
+
+   from amsa import Algebra
+
+   alg = Algebra.cga3d()
+   print(alg.classify(alg.point([1.0, 2.0, 3.0])))
+   # CGA3D Classification
+   # kind:           normalized conformal point
+   # grades:         {1}
+   # null:           yes
+   # normalized:     yes
+   # geometric data:
+   #   coordinates: [1. 2. 3.]
+
+``EntityInfo`` provides programmatic access to kind, grades, nullity,
+normalization, invariants (``X²``, ``X·n∞``), geometric data (coordinates,
+center/radius, normal/distance), storage metadata, and warnings.
+
+CGA entities recognized: normalized conformal point, point at infinity,
+dual sphere, dual plane, direct line, direct circle, translator candidate,
+even versor, generic blade, zero multivector.
+
+PGA entities: normalized Euclidean point, ideal point, line, plane, rotor,
+translator, motor.
+
+VGA entities: scalar, vector, bivector, trivector, pseudoscalar, rotor.
+
+See ``docs/cga.rst`` and ``examples/cga/cga_classify_overview.py``.

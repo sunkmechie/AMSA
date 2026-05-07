@@ -28,14 +28,11 @@ if TYPE_CHECKING:
 _TOL = 1e-10
 
 
-# -- EntityInfo ----------------------------------------------------------------
-
 @dataclass(frozen=True, slots=True)
 class EntityInfo:
     """Describes the geometric interpretation of a multivector.
 
-    ``classify()`` returns this for structured inspection and display — it
-    never mutates the underlying multivector.
+    ``classify()`` returns this for structured inspection and display
     """
 
     algebra: str
@@ -105,9 +102,6 @@ class EntityInfo:
         return "\n".join(lines)
 
 
-# -- general inspection helpers ------------------------------------------------
-
-
 def _is_null(mv: MVArray) -> bool:
     sq = _scalar_square(mv)
     if sq is None:
@@ -146,9 +140,6 @@ def _is_zero_mv(mv: MVArray) -> bool:
     return bool(np.allclose(mv.values, 0.0, atol=_TOL))
 
 
-# -- CGA classification --------------------------------------------------------
-
-
 def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
     """Classify a multivector in a CGA algebra.
 
@@ -157,6 +148,8 @@ def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
     """
     from amsa.cga import (
         _euclidean_dimension,
+        extract_circle,
+        extract_line,
         extract_plane,
         extract_point,
         extract_sphere,
@@ -253,10 +246,27 @@ def classify_cga(alg: Algebra, mv: MVArray) -> EntityInfo:
                 return EntityInfo(**{**kw, **overrides})
 
             if grade3:
-                if has_ninf_in_support:
+                if _cga_outer_with_infinity_is_zero(alg, mv, infinity):
                     kw["kind"] = "direct line"
+                    try:
+                        point_on_line, direction = extract_line(mv)
+                        kw["geometric_data"] = {
+                            "point": point_on_line,
+                            "direction": direction,
+                        }
+                    except Exception:
+                        kw["warnings"].append("could not extract line parameters")
                 else:
                     kw["kind"] = "direct circle"
+                    try:
+                        circle_center, circle_radius, circle_normal = extract_circle(mv)
+                        kw["geometric_data"] = {
+                            "center": circle_center,
+                            "radius": circle_radius,
+                            "normal": circle_normal,
+                        }
+                    except Exception:
+                        kw["warnings"].append("could not extract circle parameters")
                 kw["representation"] = "direct"
                 return EntityInfo(**{**kw, **overrides})
 
@@ -315,7 +325,12 @@ def _cga_any_blade_contains_conformal_axes(alg: Algebra, mv: MVArray) -> bool:
     return False
 
 
-# -- PGA classification --------------------------------------------------------
+def _cga_outer_with_infinity_is_zero(alg: Algebra, mv: MVArray, infinity_fn: Any) -> bool:
+    try:
+        joined = mv ^ infinity_fn(alg, backend=mv.storage_kind)
+        return bool(np.allclose(joined.values, 0.0, atol=_TOL))
+    except Exception:
+        return False
 
 
 def classify_pga(alg: Algebra, mv: MVArray) -> EntityInfo:
@@ -466,9 +481,6 @@ def _pga_extract_point(mv: MVArray, is_2d: bool) -> np.ndarray:
         with np.errstate(divide="ignore", invalid="ignore"):
             coords = np.array([x, y, z]) / w if abs(w) > _TOL else np.array([x, y, z])
         return coords
-
-
-# -- VGA classification --------------------------------------------------------
 
 
 def classify_vga(alg: Algebra, mv: MVArray) -> EntityInfo:

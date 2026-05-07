@@ -38,6 +38,9 @@ Available ``Algebra`` methods
   ``T = 1 - 0.5 t n_inf``
 - ``alg.line_through_points(a, b)`` — direct line through two conformal points
 - ``alg.circle_through_points(a, b, c)`` — direct circle through three conformal points
+- ``alg.point_pair(a, b)`` — direct point pair through two conformal points
+- ``alg.line_from_point_direction(point, direction)`` — direct line from Euclidean data
+- ``alg.circle(center, radius, normal)`` — direct 3D circle from Euclidean data
 - ``alg.distance_squared(a, b)`` — Euclidean squared distance from normalized points
 
 Extraction utilities
@@ -45,6 +48,8 @@ Extraction utilities
 
 Extract Euclidean parameters from CGA multivectors.  ``extract_point``
 normalizes via ``-(X · n_inf)`` so it works correctly after versor actions.
+These helpers return NumPy arrays for reporting and interop; they are not a
+JAX-traceable API contract.
 
 .. code-block:: python
 
@@ -74,6 +79,8 @@ Available extraction methods
 - ``alg.extract_sphere(mv)`` — ``(center, radius)`` from a dual sphere
 - ``alg.extract_plane(mv)`` — ``(normal, signed_distance)`` from a dual plane
 - ``alg.extract_euclidean_vector(mv)`` — Euclidean coordinates from a subspace vector
+- ``alg.extract_line(mv)`` — ``(point, direction)`` from a direct CGA3D line
+- ``alg.extract_circle(mv)`` — ``(center, radius, normal)`` from a direct CGA3D circle
 
 Classification
 ^^^^^^^^^^^^^^
@@ -131,17 +138,13 @@ Recognized CGA entities
 
 .. warning::
 
-   ``classify()`` provides a *structured geometric interpretation*, not a
-   mathematical proof.  It uses numerical tolerance (1e-10) and may classify
-   near-null or near-degenerate objects approximately.  It never mutates the
+   ``classify()`` provides a *structured geometric interpretation*. It uses numerical tolerance (1e-10) 
+   and may classify near-null or near-degenerate objects approximately.  It never mutates the
    input multivector.
 
 .. note::
 
-   Extraction is documented in Dorst, Fontijne, Mann (2007), *Geometric Algebra
-   for Computer Science*, Morgan Kaufmann, Tables 13.1–13.4.
-   ``extract_point`` normalizes using the inverse mapping from Perwass (2009),
-   §4.3.2.
+   Extraction conventions are collected in :doc:`references`.
 
 Standalone ``amsa.cga`` module (secondary API)
 ----------------------------------------------
@@ -176,6 +179,30 @@ Available standalone helpers
 - ``extract_sphere(mv)`` — ``(center, radius)``
 - ``extract_plane(mv)`` — ``(normal, signed_distance)``
 - ``extract_euclidean_vector(mv)`` — Euclidean coordinates
+- ``extract_line(mv)`` — ``(point, direction)`` from a direct CGA3D line
+- ``extract_circle(mv)`` — ``(center, radius, normal)`` from a direct CGA3D circle
+
+Motor Exponential And Logarithm
+-------------------------------
+
+``amsa.exp()`` already supports simple CGA bivectors whose square is scalar:
+Euclidean rotors and translators both use this path. ``amsa.motor_exp()`` and
+``amsa.motor_log()`` now expose the same behavior explicitly for CGA
+scalar+bivector Euclidean motors:
+
+.. code-block:: python
+
+   import amsa
+
+   alg = amsa.Algebra.cga3d()
+
+   translator = alg.translate([1.0, 2.0, 3.0])
+   generator = amsa.motor_log(translator)
+   assert amsa.motor_exp(generator).values.shape == translator.values.shape
+
+This is intentionally conservative: arbitrary CGA screw motors with grade-4
+coupling still require a dedicated audited logarithm before being documented as
+supported.
 
 CGA identities
 --------------
@@ -188,7 +215,8 @@ Null basis identities: ``n_o^2 = 0``, ``n_inf^2 = 0``, ``n_o · n_inf = -1``.
 Operator status
 ---------------
 
-The constructors use existing AMSA products and layouts. NumPy execution is
-covered by tests; dense JAX parity follows the same operation layer where the
-underlying operation is already traceable. There is no matrix representation or
-basis-change table in the CGA implementation.
+(The constructors use existing AMSA products and layouts. NumPy execution is
+covered by tests. Dense JAX parity follows the same operation layer where the
+underlying operation is already traceable, but CGA constructor and extraction
+helper traceability still needs a dedicated audit. There is no matrix
+representation or basis-change table in the CGA implementation.)

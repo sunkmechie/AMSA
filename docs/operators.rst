@@ -49,11 +49,13 @@ Includes only terms with ``grade(lhs) >= grade(rhs)`` and output grade ``grade(l
 Regressive product
 ^^^^^^^^^^^^^^^^^^
 
-Defined via the Poincaré-dual complement of the outer product:
+Defined via the Poincaré-dual complement and the geometric product of the
+duals (not just the outer product), so interior terms survive when
+dual grades exceed the algebra dimension:
 
 .. code-block:: text
 
-   regressive_product(a, b) = poincare_undual(poincare_dual(a) ^ poincare_dual(b))
+   regressive_product(a, b) = poincare_undual(poincare_dual(a) * poincare_dual(b))
 
 Involutions and duality
 -----------------------

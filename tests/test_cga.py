@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import amsa
+from tests._utils import assert_allclose
 
 
 def test_cga3d_null_basis_identities() -> None:
@@ -9,9 +10,9 @@ def test_cga3d_null_basis_identities() -> None:
     no = alg.origin()
     ninf = alg.infinity()
 
-    assert np.allclose((no * no).component(0), 0.0)
-    assert np.allclose((ninf * ninf).component(0), 0.0)
-    assert np.allclose((no.inner(ninf)).component(0), -1.0)
+    assert_allclose((no * no).component(0), 0.0)
+    assert_allclose((ninf * ninf).component(0), 0.0)
+    assert_allclose((no.inner(ninf)).component(0), -1.0)
 
 
 def test_cga_point_is_null_and_distance_identity() -> None:
@@ -19,8 +20,8 @@ def test_cga_point_is_null_and_distance_identity() -> None:
     a = alg.point([1.0, 2.0, 3.0])
     b = alg.point([2.0, 2.0, 3.0])
 
-    assert np.allclose((a * a).component(0), 0.0)
-    assert np.allclose(alg.distance_squared(a, b), 1.0)
+    assert_allclose((a * a).component(0), 0.0)
+    assert_allclose(alg.distance_squared(a, b), 1.0)
 
 
 def test_cga_translator_moves_points() -> None:
@@ -29,33 +30,33 @@ def test_cga_translator_moves_points() -> None:
     translated = amsa.sandwich(alg.translate([3.0, -1.0]), x)
     expected = alg.point([4.0, 1.0])
 
-    assert np.allclose(translated.to_layout(expected.layout).values, expected.values)
+    assert_allclose(translated.to_layout(expected.layout).values, expected.values)
 
 
 def test_algebra_origin_returns_null_vector() -> None:
     alg = amsa.Algebra.cga3d()
     no = alg.origin()
-    assert np.allclose((no * no).component(0), 0.0)
+    assert_allclose((no * no).component(0), 0.0)
 
 
 def test_algebra_infinity_returns_null_vector() -> None:
     alg = amsa.Algebra.cga2d()
     ninf = alg.infinity()
-    assert np.allclose((ninf * ninf).component(0), 0.0)
+    assert_allclose((ninf * ninf).component(0), 0.0)
 
 
 def test_algebra_sphere_squares_to_radius_squared() -> None:
     alg = amsa.Algebra.cga3d()
     s = alg.sphere([0.0, 0.0, 0.0], 1.0)
     result = alg.norm_squared(s)
-    assert np.allclose(result.component(0), 1.0)  # dual sphere S^2 = r^2
+    assert_allclose(result.component(0), 1.0)  # dual sphere S^2 = r^2
 
 
 def test_algebra_plane_squares_to_normal_squared() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.plane([0.0, 0.0, 1.0], 2.0)
     result = alg.norm_squared(p)
-    assert np.allclose(result.component(0), 1.0)  # dual plane P^2 = n^2 = 1
+    assert_allclose(result.component(0), 1.0)  # dual plane P^2 = n^2 = 1
 
 
 def test_algebra_line_through_points() -> None:
@@ -64,7 +65,7 @@ def test_algebra_line_through_points() -> None:
     b = alg.point([1.0, 0.0, 0.0])
     L = alg.line_through_points(a, b)
     result = alg.norm_squared(L)
-    assert np.allclose(np.abs(result.component(0)), 1.0)
+    assert_allclose(np.abs(result.component(0)), 1.0)
 
 
 def test_algebra_circle_through_points() -> None:
@@ -74,7 +75,32 @@ def test_algebra_circle_through_points() -> None:
     c = alg.point([-1.0, 0.0, 0.0])
     C = alg.circle_through_points(a, b, c)
     result = alg.norm_squared(C)
-    assert np.allclose(np.abs(result.component(0)), 4.0)
+    assert_allclose(np.abs(result.component(0)), 4.0)
+
+
+def test_cga_point_pair_and_line_from_point_direction() -> None:
+    alg = amsa.Algebra.cga3d()
+    a = alg.point([1.0, 2.0, 3.0])
+    b = alg.point([1.0, 2.0, 5.0])
+
+    pair = alg.point_pair(a, b)
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [0.0, 0.0, 2.0])
+
+    assert 2 in pair.grades
+    assert_allclose((a ^ pair).values, np.zeros_like((a ^ pair).values), atol=1e-12)
+    assert_allclose((b ^ line).values, np.zeros_like((b ^ line).values), atol=1e-12)
+
+
+def test_cga_circle_constructor_from_center_radius_normal() -> None:
+    alg = amsa.Algebra.cga3d()
+    circle = alg.circle([1.0, 2.0, 3.0], 2.0, [0.0, 0.0, 1.0])
+    point_on_circle = alg.point([3.0, 2.0, 3.0])
+
+    assert_allclose(
+        (point_on_circle ^ circle).values,
+        np.zeros_like((point_on_circle ^ circle).values),
+        atol=1e-12,
+    )
 
 
 def test_algebra_translate_returns_motor() -> None:
@@ -86,7 +112,7 @@ def test_algebra_translate_returns_motor() -> None:
 def test_algebra_euclidean_vector() -> None:
     alg = amsa.Algebra.cga3d()
     v = alg.euclidean_vector([1.0, 2.0, 3.0])
-    assert np.allclose((v * v).component(0), 14.0)
+    assert_allclose((v * v).component(0), 14.0)
 
 
 def test_algebra_cga_methods_reject_non_cga() -> None:
@@ -104,9 +130,9 @@ def test_cga_standalone_still_works() -> None:
     a = point(alg, [1.0, 2.0, 3.0])
     b = point(alg, [2.0, 2.0, 3.0])
 
-    assert np.allclose((no * no).component(0), 0.0)
-    assert np.allclose((ninf * ninf).component(0), 0.0)
-    assert np.allclose(distance_squared(alg, a, b), 1.0)
+    assert_allclose((no * no).component(0), 0.0)
+    assert_allclose((ninf * ninf).component(0), 0.0)
+    assert_allclose(distance_squared(alg, a, b), 1.0)
 
 
 # -- extraction utilities -------------------------------------------------------
@@ -116,46 +142,83 @@ def test_extract_point_round_trip() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.point([1.0, 2.0, 3.0])
     coords = alg.extract_point(p)
-    assert np.allclose(coords, [1.0, 2.0, 3.0])
+    assert_allclose(coords, [1.0, 2.0, 3.0])
 
 
 def test_extract_sphere_round_trip() -> None:
     alg = amsa.Algebra.cga3d()
     s = alg.sphere([1.0, 0.0, 0.0], 3.0)
     center, radius = alg.extract_sphere(s)
-    assert np.allclose(center, [1.0, 0.0, 0.0])
-    assert np.allclose(radius, 3.0)
+    assert_allclose(center, [1.0, 0.0, 0.0])
+    assert_allclose(radius, 3.0)
 
 
 def test_extract_sphere_origin() -> None:
     alg = amsa.Algebra.cga3d()
     s = alg.sphere([0.0, 0.0, 0.0], 2.5)
     center, radius = alg.extract_sphere(s)
-    assert np.allclose(center, [0.0, 0.0, 0.0])
-    assert np.allclose(radius, 2.5)
+    assert_allclose(center, [0.0, 0.0, 0.0])
+    assert_allclose(radius, 2.5)
+
+
+def test_extract_scaled_sphere_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    s = 2.0 * alg.sphere([1.0, -2.0, 0.5], 3.0)
+    center, radius = alg.extract_sphere(s)
+    assert_allclose(center, [1.0, -2.0, 0.5])
+    assert_allclose(radius, 3.0)
 
 
 def test_extract_plane_round_trip() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.plane([0.0, 0.0, 1.0], 5.0)
     normal, distance = alg.extract_plane(p)
-    assert np.allclose(normal, [0.0, 0.0, 1.0])
-    assert np.allclose(distance, 5.0)
+    assert_allclose(normal, [0.0, 0.0, 1.0])
+    assert_allclose(distance, 5.0)
+
+
+def test_extract_line_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [0.0, 0.0, 2.0])
+    point_on_line, direction = alg.extract_line(line)
+
+    assert_allclose(np.cross(direction, [0.0, 0.0, 1.0]), [0.0, 0.0, 0.0])
+    assert_allclose(point_on_line[:2], [1.0, 2.0])
+    incidence = alg.point([1.0, 2.0, 7.0]) ^ line
+    assert_allclose(incidence.values, np.zeros_like(incidence.values), atol=1e-12)
+
+
+def test_extract_circle_round_trip() -> None:
+    alg = amsa.Algebra.cga3d()
+    circle = alg.circle([1.0, 2.0, 3.0], 2.0, [0.0, 0.0, 1.0])
+    center, radius, normal = alg.extract_circle(circle)
+
+    assert_allclose(center, [1.0, 2.0, 3.0])
+    assert_allclose(radius, 2.0)
+    assert_allclose(np.abs(normal), [0.0, 0.0, 1.0])
+
+
+def test_extract_plane_uses_conformal_infinity_coefficient() -> None:
+    alg = amsa.Algebra.cga3d()
+    p = alg.euclidean_vector([0.0, 0.0, 1.0]) + 4.0 * alg.infinity()
+    normal, distance = alg.extract_plane(p)
+    assert_allclose(normal, [0.0, 0.0, 1.0])
+    assert_allclose(distance, 4.0)
 
 
 def test_extract_plane_default_normal() -> None:
     alg = amsa.Algebra.cga3d()
     p = alg.plane([1.0, 0.0, 0.0], 3.0)
     normal, distance = alg.extract_plane(p)
-    assert np.allclose(normal, [1.0, 0.0, 0.0])
-    assert np.allclose(distance, 3.0)
+    assert_allclose(normal, [1.0, 0.0, 0.0])
+    assert_allclose(distance, 3.0)
 
 
 def test_extract_euclidean_vector_round_trip() -> None:
     alg = amsa.Algebra.cga3d()
     v = alg.euclidean_vector([4.0, 5.0, 6.0])
     coords = alg.extract_euclidean_vector(v)
-    assert np.allclose(coords, [4.0, 5.0, 6.0])
+    assert_allclose(coords, [4.0, 5.0, 6.0])
 
 
 def test_extract_point_reflected() -> None:
@@ -164,7 +227,7 @@ def test_extract_point_reflected() -> None:
     p = alg.point([3.0, 2.0, 1.0])
     reflected = amsa.sandwich(plane, p)
     coords = alg.extract_point(reflected)
-    assert np.allclose(coords, [-3.0, 2.0, 1.0])
+    assert_allclose(coords, [-3.0, 2.0, 1.0])
 
 
 def test_extract_point_translated() -> None:
@@ -173,42 +236,53 @@ def test_extract_point_translated() -> None:
     p = alg.point([1.0, 1.0])
     moved = amsa.sandwich(T, p)
     coords = alg.extract_point(moved)
-    assert np.allclose(coords, [6.0, -1.0])
+    assert_allclose(coords, [6.0, -1.0])
 
 
 def test_extract_cga2d() -> None:
     alg = amsa.Algebra.cga2d()
     p = alg.point([3.0, 4.0])
     coords = alg.extract_point(p)
-    assert np.allclose(coords, [3.0, 4.0])
+    assert_allclose(coords, [3.0, 4.0])
 
     s = alg.sphere([1.0, 1.0], 2.0)
     center, radius = alg.extract_sphere(s)
-    assert np.allclose(center, [1.0, 1.0])
-    assert np.allclose(radius, 2.0)
+    assert_allclose(center, [1.0, 1.0])
+    assert_allclose(radius, 2.0)
 
     pl = alg.plane([0.0, 1.0], 3.0)
     normal, distance = alg.extract_plane(pl)
-    assert np.allclose(normal, [0.0, 1.0])
-    assert np.allclose(distance, 3.0)
+    assert_allclose(normal, [0.0, 1.0])
+    assert_allclose(distance, 3.0)
 
 
 def test_extract_standalone_functions() -> None:
-    from amsa.cga import extract_plane, extract_point, extract_sphere
+    from amsa.cga import extract_circle, extract_line, extract_plane, extract_point, extract_sphere
 
     alg = amsa.Algebra.cga3d()
     p = alg.point([1.0, 2.0, 3.0])
-    assert np.allclose(extract_point(p), [1.0, 2.0, 3.0])
+    assert_allclose(extract_point(p), [1.0, 2.0, 3.0])
 
     s = alg.sphere([0.0, 0.0, 0.0], 4.0)
     center, radius = extract_sphere(s)
-    assert np.allclose(center, [0.0, 0.0, 0.0])
-    assert np.allclose(radius, 4.0)
+    assert_allclose(center, [0.0, 0.0, 0.0])
+    assert_allclose(radius, 4.0)
 
     pl = alg.plane([0.0, 0.0, 1.0], 2.0)
     normal, distance = extract_plane(pl)
-    assert np.allclose(normal, [0.0, 0.0, 1.0])
-    assert np.allclose(distance, 2.0)
+    assert_allclose(normal, [0.0, 0.0, 1.0])
+    assert_allclose(distance, 2.0)
+
+    line = alg.line_from_point_direction([1.0, 2.0, 3.0], [1.0, 0.0, 0.0])
+    point_on_line, direction = extract_line(line)
+    assert_allclose(point_on_line[1:], [2.0, 3.0])
+    assert_allclose(np.abs(direction), [1.0, 0.0, 0.0])
+
+    circ = alg.circle([0.0, 0.0, 0.0], 2.0, [0.0, 0.0, 1.0])
+    center, radius, normal = extract_circle(circ)
+    assert_allclose(center, [0.0, 0.0, 0.0])
+    assert_allclose(radius, 2.0)
+    assert_allclose(np.abs(normal), [0.0, 0.0, 1.0])
 
 
 def test_extract_rejects_non_cga() -> None:
@@ -230,7 +304,7 @@ def test_classify_normalized_point() -> None:
     assert info.representation == "direct"
     assert info.null
     assert info.normalized
-    assert np.allclose(info.geometric_data["coordinates"], [1.0, 2.0, 3.0])
+    assert_allclose(info.geometric_data["coordinates"], [1.0, 2.0, 3.0])
 
 
 def test_classify_origin() -> None:
@@ -239,7 +313,7 @@ def test_classify_origin() -> None:
     assert info.kind == "normalized conformal point"
     assert info.null
     assert info.normalized
-    assert np.allclose(info.geometric_data["coordinates"], [0.0, 0.0, 0.0])
+    assert_allclose(info.geometric_data["coordinates"], [0.0, 0.0, 0.0])
 
 
 def test_classify_point_at_infinity() -> None:
@@ -257,8 +331,8 @@ def test_classify_dual_sphere() -> None:
     assert info.kind == "dual sphere"
     assert info.representation == "dual"
     assert not info.null
-    assert np.allclose(info.geometric_data["center"], [1.0, 0.0, 0.0])
-    assert np.allclose(info.geometric_data["radius"], 3.0)
+    assert_allclose(info.geometric_data["center"], [1.0, 0.0, 0.0])
+    assert_allclose(info.geometric_data["radius"], 3.0)
 
 
 def test_classify_dual_plane() -> None:
@@ -267,8 +341,8 @@ def test_classify_dual_plane() -> None:
     assert info.kind == "dual plane"
     assert info.representation == "dual"
     assert not info.null
-    assert np.allclose(info.geometric_data["normal"], [0.0, 0.0, 1.0])
-    assert np.allclose(info.geometric_data["signed_distance"], 5.0)
+    assert_allclose(info.geometric_data["normal"], [0.0, 0.0, 1.0])
+    assert_allclose(info.geometric_data["signed_distance"], 5.0)
 
 
 def test_classify_translator() -> None:
@@ -299,6 +373,8 @@ def test_classify_line() -> None:
     info = alg.classify(alg.line_through_points(a, b))
     assert info.kind == "direct line"
     assert 3 in info.grades
+    assert "point" in info.geometric_data
+    assert "direction" in info.geometric_data
 
 
 def test_classify_circle() -> None:
@@ -307,11 +383,10 @@ def test_classify_circle() -> None:
     b = alg.point([0.0, 1.0, 0.0])
     c = alg.point([-1.0, 0.0, 0.0])
     info = alg.classify(alg.circle_through_points(a, b, c))
-    # Current heuristic cannot distinguish direct line from direct circle
-    # (both contain conformal axes in their blade content).
-    # TODO: L ^ n_inf == 0 check for line distinction.
-    assert info.kind in ("direct line", "direct circle")
+    assert info.kind == "direct circle"
     assert 3 in info.grades
+    assert_allclose(info.geometric_data["center"], [0.0, 0.0, 0.0])
+    assert_allclose(info.geometric_data["radius"], 1.0)
 
 
 def test_classify_cga2d() -> None:
@@ -319,7 +394,7 @@ def test_classify_cga2d() -> None:
     info = alg.classify(alg.point([3.0, 4.0]))
     assert info.algebra == "cga2d"
     assert info.kind == "normalized conformal point"
-    assert np.allclose(info.geometric_data["coordinates"], [3.0, 4.0])
+    assert_allclose(info.geometric_data["coordinates"], [3.0, 4.0])
 
 
 def test_classify_str_output() -> None:
@@ -345,7 +420,7 @@ def test_classify_reflected_point() -> None:
     info = alg.classify(reflected)
     assert info.kind == "conformal point"
     assert info.null
-    assert np.allclose(info.geometric_data["coordinates"], [-3.0, 2.0, 1.0])
+    assert_allclose(info.geometric_data["coordinates"], [-3.0, 2.0, 1.0])
 
 
 # -- PGA classify --------------------------------------------------------------
@@ -356,7 +431,7 @@ def test_classify_pga2d_point() -> None:
     point = alg.multivector({"e12": 1.0, "e01": 2.0, "e02": 3.0})
     info = alg.classify(point)
     assert info.kind == "normalized Euclidean point"
-    assert np.allclose(info.geometric_data["coordinates"], [2.0, 3.0])
+    assert_allclose(info.geometric_data["coordinates"], [2.0, 3.0])
 
 
 def test_classify_pga2d_ideal_point() -> None:
@@ -388,7 +463,7 @@ def test_classify_pga3d_point() -> None:
     point = alg.multivector({"e123": 1.0, "e012": -1.0, "e013": 2.0, "e023": -3.0})
     info = alg.classify(point)
     assert info.kind == "normalized Euclidean point"
-    assert np.allclose(info.geometric_data["coordinates"], [3.0, 2.0, 1.0])
+    assert_allclose(info.geometric_data["coordinates"], [3.0, 2.0, 1.0])
 
 
 def test_classify_pga3d_plane() -> None:
