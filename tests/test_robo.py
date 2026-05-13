@@ -92,7 +92,7 @@ def test_importurdf_and_crobot_roundtrip_shape(tmp_path) -> None:
     loaded = robo.load_crobot(crobot)
     assert loaded.name == "two_link"
     assert loaded.joints[0].axis == (0.0, 0.0, 1.0)
-    assert data["joints"][0]["motion"] == "bivector-generator"
+    assert data["joints"][0]["motion"]["generator"]["kind"] == "rotation-axis"
 
 
 def test_crobot_roundtrip_preserves_executable_offsets(tmp_path) -> None:
@@ -109,6 +109,32 @@ def test_crobot_roundtrip_preserves_executable_offsets(tmp_path) -> None:
     assert loaded.joints[0].origin_xyz == (0.0, 0.0, 0.25)
     assert loaded.joints[0].child_offset_xyz == (0.5, 0.0, 0.0)
     assert loaded.joints[0].child_offset_rpy == (math.pi / 2, 0.0, 0.0)
+    assert loaded.joints[0].motion["parameter"] == "angle"
+    assert loaded.joints[0].motion["generator"]["axis"] == [0.0, 0.0, 1.0]
+
+
+def test_crobot_loads_legacy_motion_string_as_explicit_motion(tmp_path) -> None:
+    path = tmp_path / "legacy.crobot"
+    path.write_text(
+        json.dumps({
+            "name": "legacy",
+            "links": [{"name": "base"}, {"name": "tip"}],
+            "joints": [{
+                "name": "j1",
+                "kind": "revolute",
+                "parent": "base",
+                "child": "tip",
+                "axis": [0.0, 0.0, 1.0],
+                "motion": "bivector-generator",
+            }],
+        }),
+        encoding="utf-8",
+    )
+
+    loaded = robo.load_crobot(path)
+
+    assert loaded.joints[0].motion["kind"] == "revolute"
+    assert loaded.joints[0].motion["generator"]["kind"] == "rotation-axis"
 
 
 # -- DH-parameterized FK tests -------------------------------------------------

@@ -39,6 +39,7 @@ class Joint:
     origin_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
     child_offset_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
     child_offset_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    motion: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,6 +117,7 @@ def load_crobot(path: str | Path) -> RobotModel:
                 origin_rpy=tuple(item.get("origin_rpy", (0.0, 0.0, 0.0))),
                 child_offset_xyz=tuple(item.get("child_offset_xyz", (0.0, 0.0, 0.0))),
                 child_offset_rpy=tuple(item.get("child_offset_rpy", (0.0, 0.0, 0.0))),
+                motion=_load_joint_motion(item),
             )
             for item in data.get("joints", [])
         ),
@@ -142,11 +144,61 @@ def dump_crobot(model: RobotModel) -> dict[str, Any]:
                 "origin_rpy": joint.origin_rpy,
                 "child_offset_xyz": joint.child_offset_xyz,
                 "child_offset_rpy": joint.child_offset_rpy,
-                "motion": "bivector-generator",
+                "motion": _joint_motion(joint),
             }
             for joint in model.joints
         ],
         "metadata": dict(model.metadata),
+    }
+
+
+def _load_joint_motion(item: dict[str, Any]) -> dict[str, Any]:
+    motion = item.get("motion")
+    if isinstance(motion, dict):
+        return dict(motion)
+    return _default_joint_motion(item.get("kind", "fixed"), item.get("axis", (0.0, 0.0, 1.0)))
+
+
+def _joint_motion(joint: Joint) -> dict[str, Any]:
+    if joint.motion:
+        return dict(joint.motion)
+    return _default_joint_motion(joint.kind, joint.axis)
+
+
+def _default_joint_motion(kind: str, axis: Any) -> dict[str, Any]:
+    axis_tuple = tuple(float(item) for item in axis)
+    if kind == "fixed":
+        return {
+            "model": "cga3d",
+            "kind": "fixed",
+            "parameter": "none",
+            "generator": {"kind": "identity"},
+        }
+    if kind == "prismatic":
+        return {
+            "model": "cga3d",
+            "kind": "prismatic",
+            "parameter": "distance",
+            "generator": {
+                "kind": "translation-direction",
+                "axis": axis_tuple,
+            },
+        }
+    if kind == "revolute":
+        return {
+            "model": "cga3d",
+            "kind": "revolute",
+            "parameter": "angle",
+            "generator": {
+                "kind": "rotation-axis",
+                "axis": axis_tuple,
+            },
+        }
+    return {
+        "model": "cga3d",
+        "kind": kind,
+        "parameter": "unknown",
+        "generator": {"kind": "unsupported", "axis": axis_tuple},
     }
 
 
@@ -181,6 +233,7 @@ def model_from_dh(
                 origin_rpy=(0.0, 0.0, float(theta) if kind == "prismatic" else 0.0),
                 child_offset_xyz=(float(a), 0.0, 0.0),
                 child_offset_rpy=(float(alpha), 0.0, 0.0),
+                motion=_default_joint_motion(kind, (0.0, 0.0, 1.0)),
             )
         )
     return RobotModel(
@@ -426,14 +479,20 @@ def fk_model(
 def joint_motion_motor(alg: Algebra, joint: Joint, value: float) -> MVArray:
     """Return the variable CGA motor for one draft robot joint."""
     _validate_cga3d(alg)
-    if joint.kind == "fixed":
+    motion = _joint_motion(joint)
+    motion_kind = str(motion.get("kind", joint.kind))
+    generator = motion.get("generator", {})
+    if not isinstance(generator, dict):
+        raise ValueError("Joint motion generator must be a mapping.")
+
+    if motion_kind == "fixed":
         return alg.scalar(1.0)
-    axis = _unit_axis(joint.axis)
-    if joint.kind == "prismatic":
+    axis = _unit_axis(tuple(generator.get("axis", joint.axis)))
+    if motion_kind == "prismatic":
         return alg.translate(axis * float(value))
-    if joint.kind == "revolute":
+    if motion_kind == "revolute":
         return _rotor_about_axis(alg, axis, float(value))
-    raise ValueError(f"Unsupported joint kind: {joint.kind!r}.")
+    raise ValueError(f"Unsupported joint motion kind: {motion_kind!r}.")
 
 
 def _fixed_pose_motor(
@@ -452,8 +511,10 @@ def _fixed_pose_motor(
     return motor
 
 
-def _unit_axis(axis: tuple[float, float, float]) -> np.ndarray:
+def _unit_axis(axis: tuple[float, ...]) -> np.ndarray:
     vector = np.asarray(axis, dtype=float)
+    if vector.shape != (3,):
+        raise ValueError(f"Expected a 3D joint axis, got shape {vector.shape}.")
     norm = float(np.linalg.norm(vector))
     if norm < 1e-12:
         raise ValueError("Joint axis must be non-zero.")

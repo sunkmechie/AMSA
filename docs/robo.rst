@@ -284,5 +284,18 @@ will describe robot geometry in Clifford terms:
 - Limits: scalar ranges attached to generator parameters.
 - Frames: derived from motors, not stored as homogeneous matrices.
 
+The current draft serializes joint motion explicitly:
+
+.. code-block:: json
+
+   {
+     "kind": "revolute",
+     "parameter": "angle",
+     "generator": {
+       "kind": "rotation-axis",
+       "axis": [0.0, 0.0, 1.0]
+     }
+   }
+
 This draft exists to keep the future ``amsa-robo`` surface aligned with AMSA's 
 blade/layout/storage boundaries before the package is split out.
