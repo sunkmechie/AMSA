@@ -248,6 +248,30 @@ def test_downloaded_franka_panda_urdf_serial_chain_fk() -> None:
     assert_allclose(np.linalg.norm(results[-1]["orientation"]), 1.0, atol=1e-12)
 
 
+def test_downloaded_franka_panda_urdf_model_dls_ik_roundtrip() -> None:
+    alg = Algebra.cga3d()
+    model = robo.load(FIXTURES / "franka_panda.urdf", type="urdf")
+    arm = robo.serial_chain(model, "panda_link0", "panda_hand")
+    target_q = np.array([0.0, -0.4, 0.0, -2.2, 0.0, 2.0, 0.785398163397])
+    target_motor = robo.fk_model(alg, arm, target_q)[-1]["motor"]
+
+    result = robo.ik_model_dls(
+        alg,
+        arm,
+        target_motor,
+        initial_angles=target_q + np.array([0.05, -0.04, 0.03, 0.02, -0.03, 0.04, -0.02]),
+        position_tolerance=1e-8,
+        orientation_tolerance=1e-8,
+        max_iterations=100,
+    )
+
+    assert result.success
+    assert result.position_error < 1e-8
+    assert result.orientation_error < 1e-8
+    solved = robo.fk_model(alg, arm, result.joint_angles)[-1]
+    assert_allclose(solved["position"], robo.motor_to_position(target_motor, alg), atol=1e-8)
+
+
 # -- DH-parameterized FK tests -------------------------------------------------
 
 

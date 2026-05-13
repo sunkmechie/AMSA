@@ -4,12 +4,13 @@
 """
 AMSA Example
 
-Topic: CGA forward kinematics from a real-world URDF — Franka Panda
+Topic: CGA forward and inverse kinematics from a real-world URDF — Franka Panda
 Algebra: 3D Conformal Geometric Algebra (CGA)
 
 This example loads a flattened Panda URDF downloaded from a public robotics
 dataset, converts it to AMSA's draft RobotModel shape, extracts the serial arm
-chain from panda_link0 to panda_hand, and evaluates FK with CGA motors.
+chain from panda_link0 to panda_hand, evaluates FK with CGA motors, then solves
+back to the same motor target with the DLS IK solver.
 
 URDF source:
   https://huggingface.co/datasets/RoboVerseOrg/roboverse_data/blob/main/
@@ -68,3 +69,24 @@ R = robo.motor_to_matrix(ee["motor"], alg)
 print("\nrotation matrix columns recovered by CGA sandwich:")
 for column in range(3):
     print(f"  | {_fmt_vec(R[:, column])} |")
+
+print("\nIK round-trip from a perturbed seed:")
+seed = q + np.array([0.05, -0.04, 0.03, 0.02, -0.03, 0.04, -0.02])
+ik = robo.ik_model_dls(
+    alg,
+    arm,
+    ee["motor"],
+    initial_angles=seed,
+    position_tolerance=1e-8,
+    orientation_tolerance=1e-8,
+    max_iterations=100,
+)
+print(f"  success:             {ik.success}")
+print(f"  iterations:          {ik.iterations}")
+print(f"  solved joints:       ({_fmt_vec(ik.joint_angles)})")
+print(f"  position residual:   {ik.position_error:.3e} m")
+print(f"  orientation residual:{ik.orientation_error:.3e} rad")
+
+check = robo.fk_model(alg, arm, ik.joint_angles)[-1]
+delta = np.linalg.norm(check["position"] - ee["position"])
+print(f"  FK check residual:   {delta:.3e} m")

@@ -492,6 +492,43 @@ def fk_model(
     return results
 
 
+def _model_fk_frames(
+    alg: Algebra,
+    model: RobotModel,
+    joint_values: np.ndarray,
+) -> tuple[list[np.ndarray], list[np.ndarray], np.ndarray, np.ndarray, MVArray, list[str]]:
+    _validate_cga3d(alg)
+    values = _resolve_model_joint_values(model, joint_values)
+
+    motor: MVArray = alg.scalar(1.0)
+    joint_positions: list[np.ndarray] = []
+    joint_axes: list[np.ndarray] = []
+    joint_types: list[str] = []
+
+    for joint, value in zip(model.joints, values, strict=True):
+        origin_motor = motor * _fixed_pose_motor(alg, joint.origin_xyz, joint.origin_rpy)
+        motion = _joint_motion(joint)
+        motion_kind = str(motion.get("kind", joint.kind))
+        if motion_kind != "fixed":
+            generator = motion.get("generator", {})
+            if not isinstance(generator, dict):
+                raise ValueError("Joint motion generator must be a mapping.")
+            local_axis = _unit_axis(tuple(generator.get("axis", joint.axis)))
+            joint_positions.append(motor_to_position(origin_motor, alg))
+            joint_axes.append(motor_to_matrix(origin_motor, alg) @ local_axis)
+            joint_types.append(motion_kind)
+
+        motor = (
+            origin_motor
+            * joint_motion_motor(alg, joint, float(value))
+            * _fixed_pose_motor(alg, joint.child_offset_xyz, joint.child_offset_rpy)
+        )
+
+    ee_position = motor_to_position(motor, alg)
+    ee_rotation = motor_to_matrix(motor, alg)
+    return joint_positions, joint_axes, ee_position, ee_rotation, motor, joint_types
+
+
 def active_joints(model: RobotModel) -> tuple[Joint, ...]:
     """Return joints that consume a model-level joint parameter."""
     return tuple(joint for joint in model.joints if _joint_motion(joint).get("kind") != "fixed")
@@ -519,6 +556,118 @@ def serial_chain(model: RobotModel, base_link: str, tip_link: str) -> RobotModel
         links=links,
         joints=tuple(chain),
         metadata={**model.metadata, "source_model": model.name},
+    )
+
+
+def ik_model_dls(
+    alg: Algebra,
+    model: RobotModel,
+    target_motor: MVArray,
+    *,
+    initial_angles: np.ndarray | None = None,
+    max_iterations: int = 100,
+    position_tolerance: float = 1e-6,
+    orientation_tolerance: float = 1e-6,
+    damping: float = 0.1,
+    min_damping: float = 1e-6,
+    damping_factor: float = 0.5,
+    joint_limits: list[tuple[float, float]] | None = None,
+) -> IKResult:
+    """Damped least-squares IK for a loaded serial ``RobotModel`` chain."""
+    _validate_cga3d(alg)
+    _validate_motor_algebra(target_motor, alg)
+    active_count = len(active_joints(model))
+    if joint_limits is not None and len(joint_limits) != active_count:
+        raise ValueError(f"Expected {active_count} joint limits, got {len(joint_limits)}.")
+
+    p_target = motor_to_position(target_motor, alg)
+    R_target = motor_to_matrix(target_motor, alg)
+
+    q = (
+        np.asarray(initial_angles, dtype=float)
+        if initial_angles is not None
+        else np.zeros(active_count)
+    )
+    if q.shape != (active_count,):
+        raise ValueError(f"Expected {active_count} initial joint values, got shape {q.shape}.")
+    lam = float(damping)
+    if damping < 0.0 or min_damping < 0.0:
+        raise ValueError("Damping values must be non-negative.")
+    if damping_factor <= 0.0:
+        raise ValueError("damping_factor must be positive.")
+
+    iteration = -1
+    for iteration in range(max_iterations):
+        joint_pos, joint_axes, p_curr, R_curr, _, model_joint_types = _model_fk_frames(
+            alg, model, q,
+        )
+        e = _task_error(p_curr, R_curr, p_target, R_target)
+        pos_err = float(np.linalg.norm(e[:3]))
+        orient_err = float(np.linalg.norm(e[3:]))
+
+        if pos_err < position_tolerance and orient_err < orientation_tolerance:
+            motor, pos, quat = _resolve_model_fk_result(alg, model, q)
+            return IKResult(
+                success=True,
+                joint_angles=q,
+                motor=motor,
+                position=pos,
+                orientation=quat,
+                iterations=iteration + 1,
+                position_error=pos_err,
+                orientation_error=orient_err,
+                converged_position=True,
+                converged_orientation=True,
+            )
+
+        J = _geometric_jacobian(
+            joint_pos,
+            joint_axes,
+            p_curr,
+            joint_types=model_joint_types,
+        )
+        A = J @ J.T + lam * lam * np.eye(6)
+        try:
+            dq = J.T @ np.linalg.solve(A, e)
+        except np.linalg.LinAlgError:
+            lam = max(lam * 2.0, 1e-6)
+            continue
+
+        q_new = q + dq
+        if joint_limits is not None:
+            for j, (lo, hi) in enumerate(joint_limits):
+                q_new[j] = float(np.clip(q_new[j], lo, hi))
+
+        _, _, p_new, R_new, _, _ = _model_fk_frames(alg, model, q_new)
+        err_new = float(np.linalg.norm(_task_error(p_new, R_new, p_target, R_target)))
+        err_old = float(np.linalg.norm(e))
+        if err_new < err_old:
+            q = q_new
+            lam = max(lam * damping_factor, min_damping)
+        else:
+            lam = lam * 2.0
+            if lam > 1e3:
+                q = q_new
+                lam = max(lam * damping_factor, min_damping)
+
+        if float(np.linalg.norm(dq)) < 1e-12:
+            break
+
+    _, _, p_curr, R_curr, motor, _ = _model_fk_frames(alg, model, q)
+    e = _task_error(p_curr, R_curr, p_target, R_target)
+    pos_err = float(np.linalg.norm(e[:3]))
+    orient_err = float(np.linalg.norm(e[3:]))
+    return IKResult(
+        success=False,
+        joint_angles=q,
+        motor=motor,
+        position=p_curr,
+        orientation=motor_to_quaternion(motor, alg),
+        iterations=max(iteration + 1, 0),
+        position_error=pos_err,
+        orientation_error=orient_err,
+        converged_position=pos_err < position_tolerance,
+        converged_orientation=orient_err < orientation_tolerance,
     )
 
 
@@ -1174,6 +1323,16 @@ def _resolve_fk_result(
     return motor, pos, quat
 
 
+def _resolve_model_fk_result(
+    alg: Algebra,
+    model: RobotModel,
+    joint_angles: np.ndarray,
+) -> tuple[MVArray, np.ndarray, np.ndarray]:
+    _, _, pos, _rot, motor, _joint_types = _model_fk_frames(alg, model, joint_angles)
+    quat = motor_to_quaternion(motor, alg)
+    return motor, pos, quat
+
+
 __all__ = [
     "EXPERIMENTAL_WARNING",
     "IKResult",
@@ -1186,6 +1345,7 @@ __all__ = [
     "ik",
     "ik_cga_spherical_wrist",
     "ik_dls",
+    "ik_model_dls",
     "importurdf",
     "joint_motion_motor",
     "line_plane",
