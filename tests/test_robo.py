@@ -95,6 +95,22 @@ def test_importurdf_and_crobot_roundtrip_shape(tmp_path) -> None:
     assert data["joints"][0]["motion"] == "bivector-generator"
 
 
+def test_crobot_roundtrip_preserves_executable_offsets(tmp_path) -> None:
+    model = robo.model_from_dh(
+        [(math.pi / 2, 0.5, 0.25, 0.0)],
+        name="offset_chain",
+    )
+    data = robo.dump_crobot(model)
+    path = tmp_path / "offset_chain.crobot"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    loaded = robo.load_crobot(path)
+
+    assert loaded.joints[0].origin_xyz == (0.0, 0.0, 0.25)
+    assert loaded.joints[0].child_offset_xyz == (0.5, 0.0, 0.0)
+    assert loaded.joints[0].child_offset_rpy == (math.pi / 2, 0.0, 0.0)
+
+
 # -- DH-parameterized FK tests -------------------------------------------------
 
 
@@ -103,6 +119,46 @@ def test_fk_two_link_zero_angles() -> None:
     results = robo.fk(alg, [(0.0, 1.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)])
     assert_allclose(results[0]["position"], [1.0, 0.0, 0.0], atol=1e-15)
     assert_allclose(results[1]["position"], [2.0, 0.0, 0.0], atol=1e-15)
+
+
+def test_model_from_dh_fk_matches_dh_fk() -> None:
+    alg = Algebra.cga3d()
+    dh_home = [
+        (0.0, 1.0, 0.2, 0.0),
+        (math.pi / 2, 0.5, 0.0, 0.0),
+        (0.0, 0.3, 0.1, 0.0),
+    ]
+    joint_values = np.array([0.4, -0.2, 0.7])
+    model = robo.model_from_dh(dh_home)
+    dh_active = [
+        (alpha, a, d, float(theta))
+        for (alpha, a, d, _), theta in zip(dh_home, joint_values, strict=True)
+    ]
+
+    from_dh = robo.fk(alg, dh_active)
+    from_model = robo.fk_model(alg, model, joint_values)
+
+    assert len(from_model) == len(from_dh)
+    assert_allclose(from_model[-1]["position"], from_dh[-1]["position"], atol=1e-12)
+    assert_allclose(
+        robo.motor_to_matrix(from_model[-1]["motor"], alg),
+        robo.motor_to_matrix(from_dh[-1]["motor"], alg),
+        atol=1e-12,
+    )
+
+
+def test_model_fk_prismatic_matches_dh_fk() -> None:
+    alg = Algebra.cga3d()
+    dh_home = [(0.0, 0.0, 0.0, 0.0), (0.0, 1.0, 0.0, 0.0)]
+    joint_types = ["prismatic", "revolute"]
+    model = robo.model_from_dh(dh_home, joint_types=joint_types)
+    joint_values = np.array([0.5, 0.3])
+    dh_active = [(0.0, 0.0, 0.5, 0.0), (0.0, 1.0, 0.0, 0.3)]
+
+    from_dh = robo.fk(alg, dh_active, joint_types=joint_types)
+    from_model = robo.fk_model(alg, model, joint_values)
+
+    assert_allclose(from_model[-1]["position"], from_dh[-1]["position"], atol=1e-12)
 
 
 def test_fk_two_link_half_pi() -> None:

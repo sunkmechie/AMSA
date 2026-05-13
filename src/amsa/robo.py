@@ -37,6 +37,8 @@ class Joint:
     axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
     origin_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
     origin_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    child_offset_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    child_offset_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +114,8 @@ def load_crobot(path: str | Path) -> RobotModel:
                 axis=tuple(item.get("axis", (0.0, 0.0, 1.0))),
                 origin_xyz=tuple(item.get("origin_xyz", (0.0, 0.0, 0.0))),
                 origin_rpy=tuple(item.get("origin_rpy", (0.0, 0.0, 0.0))),
+                child_offset_xyz=tuple(item.get("child_offset_xyz", (0.0, 0.0, 0.0))),
+                child_offset_rpy=tuple(item.get("child_offset_rpy", (0.0, 0.0, 0.0))),
             )
             for item in data.get("joints", [])
         ),
@@ -136,12 +140,55 @@ def dump_crobot(model: RobotModel) -> dict[str, Any]:
                 "axis": joint.axis,
                 "origin_xyz": joint.origin_xyz,
                 "origin_rpy": joint.origin_rpy,
+                "child_offset_xyz": joint.child_offset_xyz,
+                "child_offset_rpy": joint.child_offset_rpy,
                 "motion": "bivector-generator",
             }
             for joint in model.joints
         ],
         "metadata": dict(model.metadata),
     }
+
+
+def model_from_dh(
+    dh_params: list[tuple[float, float, float, float]],
+    *,
+    joint_types: list[str] | None = None,
+    name: str = "dh_chain",
+) -> RobotModel:
+    """Build an executable draft ``RobotModel`` from DH parameters.
+
+    The resulting model stores each variable joint as a CGA generator axis plus
+    fixed child offsets.  DH is treated as an adapter shape, not as the native
+    execution representation.
+    """
+    n = len(dh_params)
+    joint_types = _validate_joint_types(n, joint_types)
+    links = [Link("base")]
+    joints: list[Joint] = []
+    for i, ((alpha, a, d, theta), kind) in enumerate(zip(dh_params, joint_types, strict=True)):
+        parent = links[-1].name
+        child = f"link_{i + 1}"
+        links.append(Link(child))
+        joints.append(
+            Joint(
+                name=f"joint_{i + 1}",
+                kind=kind,
+                parent=parent,
+                child=child,
+                axis=(0.0, 0.0, 1.0),
+                origin_xyz=(0.0, 0.0, float(d)),
+                origin_rpy=(0.0, 0.0, float(theta) if kind == "prismatic" else 0.0),
+                child_offset_xyz=(float(a), 0.0, 0.0),
+                child_offset_rpy=(float(alpha), 0.0, 0.0),
+            )
+        )
+    return RobotModel(
+        name=name,
+        links=tuple(links),
+        joints=tuple(joints),
+        metadata={"source": "dh", "format": "amsa-crobot-draft"},
+    )
 
 
 def ik(*args: Any, **kwargs: Any) -> Any:
@@ -339,6 +386,90 @@ def fk(
         })
 
     return results
+
+
+def fk_model(
+    alg: Algebra,
+    model: RobotModel,
+    joint_values: np.ndarray | list[float] | tuple[float, ...],
+) -> list[dict[str, object]]:
+    """Forward kinematics for a draft Clifford-native serial ``RobotModel``.
+
+    Each joint is executed as fixed parent attachment motor, variable joint
+    motor, then fixed child attachment motor.  The joint motion itself is
+    generated from the joint axis metadata.
+    """
+    _validate_cga3d(alg)
+    values = np.asarray(joint_values, dtype=float)
+    if values.shape != (len(model.joints),):
+        raise ValueError(f"Expected {len(model.joints)} joint values, got shape {values.shape}.")
+
+    motor: MVArray = alg.scalar(1.0)
+    results: list[dict[str, object]] = []
+    for joint, value in zip(model.joints, values, strict=True):
+        motor = (
+            motor
+            * _fixed_pose_motor(alg, joint.origin_xyz, joint.origin_rpy)
+            * joint_motion_motor(alg, joint, float(value))
+            * _fixed_pose_motor(alg, joint.child_offset_xyz, joint.child_offset_rpy)
+        )
+        results.append({
+            "joint": joint.name,
+            "link": joint.child,
+            "motor": motor,
+            "position": motor_to_position(motor, alg),
+            "orientation": motor_to_quaternion(motor, alg),
+        })
+    return results
+
+
+def joint_motion_motor(alg: Algebra, joint: Joint, value: float) -> MVArray:
+    """Return the variable CGA motor for one draft robot joint."""
+    _validate_cga3d(alg)
+    if joint.kind == "fixed":
+        return alg.scalar(1.0)
+    axis = _unit_axis(joint.axis)
+    if joint.kind == "prismatic":
+        return alg.translate(axis * float(value))
+    if joint.kind == "revolute":
+        return _rotor_about_axis(alg, axis, float(value))
+    raise ValueError(f"Unsupported joint kind: {joint.kind!r}.")
+
+
+def _fixed_pose_motor(
+    alg: Algebra,
+    xyz: tuple[float, float, float],
+    rpy: tuple[float, float, float],
+) -> MVArray:
+    roll, pitch, yaw = rpy
+    motor: MVArray = alg.translate(xyz)
+    if abs(roll) > 1e-15:
+        motor = motor * _rotor_axis(alg, float(roll), "x")
+    if abs(pitch) > 1e-15:
+        motor = motor * _rotor_axis(alg, float(pitch), "y")
+    if abs(yaw) > 1e-15:
+        motor = motor * _rotor_axis(alg, float(yaw), "z")
+    return motor
+
+
+def _unit_axis(axis: tuple[float, float, float]) -> np.ndarray:
+    vector = np.asarray(axis, dtype=float)
+    norm = float(np.linalg.norm(vector))
+    if norm < 1e-12:
+        raise ValueError("Joint axis must be non-zero.")
+    return vector / norm
+
+
+def _rotor_about_axis(alg: Algebra, axis: np.ndarray, angle: float) -> MVArray:
+    e1 = alg.blade("e1")
+    e2 = alg.blade("e2")
+    e3 = alg.blade("e3")
+    bivector = (
+        scale(e2 ^ e3, float(axis[0]))
+        + scale(e3 ^ e1, float(axis[1]))
+        + scale(e1 ^ e2, float(axis[2]))
+    )
+    return alg.exp(scale(bivector, -0.5 * angle))
 
 
 def _rotor_axis(alg: Algebra, angle: float, axis: str) -> MVArray:
@@ -920,12 +1051,15 @@ __all__ = [
     "RobotModel",
     "dump_crobot",
     "fk",
+    "fk_model",
     "ik",
     "ik_cga_spherical_wrist",
     "ik_dls",
     "importurdf",
+    "joint_motion_motor",
     "line_plane",
     "load_crobot",
+    "model_from_dh",
     "motor_to_matrix",
     "motor_to_position",
     "motor_to_quaternion",
