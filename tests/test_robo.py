@@ -1,5 +1,6 @@
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -7,6 +8,8 @@ import pytest
 import amsa.robo as robo
 from amsa import Algebra
 from tests._utils import assert_allclose
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "robotics"
 
 
 def test_planar_two_link_ik_reaches_target() -> None:
@@ -135,6 +138,114 @@ def test_crobot_loads_legacy_motion_string_as_explicit_motion(tmp_path) -> None:
 
     assert loaded.joints[0].motion["kind"] == "revolute"
     assert loaded.joints[0].motion["generator"]["kind"] == "rotation-axis"
+
+
+def test_load_dispatches_urdf_and_crobot(tmp_path) -> None:
+    urdf = tmp_path / "arm.urdf"
+    urdf.write_text(
+        """
+        <robot name="one_joint">
+          <link name="base"/>
+          <link name="tip"/>
+          <joint name="joint1" type="revolute">
+            <parent link="base"/>
+            <child link="tip"/>
+            <axis xyz="0 0 1"/>
+          </joint>
+        </robot>
+        """,
+        encoding="utf-8",
+    )
+    model = robo.load(urdf)
+    crobot = tmp_path / "arm.crobot"
+    crobot.write_text(json.dumps(robo.dump_crobot(model)), encoding="utf-8")
+
+    assert robo.load(urdf, type="urdf").name == "one_joint"
+    assert robo.load(crobot).name == "one_joint"
+
+
+def test_ur5_urdf_fk_matches_dh_reference() -> None:
+    alg = Algebra.cga3d()
+    model = robo.load(FIXTURES / "ur5_dh_kinematic.urdf", type="urdf")
+    q = np.array([0.45, -1.05, 0.85, -0.35, 0.65, -0.40])
+    dh = [
+        (math.pi / 2, 0.0, 0.089159, q[0]),
+        (0.0, -0.42500, 0.0, q[1]),
+        (0.0, -0.39225, 0.0, q[2]),
+        (math.pi / 2, 0.0, 0.10915, q[3]),
+        (-math.pi / 2, 0.0, 0.09465, q[4]),
+        (0.0, 0.0, 0.08230, q[5]),
+    ]
+
+    assert [joint.name for joint in robo.active_joints(model)] == [
+        "shoulder_pan_joint",
+        "shoulder_lift_joint",
+        "elbow_joint",
+        "wrist_1_joint",
+        "wrist_2_joint",
+        "wrist_3_joint",
+    ]
+
+    from_urdf = robo.fk_model(alg, model, q)[-1]
+    from_dh = robo.fk(alg, dh)[-1]
+
+    assert_allclose(from_urdf["position"], from_dh["position"], atol=1e-12)
+    assert_allclose(
+        robo.motor_to_matrix(from_urdf["motor"], alg),
+        robo.motor_to_matrix(from_dh["motor"], alg),
+        atol=1e-12,
+    )
+
+
+def test_ur5_urdf_loaded_target_can_feed_existing_dh_ik_solver() -> None:
+    alg = Algebra.cga3d()
+    model = robo.load(FIXTURES / "ur5_dh_kinematic.urdf")
+    target_q = np.array([0.45, -1.05, 0.85, -0.35, 0.65, -0.40])
+    target_motor = robo.fk_model(alg, model, target_q)[-1]["motor"]
+    dh_home = [
+        (math.pi / 2, 0.0, 0.089159, 0.0),
+        (0.0, -0.42500, 0.0, 0.0),
+        (0.0, -0.39225, 0.0, 0.0),
+        (math.pi / 2, 0.0, 0.10915, 0.0),
+        (-math.pi / 2, 0.0, 0.09465, 0.0),
+        (0.0, 0.0, 0.08230, 0.0),
+    ]
+
+    result = robo.ik(
+        alg,
+        dh_home,
+        target_motor,
+        solver="cga_spherical_wrist",
+        joint_limits=[(-2.0 * math.pi, 2.0 * math.pi)] * 6,
+        position_tolerance=1e-8,
+        orientation_tolerance=1e-8,
+        max_iterations=200,
+    )
+
+    assert result.success
+    assert_allclose(result.joint_angles, target_q, atol=1e-5)
+
+
+def test_downloaded_franka_panda_urdf_serial_chain_fk() -> None:
+    alg = Algebra.cga3d()
+    model = robo.load(FIXTURES / "franka_panda.urdf", type="urdf")
+    arm = robo.serial_chain(model, "panda_link0", "panda_hand")
+    q = np.array([0.0, -0.4, 0.0, -2.2, 0.0, 2.0, 0.785398163397])
+
+    results = robo.fk_model(alg, arm, q)
+
+    assert [joint.name for joint in robo.active_joints(arm)] == [
+        "panda_joint1",
+        "panda_joint2",
+        "panda_joint3",
+        "panda_joint4",
+        "panda_joint5",
+        "panda_joint6",
+        "panda_joint7",
+    ]
+    assert results[-1]["link"] == "panda_hand"
+    assert np.all(np.isfinite(results[-1]["position"]))
+    assert_allclose(np.linalg.norm(results[-1]["orientation"]), 1.0, atol=1e-12)
 
 
 # -- DH-parameterized FK tests -------------------------------------------------

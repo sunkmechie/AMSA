@@ -91,6 +91,10 @@ def importurdf(path: str | Path) -> RobotModel:
                     origin.attrib.get("rpy") if origin is not None else None,
                     (0.0, 0.0, 0.0),
                 ),
+                motion=_default_joint_motion(
+                    node.attrib.get("type", "fixed"),
+                    _triple(axis.attrib.get("xyz") if axis is not None else None, (0.0, 0.0, 1.0)),
+                ),
             )
         )
     return RobotModel(
@@ -98,6 +102,20 @@ def importurdf(path: str | Path) -> RobotModel:
         links=links,
         joints=tuple(joints),
     )
+
+
+def load(path: str | Path, *, type: str | None = None) -> RobotModel:
+    """Load a robot model and normalize it to AMSA's draft ``RobotModel``.
+
+    Supported formats are ``"urdf"`` and ``"crobot"``.  When ``type`` is not
+    provided, the format is inferred from the file extension.
+    """
+    resolved_type = type or Path(path).suffix.lstrip(".").lower()
+    if resolved_type == "urdf":
+        return importurdf(path)
+    if resolved_type == "crobot":
+        return load_crobot(path)
+    raise ValueError(f"Unsupported robot model type: {resolved_type!r}.")
 
 
 def load_crobot(path: str | Path) -> RobotModel:
@@ -453,9 +471,7 @@ def fk_model(
     generated from the joint axis metadata.
     """
     _validate_cga3d(alg)
-    values = np.asarray(joint_values, dtype=float)
-    if values.shape != (len(model.joints),):
-        raise ValueError(f"Expected {len(model.joints)} joint values, got shape {values.shape}.")
+    values = _resolve_model_joint_values(model, joint_values)
 
     motor: MVArray = alg.scalar(1.0)
     results: list[dict[str, object]] = []
@@ -474,6 +490,60 @@ def fk_model(
             "orientation": motor_to_quaternion(motor, alg),
         })
     return results
+
+
+def active_joints(model: RobotModel) -> tuple[Joint, ...]:
+    """Return joints that consume a model-level joint parameter."""
+    return tuple(joint for joint in model.joints if _joint_motion(joint).get("kind") != "fixed")
+
+
+def serial_chain(model: RobotModel, base_link: str, tip_link: str) -> RobotModel:
+    """Extract a single parent-to-child joint path from a loaded robot model."""
+    by_child = {joint.child: joint for joint in model.joints}
+    chain: list[Joint] = []
+    current = tip_link
+    while current != base_link:
+        joint = by_child.get(current)
+        if joint is None:
+            raise ValueError(f"No joint path from {base_link!r} to {tip_link!r}.")
+        chain.append(joint)
+        current = joint.parent
+    chain.reverse()
+
+    link_names = [base_link]
+    link_names.extend(joint.child for joint in chain)
+    available_links = {link.name for link in model.links}
+    links = tuple(Link(name) for name in link_names if name in available_links)
+    return RobotModel(
+        name=f"{model.name}:{base_link}->{tip_link}",
+        links=links,
+        joints=tuple(chain),
+        metadata={**model.metadata, "source_model": model.name},
+    )
+
+
+def _resolve_model_joint_values(
+    model: RobotModel,
+    joint_values: np.ndarray | list[float] | tuple[float, ...],
+) -> np.ndarray:
+    values = np.asarray(joint_values, dtype=float)
+    active_count = len(active_joints(model))
+    if values.shape == (len(model.joints),):
+        return values
+    if values.shape != (active_count,):
+        raise ValueError(
+            f"Expected {active_count} active joint values or {len(model.joints)} total joint "
+            f"values, got shape {values.shape}."
+        )
+
+    expanded = np.zeros(len(model.joints), dtype=float)
+    cursor = 0
+    for i, joint in enumerate(model.joints):
+        if _joint_motion(joint).get("kind") == "fixed":
+            continue
+        expanded[i] = values[cursor]
+        cursor += 1
+    return expanded
 
 
 def joint_motion_motor(alg: Algebra, joint: Joint, value: float) -> MVArray:
@@ -1119,6 +1189,7 @@ __all__ = [
     "importurdf",
     "joint_motion_motor",
     "line_plane",
+    "load",
     "load_crobot",
     "model_from_dh",
     "motor_to_matrix",
@@ -1126,6 +1197,7 @@ __all__ = [
     "motor_to_quaternion",
     "planar_two_link_ik",
     "point_circle_projection",
+    "serial_chain",
     "sphere_sphere",
 ]
 

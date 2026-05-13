@@ -12,7 +12,7 @@ Current API
 
    import amsa.robo as robo
 
-   model = robo.importurdf("robot.urdf")
+   model = robo.load("robot.urdf", type="urdf")
    data = robo.dump_crobot(model)
    q1, q2 = robo.ik((1.0, 1.0), (1.0, 1.0), solver="planar_two_link")
 
@@ -24,6 +24,7 @@ Current API
 Current scope:
 
 - ``Link``, ``Joint``, and ``RobotModel`` dataclasses.
+- ``load(path, type="urdf" | "crobot")`` as the high-level model loader.
 - ``importurdf(path)`` for URDF topology import.
 - ``dump_crobot(model)`` and ``load_crobot(path)`` for the draft Clifford-native
   robot JSON shape.
@@ -268,6 +269,24 @@ The runnable example
 ``examples/robotics/cga_ik_ur5_solver_comparison.py`` compares these surfaces
 on UR5 geometry: DLS solves the full end-effector pose, while the CGA primitive
 solvers recover elbow geometry from the same target chain.
+
+Model loading
+-------------
+
+``robo.load(path, type=...)`` normalizes supported robot file formats to the
+draft ``RobotModel``/``.crobot`` shape:
+
+.. code-block:: python
+
+   model = robo.load("arm.urdf", type="urdf")
+   q = [0.0] * len(robo.active_joints(model))
+   chain = robo.fk_model(alg, model, q)
+
+The loader currently supports ``"urdf"`` and ``"crobot"``.  URDF fixed joints
+remain in the serial chain and contribute their motors, but they do not consume
+entries from the model-level joint vector.  Future SRDF and MJCF adapters should
+follow the same rule: parse external format metadata, then normalize into the
+Clifford-native model before execution.
 
 Draft ``.crobot`` direction
 ---------------------------

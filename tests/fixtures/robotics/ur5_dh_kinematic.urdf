@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<!--
+  UR5 kinematic-chain fixture using the UR5 DH dimensions commonly published
+  by Universal Robots and ROS-Industrial examples.  This fixture intentionally
+  contains only links and joints needed for FK/IK regression tests; visual,
+  collision, inertial, mimic, and transmission data are omitted.
+-->
+<robot name="ur5_dh_kinematic">
+  <link name="base"/>
+  <link name="j1"/>
+  <link name="l1"/>
+  <link name="j2"/>
+  <link name="l2"/>
+  <link name="j3"/>
+  <link name="l3"/>
+  <link name="j4"/>
+  <link name="l4"/>
+  <link name="j5"/>
+  <link name="l5"/>
+  <link name="j6"/>
+  <link name="tool0"/>
+
+  <joint name="shoulder_pan_joint" type="revolute">
+    <parent link="base"/>
+    <child link="j1"/>
+    <origin xyz="0 0 0.089159" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="shoulder_pan_offset" type="fixed">
+    <parent link="j1"/>
+    <child link="l1"/>
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0 0"/>
+  </joint>
+
+  <joint name="shoulder_lift_joint" type="revolute">
+    <parent link="l1"/>
+    <child link="j2"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="shoulder_lift_offset" type="fixed">
+    <parent link="j2"/>
+    <child link="l2"/>
+    <origin xyz="-0.425 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="elbow_joint" type="revolute">
+    <parent link="l2"/>
+    <child link="j3"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="elbow_offset" type="fixed">
+    <parent link="j3"/>
+    <child link="l3"/>
+    <origin xyz="-0.39225 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="wrist_1_joint" type="revolute">
+    <parent link="l3"/>
+    <child link="j4"/>
+    <origin xyz="0 0 0.10915" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="wrist_1_offset" type="fixed">
+    <parent link="j4"/>
+    <child link="l4"/>
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0 0"/>
+  </joint>
+
+  <joint name="wrist_2_joint" type="revolute">
+    <parent link="l4"/>
+    <child link="j5"/>
+    <origin xyz="0 0 0.09465" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="wrist_2_offset" type="fixed">
+    <parent link="j5"/>
+    <child link="l5"/>
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0"/>
+  </joint>
+
+  <joint name="wrist_3_joint" type="revolute">
+    <parent link="l5"/>
+    <child link="j6"/>
+    <origin xyz="0 0 0.0823" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+  </joint>
+  <joint name="wrist_3_offset" type="fixed">
+    <parent link="j6"/>
+    <child link="tool0"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+</robot>
