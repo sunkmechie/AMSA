@@ -39,8 +39,8 @@ The optimized path should move in phases:
 Robotics Boundary
 -----------------
 
-``amsa.robo`` should not depend on IR internals.  It should consume public AMSA
-constructors, operations, and eventually public autodiff helpers.  This keeps a
-future standalone ``amsa-robo`` package clean: robot loaders and solvers can
-depend on AMSA as a Clifford engine, while AMSA's core IR remains independent of
+The standalone ``amsa-robo`` package (available separately) should not depend on IR
+internals.  It should consume public AMSA constructors, operations, and eventually
+public autodiff helpers.  This keeps ``amsa-robo`` clean: robot loaders and solvers
+can depend on AMSA as a Clifford engine, while AMSA's core IR remains independent of
 robot file formats such as URDF, SRDF, and MJCF.
