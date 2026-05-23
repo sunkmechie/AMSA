@@ -3,8 +3,8 @@
 project = "AMSA"
 copyright = "2026, Surya Sunkara"
 author = "Surya Sunkara"
-version = "0.2.1"
-release = "0.2.1"
+version = "0.2.3"
+release = "0.2.3"
 
 extensions = [
     "sphinx.ext.autodoc",

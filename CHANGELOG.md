@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-05-23
+
+### Added
+- PGA and VGA support in `alg.classify()` — ideal points, normalized Euclidean
+  points, lines, planes, motors, rotors, translators, even versors
+- VGA even-versor detection in classification
+- Naive forward-mode autodiff: `DualMV`, `directional_derivative()`, `forward_grad()`
+- `motor_exp()` and `motor_log()` CGA support for scalar+bivector Euclidean motors
+
+### Removed
+- **`amsa.robo` subpackage — split into the standalone `amsa-robo` package.**
+
+
 ## [0.2.2] - 2026-05-02
 
 ### Added
