@@ -11,6 +11,7 @@ SRC = ROOT / "src" / "amsa"
 BOUNDARY_CLASSIFICATION = {
     "src/amsa/__init__.py": "package wiring",
     "src/amsa/algebra.py": "construction/coercion pending backend routing",
+    "src/amsa/autodiff.py": "reference forward-mode autodiff",
     "src/amsa/backends/__init__.py": "backend namespace",
     "src/amsa/backends/jax.py": "backend execution",
     "src/amsa/backends/numpy.py": "backend execution",
@@ -23,7 +24,6 @@ BOUNDARY_CLASSIFICATION = {
     "src/amsa/ops.py": "public ops pending fuller IR routing",
     "src/amsa/plans.py": "product planning",
     "src/amsa/reference.py": "reference execution",
-    "src/amsa/robo.py": "experimental robotics domain layer",
     "src/amsa/specs.py": "algebra semantics",
     "src/amsa/storage.py": "storage execution pending backend routing",
 }
@@ -37,19 +37,20 @@ PENDING_EXECUTION_ROUTING = {
 
 EXPECTED_NUMPY_CORE_FILES = {
     "src/amsa/algebra.py",
+    "src/amsa/autodiff.py",
     "src/amsa/backends/numpy.py",
     "src/amsa/cga.py",
     "src/amsa/inspection.py",
     "src/amsa/mv.py",
     "src/amsa/ops.py",
     "src/amsa/reference.py",
-    "src/amsa/robo.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }
 
 EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/algebra.py",
+    "src/amsa/autodiff.py",
     "src/amsa/backends/jax.py",
     "src/amsa/backends/numpy.py",
     "src/amsa/cga.py",
@@ -61,7 +62,6 @@ EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/ops.py",
     "src/amsa/plans.py",
     "src/amsa/reference.py",
-    "src/amsa/robo.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }

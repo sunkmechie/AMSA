@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from amsa.algebra import Algebra
+from amsa.autodiff import DualMV, directional_derivative, forward_grad
 
 # Register the NumPy IR backend as the default execution engine.
 from amsa.backends.numpy import NumpyBackend
@@ -89,10 +90,13 @@ init(use="cpu")
 __all__ = [
     "Algebra",
     "AlgebraSpec",
+    "DualMV",
     "EntityInfo",
     "MVArray",
     "MVLayout",
     "get_device",
+    "directional_derivative",
+    "forward_grad",
     "init",
     "add",
     "anticommutator_product",
