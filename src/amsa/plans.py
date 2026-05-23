@@ -29,6 +29,8 @@ OpKind = Literal[
     "left_contraction",
     "right_contraction",
     "regressive",
+    "commutator",
+    "anticommutator",
 ]
 
 _LAYOUT_NAMES: dict[OpKind, str] = {
@@ -39,6 +41,8 @@ _LAYOUT_NAMES: dict[OpKind, str] = {
     "left_contraction": "lc",
     "right_contraction": "rc",
     "regressive": "rp",
+    "commutator": "comm",
+    "anticommutator": "acomm",
 }
 
 
@@ -115,6 +119,72 @@ def _include_term_grades(
     if kind == "right_contraction":
         return lhs_grade >= rhs_grade and out_grade == lhs_grade - rhs_grade
     raise ValueError(f"Unsupported operator kind: {kind}")
+
+
+def _build_commutator_plan(
+    algebra: AlgebraSpec,
+    lhs_blades: tuple[int, ...],
+    rhs_blades: tuple[int, ...],
+    *,
+    kind: OpKind,
+) -> OpPlan:
+    """Build a plan for commutator or anticommutator.
+
+    Computes gp(a,b) and gp(b,a) for each blade pair, then combines
+    coefficients: ``(c_direct ± c_reverse) / 2``.  The result is always
+    integer because both coefficients are ±1.
+    """
+    table = algebra.basis_product_table
+    support: set[int] = set()
+    terms: list[ProductTerm] = []
+    sign: int = -1 if kind == "commutator" else 1
+
+    if table is not None:
+        for lhs_index, lhs_blade in enumerate(lhs_blades):
+            for rhs_index, rhs_blade in enumerate(rhs_blades):
+                c_direct = int(table.coefficients[lhs_blade, rhs_blade])
+                if c_direct == 0:
+                    continue
+                out_blade = int(table.output_blades[lhs_blade, rhs_blade])
+                c_reverse = int(table.coefficients[rhs_blade, lhs_blade])
+                combined = (c_direct + sign * c_reverse) // 2
+                if combined != 0:
+                    support.add(out_blade)
+                    terms.append(
+                        ProductTerm(
+                            lhs_index=lhs_index,
+                            rhs_index=rhs_index,
+                            out_blade=out_blade,
+                            coefficient=combined,
+                        )
+                    )
+    else:
+        for lhs_index, lhs_blade in enumerate(lhs_blades):
+            for rhs_index, rhs_blade in enumerate(rhs_blades):
+                c_direct, out_blade = algebra.blade_product(lhs_blade, rhs_blade)
+                if c_direct == 0:
+                    continue
+                c_reverse, _ = algebra.blade_product(rhs_blade, lhs_blade)
+                combined = (c_direct + sign * c_reverse) // 2
+                if combined != 0:
+                    support.add(out_blade)
+                    terms.append(
+                        ProductTerm(
+                            lhs_index=lhs_index,
+                            rhs_index=rhs_index,
+                            out_blade=out_blade,
+                            coefficient=combined,
+                        )
+                    )
+
+    return OpPlan(
+        kind=kind,
+        algebra=algebra,
+        lhs_blades=lhs_blades,
+        rhs_blades=rhs_blades,
+        output_blades=tuple(sorted(support)),
+        terms=tuple(terms),
+    )
 
 
 def _build_regressive_plan(
@@ -204,6 +274,8 @@ def build_op_plan(
 ) -> OpPlan:
     if kind == "regressive":
         return _build_regressive_plan(algebra, lhs_blades, rhs_blades)
+    if kind in ("commutator", "anticommutator"):
+        return _build_commutator_plan(algebra, lhs_blades, rhs_blades, kind=kind)
 
     table = algebra.basis_product_table
     support: set[int] = set()

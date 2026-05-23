@@ -473,6 +473,8 @@ def _product_ir_layout_name(kind: OpKind) -> str:
         "left_contraction": "lc",
         "right_contraction": "rc",
         "regressive": "rp",
+        "commutator": "comm",
+        "anticommutator": "acomm",
     }[kind]
 
 

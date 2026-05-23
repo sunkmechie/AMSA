@@ -767,7 +767,9 @@ def test_reference_execution_consumes_csr_inputs_without_dense_materialization(
 
     actual = geometric_product(lhs, rhs)
 
-    assert actual.storage_kind == "dense"
+    assert actual.storage_kind == "csr"
+    assert isinstance(actual.storage, CSRStorage)
+    monkeypatch.undo()
     assert_mv_allclose(actual, expected)
 
 
@@ -815,6 +817,52 @@ def test_csr_add_sub_preserve_storage_without_dense_materialization(
     np.testing.assert_array_equal(added.storage._payload.indices, np.array([0]))
     np.testing.assert_array_equal(subtracted.storage._payload.data, np.array([-2.0, 4.0]))
     np.testing.assert_array_equal(subtracted.storage._payload.indices, np.array([0, 1]))
+
+
+def test_csr_product_preserves_csr_output_without_dense_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    algebra = Algebra.vga2d()
+    layout = MVLayout.sparse_pattern(algebra.spec, (1, 2), name="vectors")
+    lhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([1.0, 2.0]),
+            np.array([0, 1]),
+            np.array([0, 1, 2]),
+            batch_shape=(2,),
+            width=layout.size,
+        ),
+    )
+    rhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([3.0, 4.0]),
+            np.array([0, 1]),
+            np.array([0, 2]),
+            batch_shape=(),
+            width=layout.size,
+        ),
+    )
+    expected = _naive_binary_product(
+        lhs.with_storage("dense"),
+        rhs.with_storage("dense"),
+        kind="geometric",
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("CSR product should not densify CSR storage")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    actual = geometric_product(lhs, rhs)
+
+    assert actual.storage_kind == "csr"
+    assert isinstance(actual.storage, CSRStorage)
+    monkeypatch.undo()
+    assert_mv_allclose(actual, expected)
 
 
 @pytest.mark.parametrize(

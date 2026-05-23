@@ -310,21 +310,23 @@ def extract_plane(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
 def extract_line(mv: MVArray) -> tuple[np.ndarray, np.ndarray]:
     """Return ``(point, direction)`` from a direct CGA3D line."""
     alg = Algebra(mv.algebra)
-    if _euclidean_dimension(alg) != 3:
+    n = _euclidean_dimension(alg)
+    if n != 3:
         raise ValueError("extract_line() currently requires cga3d.")
+    e_plus = 1 << n
+    e_minus = 1 << (n + 1)
     direction = np.array([
-        mv.component("e145"),
-        mv.component("e245"),
-        mv.component("e345"),
+        mv.component((1 << i) | e_plus | e_minus) for i in range(n)
     ], dtype=float)
     direction_norm_sq = float(np.dot(direction, direction))
     if direction_norm_sq < 1e-24:
         raise ValueError("Cannot extract geometry from a degenerate CGA line.")
-    moment = np.array([
-        0.5 * (mv.component("e234") + mv.component("e235")),
-        -0.5 * (mv.component("e134") + mv.component("e135")),
-        0.5 * (mv.component("e124") + mv.component("e125")),
-    ], dtype=float)
+    moment = np.zeros(3, dtype=float)
+    for idx, i in enumerate([(1, 2), (2, 0), (0, 1)]):
+        blade_plus = (1 << i[0]) | (1 << i[1]) | e_plus
+        blade_minus = (1 << i[0]) | (1 << i[1]) | e_minus
+        sign = 0.5 if idx != 1 else -0.5
+        moment[idx] = sign * float(mv.component(blade_plus) + mv.component(blade_minus))
     point_on_line = np.cross(direction, moment) / direction_norm_sq
     return point_on_line, direction
 

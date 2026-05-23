@@ -29,6 +29,7 @@ from amsa.ir import (
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.storage import (
+    CSRStorage,
     add_storage,
     coefficient_magnitude_squared_storage,
     gather_storage_columns,
@@ -40,21 +41,86 @@ from amsa.storage import (
 )
 
 
+def _broadcast_csr_rows(storage: CSRStorage, batch_shape: tuple[int, ...]) -> np.ndarray:
+    rows = np.arange(storage.row_count, dtype=np.intp).reshape(storage.batch_shape)
+    return np.broadcast_to(rows, batch_shape).reshape(-1)
+
+
+def _csr_row_values(storage: CSRStorage, row: int) -> dict[int, Any]:
+    start = int(storage._payload.indptr[row])
+    stop = int(storage._payload.indptr[row + 1])
+    return {
+        int(storage._payload.indices[offset]): storage._payload.data[offset]
+        for offset in range(start, stop)
+    }
+
+
+def _execute_csr_product_ir(
+    lhs: MVArray,
+    rhs: MVArray,
+    ir: ProductIR,
+) -> MVArray:
+    assert isinstance(lhs.storage, CSRStorage)
+    assert isinstance(rhs.storage, CSRStorage)
+    batch_shape = np.broadcast_shapes(lhs.batch_shape, rhs.batch_shape)
+    layout = output_layout_from_product_ir(ir, lhs.algebra)
+    dtype = np.dtype(np.result_type(lhs.dtype, rhs.dtype))
+    row_count = int(np.prod(batch_shape, dtype=np.intp))
+    lhs_rows = _broadcast_csr_rows(lhs.storage, batch_shape)
+    rhs_rows = _broadcast_csr_rows(rhs.storage, batch_shape)
+
+    data_values: list[Any] = []
+    index_values: list[int] = []
+    indptr = np.zeros(row_count + 1, dtype=np.intp)
+
+    nnz = 0
+    for out_row, (lhs_row, rhs_row) in enumerate(zip(lhs_rows, rhs_rows, strict=True)):
+        lhs_values = _csr_row_values(lhs.storage, int(lhs_row))
+        rhs_values = _csr_row_values(rhs.storage, int(rhs_row))
+        out_values: dict[int, Any] = {}
+
+        for term in ir.terms:
+            lhs_value = lhs_values.get(term.lhs_col)
+            if lhs_value is None:
+                continue
+            rhs_value = rhs_values.get(term.rhs_col)
+            if rhs_value is None:
+                continue
+            out_values[term.out_col] = out_values.get(
+                term.out_col, dtype.type(0)
+            ) + term.coefficient * lhs_value * rhs_value
+
+        for column in sorted(out_values):
+            value = out_values[column]
+            if value == 0:
+                continue
+            index_values.append(column)
+            data_values.append(value)
+            nnz += 1
+        indptr[out_row + 1] = nnz
+
+    storage = CSRStorage(
+        np.asarray(data_values, dtype=dtype),
+        np.asarray(index_values, dtype=np.intp),
+        indptr,
+        batch_shape=batch_shape,
+        width=layout.size,
+        dtype=dtype,
+    )
+    return MVArray(algebra=lhs.algebra, layout=layout, storage=storage)
+
+
 def execute_product_ir(
     lhs: MVArray,
     rhs: MVArray,
     ir: ProductIR,
 ) -> MVArray:
-    """Execute a ``ProductIR`` using NumPy broadcasting.
+    """Execute a ``ProductIR`` using NumPy broadcasting."""
+    if isinstance(lhs.storage, CSRStorage) and isinstance(rhs.storage, CSRStorage):
+        return _execute_csr_product_ir(lhs, rhs, ir)
 
-    This is the IR-native counterpart to ``reference.execute_binary_plan``.
-    Where the reference executor works from ``OpPlan`` (blade-indexed), this
-    function works from ``ProductIR`` (column-indexed) so that backends
-    operate directly on storage layout slots.
-    """
     batch_shape = np.broadcast_shapes(lhs.batch_shape, rhs.batch_shape)
 
-    # Gather the minimal set of columns from each operand.
     lhs_columns = tuple(dict.fromkeys(term.lhs_col for term in ir.terms))
     rhs_columns = tuple(dict.fromkeys(term.rhs_col for term in ir.terms))
     lhs_values = gather_storage_columns(lhs.storage, lhs_columns, batch_shape=batch_shape)

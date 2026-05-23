@@ -13,6 +13,7 @@ from amsa.storage import (
     add_storage,
     coefficient_magnitude_squared_storage,
     gather_storage_columns,
+    index_csr_storage,
     project_storage,
     reweight_storage,
     row_scale_storage,
@@ -414,3 +415,84 @@ def test_csr_validation_rejects_non_increasing_row_indices() -> None:
             batch_shape=(2,),
             width=2,
         )
+
+
+def test_csr_indexing_preserves_csr_without_densifying(monkeypatch: pytest.MonkeyPatch) -> None:
+    csr = CSRStorage(
+        data=np.array([1.0, 2.0, 3.0, 4.0]),
+        indices=np.array([0, 2, 1, 2]),
+        indptr=np.array([0, 2, 3, 4]),
+        batch_shape=(3,),
+        width=3,
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("CSR indexing should not densify")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    sliced = index_csr_storage(csr, slice(1, None))
+    selected = index_csr_storage(csr, 0)
+
+    assert isinstance(sliced, CSRStorage)
+    assert isinstance(selected, CSRStorage)
+    assert sliced.batch_shape == (2,)
+    assert selected.batch_shape == ()
+    np.testing.assert_array_equal(sliced._payload.data, np.array([3.0, 4.0]))
+    np.testing.assert_array_equal(sliced._payload.indices, np.array([1, 2]))
+    np.testing.assert_array_equal(selected._payload.data, np.array([1.0, 2.0]))
+    np.testing.assert_array_equal(selected._payload.indices, np.array([0, 2]))
+
+
+def test_csr_add_broadcast_preserves_csr_without_densifying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lhs = CSRStorage(
+        data=np.array([1.0]),
+        indices=np.array([0]),
+        indptr=np.array([0, 1]),
+        batch_shape=(),
+        width=2,
+    )
+    rhs = CSRStorage(
+        data=np.array([2.0, 3.0]),
+        indices=np.array([1, 0]),
+        indptr=np.array([0, 1, 2]),
+        batch_shape=(2,),
+        width=2,
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("CSR broadcast add should not densify")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    added = add_storage(lhs, rhs)
+
+    assert isinstance(added, CSRStorage)
+    assert added.batch_shape == (2,)
+    np.testing.assert_array_equal(added._payload.indptr, np.array([0, 2, 3]))
+    np.testing.assert_array_equal(added._payload.indices, np.array([0, 1, 0]))
+    np.testing.assert_array_equal(added._payload.data, np.array([1.0, 2.0, 4.0]))
+
+
+def test_mixed_dense_csr_add_does_not_call_csr_as_dense(monkeypatch: pytest.MonkeyPatch) -> None:
+    dense = DenseStorage.from_array(np.array([[10.0, 20.0], [30.0, 40.0]]))
+    csr = CSRStorage(
+        data=np.array([1.0, 2.0]),
+        indices=np.array([0, 1]),
+        indptr=np.array([0, 2]),
+        batch_shape=(),
+        width=2,
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("mixed dense/CSR add should not densify CSR")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    added = add_storage(dense, csr)
+    subtracted = sub_storage(csr, dense)
+
+    np.testing.assert_array_equal(added.as_dense(), np.array([[11.0, 22.0], [31.0, 42.0]]))
+    np.testing.assert_array_equal(subtracted.as_dense(), np.array([[-9.0, -18.0], [-29.0, -38.0]]))

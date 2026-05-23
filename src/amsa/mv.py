@@ -132,17 +132,15 @@ class MVArray:
 
     def __getitem__(self, key: Any) -> MVArray:
         """Index or slice the multivector batch."""
-        from amsa.storage import DenseStorage, index_dense_storage
-        
+        from amsa.storage import CSRStorage, DenseStorage, index_csr_storage, index_dense_storage
+
         if isinstance(self.storage, DenseStorage):
             new_storage = index_dense_storage(self.storage, key)
             return MVArray(self.algebra, self.layout, storage=new_storage)
-        
-        # Fallback for CSR or other storage: convert to dense for now
-        # TODO: Implement sparse-aware indexing in storage.py
-        dense_storage = self.with_storage("dense").storage.as_dense()
-        new_array = dense_storage[key]
-        return MVArray(self.algebra, self.layout, storage=DenseStorage.from_array(new_array))
+        if isinstance(self.storage, CSRStorage):
+            new_storage = index_csr_storage(self.storage, key)
+            return MVArray(self.algebra, self.layout, storage=new_storage)
+        raise TypeError(f"Unsupported storage type: {type(self.storage)!r}")
 
     def copy(self) -> MVArray:
         return MVArray(algebra=self.algebra, layout=self.layout, storage=self.storage.copy())

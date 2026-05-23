@@ -7,6 +7,7 @@ Current scripts:
 - `motor_ops.py` — PGA2d / PGA3d motor `exp` and `log` timing
 - `ir_routing.py` — IR routing overhead for common operations (products, involutions)
 - `storage_backends.py` — Dense vs CSR storage performance comparison
+- `csr_native.py` — CSR-native indexing, broadcast add/sub, and product timing against dense baselines and old densify fallbacks
 - `jax_traceability.py` — NumPy vs dense JAX eager, `jit`, `vmap`, and `grad` comparison
 
 Run from the repo root:
@@ -15,6 +16,7 @@ Run from the repo root:
 ./.venv/bin/python benchmarks/motor_ops.py
 ./.venv/bin/python benchmarks/ir_routing.py
 ./.venv/bin/python benchmarks/storage_backends.py
+./.venv/bin/python benchmarks/csr_native.py
 ./.venv/bin/python benchmarks/jax_traceability.py
 ```
 
@@ -25,6 +27,20 @@ uv run python benchmarks/fusion_comparison.py
 ```
 
 ## Benchmark Results
+
+### CSR Native Paths
+
+The CSR-native benchmark isolates paths that should stay sparse after CSR work:
+
+```bash
+uv run python benchmarks/csr_native.py --batch-size 2048 --number 200 --repeat 7
+```
+
+Use it when changing CSR indexing, broadcast add/sub, or product execution. Compare
+`(csr native)` rows against `old densify fallback` rows for the direct regression
+question, and against `dense baseline` rows to understand Python CSR overhead.
+Tests separately enforce whether the operation preserves CSR output.
+
 
 ### Dense JAX Traceability
 
