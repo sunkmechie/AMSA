@@ -16,7 +16,6 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    backends
    operators
    cga
-   robo
    inspection
    viz
    examples
