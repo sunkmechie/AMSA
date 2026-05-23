@@ -26,9 +26,23 @@ StorageKind = Literal["dense", "csr"]
 StorageRequest = Literal["auto", "dense", "csr"]
 
 
+_JAX_ARRAY_TYPE: Any = None
+
+
+def _get_jax_array_type() -> Any:
+    global _JAX_ARRAY_TYPE
+    if _JAX_ARRAY_TYPE is None:
+        try:
+            from jax import Array
+            _JAX_ARRAY_TYPE = Array
+        except ImportError:
+            _JAX_ARRAY_TYPE = False
+    return _JAX_ARRAY_TYPE
+
+
 def is_jax_array(value: Any) -> bool:
-    module = type(value).__module__.partition(".")[0]
-    return module in {"jax", "jaxlib"}
+    cls = _get_jax_array_type()
+    return cls is not False and isinstance(value, cls)
 
 
 def _normalize_batch_shape(batch_shape: tuple[int, ...]) -> tuple[int, ...]:
