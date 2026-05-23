@@ -374,15 +374,11 @@ def scalar_product(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 
 def commutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
-    ensure_compatible(lhs, rhs)
-    result = geometric_product(lhs, rhs) - geometric_product(rhs, lhs)
-    return scale(result, 0.5)
+    return _execute_binary_product(lhs, rhs, "commutator")
 
 
 def anticommutator_product(lhs: MVArray, rhs: MVArray) -> MVArray:
-    ensure_compatible(lhs, rhs)
-    result = geometric_product(lhs, rhs) + geometric_product(rhs, lhs)
-    return scale(result, 0.5)
+    return _execute_binary_product(lhs, rhs, "anticommutator")
 
 
 def _require_degenerate_algebra(mv: MVArray, *, name: str) -> int:

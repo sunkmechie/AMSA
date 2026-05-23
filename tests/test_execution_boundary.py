@@ -23,7 +23,6 @@ BOUNDARY_CLASSIFICATION = {
     "src/amsa/mv.py": "container/coercion pending backend routing",
     "src/amsa/ops.py": "public ops pending fuller IR routing",
     "src/amsa/plans.py": "product planning",
-    "src/amsa/reference.py": "reference execution",
     "src/amsa/specs.py": "algebra semantics",
     "src/amsa/storage.py": "storage execution pending backend routing",
 }
@@ -43,7 +42,6 @@ EXPECTED_NUMPY_CORE_FILES = {
     "src/amsa/inspection.py",
     "src/amsa/mv.py",
     "src/amsa/ops.py",
-    "src/amsa/reference.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }
@@ -61,7 +59,6 @@ EXPECTED_LOOP_CORE_FILES = {
     "src/amsa/mv.py",
     "src/amsa/ops.py",
     "src/amsa/plans.py",
-    "src/amsa/reference.py",
     "src/amsa/specs.py",
     "src/amsa/storage.py",
 }
