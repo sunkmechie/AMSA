@@ -26,96 +26,7 @@ if TYPE_CHECKING:
 
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
-from amsa.ops import (
-    add as add_op,
-)
-from amsa.ops import (
-    anticommutator_product as anticommutator_product_op,
-)
-from amsa.ops import (
-    bulk as bulk_op,
-)
-from amsa.ops import (
-    bulk_dual as bulk_dual_op,
-)
-from amsa.ops import (
-    bulk_norm as bulk_norm_op,
-)
-from amsa.ops import (
-    bulk_norm_squared as bulk_norm_squared_op,
-)
-from amsa.ops import (
-    bulk_normalize as bulk_normalize_op,
-)
-from amsa.ops import (
-    commutator_product as commutator_product_op,
-)
-from amsa.ops import (
-    divide as divide_op,
-)
-from amsa.ops import (
-    exp as exp_op,
-)
-from amsa.ops import (
-    inner_product as inner_op,
-)
-from amsa.ops import (
-    inverse as inverse_op,
-)
-from amsa.ops import (
-    left_contraction as left_contraction_op,
-)
-from amsa.ops import (
-    motor_exp as motor_exp_op,
-)
-from amsa.ops import (
-    motor_log as motor_log_op,
-)
-from amsa.ops import (
-    norm as norm_op,
-)
-from amsa.ops import (
-    norm_squared as norm_squared_op,
-)
-from amsa.ops import (
-    normalize as normalize_op,
-)
-from amsa.ops import (
-    outer_product as outer_op,
-)
-from amsa.ops import (
-    regressive_product as regressive_product_op,
-)
-from amsa.ops import (
-    right_contraction as right_contraction_op,
-)
-from amsa.ops import (
-    rigid_body_normalize as rigid_body_normalize_op,
-)
-from amsa.ops import (
-    sandwich as sandwich_op,
-)
-from amsa.ops import (
-    scalar_product as scalar_product_op,
-)
-from amsa.ops import (
-    sub as sub_op,
-)
-from amsa.ops import (
-    unitize as unitize_op,
-)
-from amsa.ops import (
-    weight as weight_op,
-)
-from amsa.ops import (
-    weight_dual as weight_dual_op,
-)
-from amsa.ops import (
-    weight_norm as weight_norm_op,
-)
-from amsa.ops import (
-    weight_norm_squared as weight_norm_squared_op,
-)
+from amsa import ops
 from amsa.specs import AlgebraSpec
 from amsa.specs import cga2d as cga2d_spec
 from amsa.specs import cga3d as cga3d_spec
@@ -493,98 +404,96 @@ class Algebra:
         return lhs * rhs
 
     def outer(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return outer_op(lhs, rhs)
+        return ops.outer_product(lhs, rhs)
 
     def inner(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return inner_op(lhs, rhs)
+        return ops.inner_product(lhs, rhs)
 
     def scalar_product(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return scalar_product_op(lhs, rhs)
+        return ops.scalar_product(lhs, rhs)
 
     def commutator(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return commutator_product_op(lhs, rhs)
+        return ops.commutator_product(lhs, rhs)
 
     def anticommutator(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return anticommutator_product_op(lhs, rhs)
+        return ops.anticommutator_product(lhs, rhs)
 
     def bulk(self, mv: MVArray) -> MVArray:
-        return bulk_op(mv)
+        return ops.bulk(mv)
 
     def weight(self, mv: MVArray) -> MVArray:
-        return weight_op(mv)
+        return ops.weight(mv)
 
     def bulk_dual(self, mv: MVArray) -> MVArray:
-        return bulk_dual_op(mv)
+        return ops.bulk_dual(mv)
 
     def weight_dual(self, mv: MVArray) -> MVArray:
-        return weight_dual_op(mv)
+        return ops.weight_dual(mv)
 
     def norm_squared(self, mv: MVArray) -> MVArray:
-        return norm_squared_op(mv)
+        return ops.norm_squared(mv)
 
     def norm(self, mv: MVArray) -> MVArray:
-        return norm_op(mv)
+        return ops.norm(mv)
 
     def normalize(self, mv: MVArray) -> MVArray:
-        return normalize_op(mv)
+        return ops.normalize(mv)
 
     def exp(self, mv: MVArray) -> MVArray:
-        return exp_op(mv)
+        return ops.exp(mv)
 
     def motor_exp(self, mv: MVArray) -> MVArray:
-        return motor_exp_op(mv)
+        return ops.motor_exp(mv)
 
     def motor_log(self, mv: MVArray) -> MVArray:
-        return motor_log_op(mv)
+        return ops.motor_log(mv)
 
     def log(self, mv: MVArray) -> MVArray:
-        from amsa.ops import log as log_op
-
-        return log_op(mv)
+        return ops.log(mv)
 
     def bulk_norm_squared(self, mv: MVArray) -> MVArray:
-        return bulk_norm_squared_op(mv)
+        return ops.bulk_norm_squared(mv)
 
     def bulk_norm(self, mv: MVArray) -> MVArray:
-        return bulk_norm_op(mv)
+        return ops.bulk_norm(mv)
 
     def weight_norm_squared(self, mv: MVArray) -> MVArray:
-        return weight_norm_squared_op(mv)
+        return ops.weight_norm_squared(mv)
 
     def weight_norm(self, mv: MVArray) -> MVArray:
-        return weight_norm_op(mv)
+        return ops.weight_norm(mv)
 
     def bulk_normalize(self, mv: MVArray) -> MVArray:
-        return bulk_normalize_op(mv)
+        return ops.bulk_normalize(mv)
 
     def unitize(self, mv: MVArray) -> MVArray:
-        return unitize_op(mv)
+        return ops.unitize(mv)
 
     def rigid_body_normalize(self, mv: MVArray) -> MVArray:
-        return rigid_body_normalize_op(mv)
+        return ops.rigid_body_normalize(mv)
 
     def left_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return left_contraction_op(lhs, rhs)
+        return ops.left_contraction(lhs, rhs)
 
     def right_contract(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return right_contraction_op(lhs, rhs)
+        return ops.right_contraction(lhs, rhs)
 
     def regress(self, lhs: MVArray, rhs: MVArray) -> MVArray:
-        return regressive_product_op(lhs, rhs)
+        return ops.regressive_product(lhs, rhs)
 
     def sandwich(self, actor: MVArray, target: MVArray) -> MVArray:
-        return sandwich_op(actor, target)
+        return ops.sandwich(actor, target)
 
     def inverse(self, mv: MVArray) -> MVArray:
-        return inverse_op(mv)
+        return ops.inverse(mv)
 
     def add(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
-        return add_op(left, rhs)
+        return ops.add(left, rhs)
 
     def sub(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         left = self.scalar(lhs) if np.isscalar(lhs) else self.multivector(lhs)
-        return sub_op(left, rhs)
+        return ops.sub(left, rhs)
 
     def div(self, lhs: MVArray | Any, rhs: MVArray | Any) -> MVArray:
         if np.isscalar(lhs):
@@ -593,7 +502,7 @@ class Algebra:
             lhs = self.multivector(lhs)
 
         if isinstance(rhs, Number):
-            return divide_op(lhs, rhs)
+            return ops.divide(lhs, rhs)
         if isinstance(rhs, MVArray):
-            return divide_op(lhs, rhs)
-        return divide_op(lhs, self.multivector(rhs))
+            return ops.divide(lhs, rhs)
+        return ops.divide(lhs, self.multivector(rhs))
