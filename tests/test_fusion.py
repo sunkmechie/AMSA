@@ -1,6 +1,12 @@
 """Tests for IR fusion analysis."""
 
-from amsa.fusion import FUSION_PATTERNS, analyze_fusion, apply_fusion_metadata
+from amsa.fusion import (
+    FUSION_PATTERNS,
+    analyze_fusion,
+    apply_fusion_metadata,
+    eliminate_common_subexpressions,
+    optimize_sequence_ir,
+)
 from amsa.ir import IRStep, SequenceIR
 from tests._utils import assert_allclose
 
@@ -305,3 +311,99 @@ def test_fusion_no_opportunity_unchanged():
     # Verify no fusion metadata
     for step in fused_ir.steps:
         assert step.fusion is None
+
+
+def test_eliminate_common_subexpressions_removes_duplicate_steps():
+    ir = SequenceIR(
+        name="duplicate",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_a",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_b",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(kind="add", operands=("scaled_a", "scaled_b"), ir=None, output="result"),
+        ),
+        result="result",
+    )
+
+    optimized = eliminate_common_subexpressions(ir)
+
+    assert len(optimized.steps) == 2
+    assert optimized.steps[1].operands == ("scaled_a", "scaled_a")
+    assert optimized.result == "result"
+
+
+def test_eliminate_common_subexpressions_can_alias_result():
+    ir = SequenceIR(
+        name="duplicate_result",
+        inputs=("input",),
+        steps=(
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_a",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_b",
+                metadata={"factor": 2.0},
+            ),
+        ),
+        result="scaled_b",
+    )
+
+    optimized = eliminate_common_subexpressions(ir)
+
+    assert len(optimized.steps) == 1
+    assert optimized.result == "scaled_a"
+
+
+def test_optimize_sequence_ir_runs_cse_before_fusion():
+    ir = SequenceIR(
+        name="cse_then_fuse",
+        inputs=("input", "other"),
+        steps=(
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_a",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="scale",
+                operands=("input",),
+                ir=None,
+                output="scaled_b",
+                metadata={"factor": 2.0},
+            ),
+            IRStep(
+                kind="binary_product",
+                operands=("scaled_b", "other"),
+                ir=None,
+                output="result",
+            ),
+        ),
+        result="result",
+    )
+
+    optimized = optimize_sequence_ir(ir)
+
+    assert len(optimized.steps) == 2
+    assert optimized.steps[1].operands == ("scaled_a", "other")
+    assert optimized.steps[0].fusion == "scale_product"

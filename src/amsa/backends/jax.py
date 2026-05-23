@@ -26,6 +26,7 @@ except ImportError as err:
         "Install with: uv pip install amsa-ga[jax]"
     ) from err
 
+from amsa.fusion import optimize_sequence_ir
 from amsa.ir import (
     ProductIR,
     SequenceIR,
@@ -163,6 +164,7 @@ def execute_sequence_ir(
     ir: SequenceIR,
 ) -> Any:
     """Execute a ``SequenceIR`` step-by-step using JAX operations."""
+    ir = optimize_sequence_ir(ir)
     env: dict[str, Any] = dict(inputs)
 
     for step in ir.steps:
