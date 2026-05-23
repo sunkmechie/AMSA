@@ -116,6 +116,15 @@ def _validate_csr_row_ordering(
             raise ValueError("CSR row indices must be strictly increasing.")
 
 
+def _broadcast_row_indices(
+    source_batch_shape: tuple[int, ...],
+    target_batch_shape: tuple[int, ...],
+) -> NDArray[np.intp]:
+    row_count = int(prod(source_batch_shape))
+    rows = np.arange(row_count, dtype=np.intp).reshape(source_batch_shape)
+    return np.broadcast_to(rows, target_batch_shape).reshape(-1)
+
+
 class StorageDescriptor(Protocol):
     """Backend-agnostic storage metadata descriptor.
 
@@ -691,19 +700,56 @@ def _add_dense_storage(lhs: MVStorage, rhs: MVStorage, sign: Literal[1, -1]) -> 
     return DenseStorage(_payload=NumPyPayload(array=values))
 
 
-def _add_csr_same_shape(lhs: CSRStorage, rhs: CSRStorage, sign: Literal[1, -1]) -> CSRStorage:
+def _add_dense_csr_storage(
+    dense: DenseStorage,
+    csr: CSRStorage,
+    sign: Literal[1, -1],
+    *,
+    dense_is_lhs: bool,
+) -> DenseStorage:
+    _, batch_shape = _check_binary_storage_compatible(dense, csr)
+    result_dtype = np.dtype(np.result_type(dense.dtype, csr.dtype))
+    values = np.array(
+        np.broadcast_to(dense._payload.array, batch_shape + (dense.width,)),
+        dtype=result_dtype,
+        copy=True,
+    )
+    if not dense_is_lhs:
+        values *= sign
+    csr_rows = _broadcast_row_indices(csr.batch_shape, batch_shape)
+
+    flat_values = values.reshape((-1, dense.width))
+    for target_row, csr_row in enumerate(csr_rows):
+        start = int(csr._payload.indptr[csr_row])
+        stop = int(csr._payload.indptr[csr_row + 1])
+        if start == stop:
+            continue
+        columns = csr._payload.indices[start:stop]
+        csr_values = np.asarray(csr._payload.data[start:stop], dtype=result_dtype)
+        if dense_is_lhs:
+            flat_values[target_row, columns] += sign * csr_values
+        else:
+            flat_values[target_row, columns] += csr_values
+
+    return DenseStorage.from_array(values)
+
+
+def _add_csr_storage(lhs: CSRStorage, rhs: CSRStorage, sign: Literal[1, -1]) -> CSRStorage:
+    _, batch_shape = _check_binary_storage_compatible(lhs, rhs)
     result_dtype = np.dtype(np.result_type(lhs.dtype, rhs.dtype))
     data_values: list[Any] = []
     index_values: list[int] = []
-    indptr = np.zeros(lhs.row_count + 1, dtype=np.intp)
+    indptr = np.zeros(int(prod(batch_shape)) + 1, dtype=np.intp)
+    lhs_rows = _broadcast_row_indices(lhs.batch_shape, batch_shape)
+    rhs_rows = _broadcast_row_indices(rhs.batch_shape, batch_shape)
 
     nnz = 0
-    for row in range(lhs.row_count):
+    for row, (lhs_row, rhs_row) in enumerate(zip(lhs_rows, rhs_rows, strict=True)):
         row_values: dict[int, Any] = {}
-        lhs_start = int(lhs._payload.indptr[row])
-        lhs_stop = int(lhs._payload.indptr[row + 1])
-        rhs_start = int(rhs._payload.indptr[row])
-        rhs_stop = int(rhs._payload.indptr[row + 1])
+        lhs_start = int(lhs._payload.indptr[lhs_row])
+        lhs_stop = int(lhs._payload.indptr[lhs_row + 1])
+        rhs_start = int(rhs._payload.indptr[rhs_row])
+        rhs_stop = int(rhs._payload.indptr[rhs_row + 1])
 
         for offset in range(lhs_start, lhs_stop):
             row_values[int(lhs._payload.indices[offset])] = lhs._payload.data[offset]
@@ -725,7 +771,7 @@ def _add_csr_same_shape(lhs: CSRStorage, rhs: CSRStorage, sign: Literal[1, -1]) 
         np.asarray(data_values, dtype=result_dtype),
         np.asarray(index_values, dtype=np.intp),
         indptr,
-        batch_shape=lhs.batch_shape,
+        batch_shape=batch_shape,
         width=lhs.width,
         dtype=result_dtype,
     )
@@ -734,34 +780,33 @@ def _add_csr_same_shape(lhs: CSRStorage, rhs: CSRStorage, sign: Literal[1, -1]) 
 def add_storage(lhs: MVStorage, rhs: MVStorage) -> MVStorage:
     """Add storage payloads with backend preservation where storage-local."""
     _, batch_shape = _check_binary_storage_compatible(lhs, rhs)
-    if (
-        isinstance(lhs, CSRStorage)
-        and isinstance(rhs, CSRStorage)
-        and lhs.batch_shape == rhs.batch_shape
-    ):
-        return _add_csr_same_shape(lhs, rhs, 1)
-    if batch_shape != lhs.batch_shape or batch_shape != rhs.batch_shape:
-        return _add_dense_storage(lhs, rhs, 1)
+    if isinstance(lhs, CSRStorage) and isinstance(rhs, CSRStorage):
+        return _add_csr_storage(lhs, rhs, 1)
     if isinstance(lhs, DenseStorage) and isinstance(rhs, DenseStorage):
+        if batch_shape != lhs.batch_shape or batch_shape != rhs.batch_shape:
+            return _add_dense_storage(lhs, rhs, 1)
         return DenseStorage(_payload=NumPyPayload(array=lhs._payload.array + rhs._payload.array))
+    if isinstance(lhs, DenseStorage) and isinstance(rhs, CSRStorage):
+        return _add_dense_csr_storage(lhs, rhs, 1, dense_is_lhs=True)
+    if isinstance(lhs, CSRStorage) and isinstance(rhs, DenseStorage):
+        return _add_dense_csr_storage(rhs, lhs, 1, dense_is_lhs=False)
     return _add_dense_storage(lhs, rhs, 1)
 
 
 def sub_storage(lhs: MVStorage, rhs: MVStorage) -> MVStorage:
     """Subtract storage payloads with backend preservation where storage-local."""
     _, batch_shape = _check_binary_storage_compatible(lhs, rhs)
-    if (
-        isinstance(lhs, CSRStorage)
-        and isinstance(rhs, CSRStorage)
-        and lhs.batch_shape == rhs.batch_shape
-    ):
-        return _add_csr_same_shape(lhs, rhs, -1)
-    if batch_shape != lhs.batch_shape or batch_shape != rhs.batch_shape:
-        return _add_dense_storage(lhs, rhs, -1)
+    if isinstance(lhs, CSRStorage) and isinstance(rhs, CSRStorage):
+        return _add_csr_storage(lhs, rhs, -1)
     if isinstance(lhs, DenseStorage) and isinstance(rhs, DenseStorage):
+        if batch_shape != lhs.batch_shape or batch_shape != rhs.batch_shape:
+            return _add_dense_storage(lhs, rhs, -1)
         return DenseStorage(_payload=NumPyPayload(array=lhs._payload.array - rhs._payload.array))
+    if isinstance(lhs, DenseStorage) and isinstance(rhs, CSRStorage):
+        return _add_dense_csr_storage(lhs, rhs, -1, dense_is_lhs=True)
+    if isinstance(lhs, CSRStorage) and isinstance(rhs, DenseStorage):
+        return _add_dense_csr_storage(rhs, lhs, -1, dense_is_lhs=False)
     return _add_dense_storage(lhs, rhs, -1)
-
 
 def coefficient_magnitude_squared_storage(storage: MVStorage) -> NDArray[Any]:
     """Return sum of squared stored coefficients over the coefficient axis."""
@@ -795,3 +840,42 @@ def index_dense_storage(storage: MVStorage, key: Any) -> MVStorage:
     if new_array.ndim == 0:
         raise IndexError("Too many indices for multivector batch.")
     return DenseStorage.from_array(new_array)
+
+
+def index_csr_storage(storage: MVStorage, key: Any) -> MVStorage:
+    """Index or slice CSR storage by flattened batch rows without densifying."""
+    if not isinstance(storage, CSRStorage):
+        raise TypeError("index_csr_storage only supports CSRStorage.")
+
+    row_grid = np.arange(storage.row_count, dtype=np.intp).reshape(storage.batch_shape)
+    selected_rows = row_grid[key]
+    selected_array = np.asarray(selected_rows)
+    if selected_array.ndim == 0:
+        result_batch_shape = ()
+        flat_selected_rows = selected_array.reshape(1)
+    else:
+        result_batch_shape = selected_array.shape
+        flat_selected_rows = selected_array.reshape(-1)
+
+    data_values: list[Any] = []
+    index_values: list[int] = []
+    indptr = np.zeros(flat_selected_rows.size + 1, dtype=np.intp)
+
+    nnz = 0
+    for out_row, source_row in enumerate(flat_selected_rows):
+        start = int(storage._payload.indptr[int(source_row)])
+        stop = int(storage._payload.indptr[int(source_row) + 1])
+        if start != stop:
+            data_values.extend(storage._payload.data[start:stop])
+            index_values.extend(int(column) for column in storage._payload.indices[start:stop])
+            nnz += stop - start
+        indptr[out_row + 1] = nnz
+
+    return CSRStorage(
+        np.asarray(data_values, dtype=storage.dtype),
+        np.asarray(index_values, dtype=np.intp),
+        indptr,
+        batch_shape=result_batch_shape,
+        width=storage.width,
+        dtype=storage.dtype,
+    )

@@ -24,9 +24,9 @@ import numpy as np
 if TYPE_CHECKING:
     from amsa.inspection import EntityInfo
 
+from amsa import ops
 from amsa.layouts import MVLayout
 from amsa.mv import MVArray
-from amsa import ops
 from amsa.specs import AlgebraSpec
 from amsa.specs import cga2d as cga2d_spec
 from amsa.specs import cga3d as cga3d_spec
