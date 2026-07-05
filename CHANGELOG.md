@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+- CSR-native NumPy execution paths for CSR/CSR binary products, preserving CSR
+  output while still using support-driven Clifford product plans.
+- Regression coverage for CSR product output preservation, including
+  multidimensional broadcasted batches.
+
+### Changed
+- CSR storage-local operations now preserve CSR representation across component
+  extraction, layout projection, scaling, unary transformations, coefficient
+  magnitude squared, add/sub, and batch indexing where applicable.
+- Internal CSR helpers now use trusted construction for helper-produced arrays,
+  avoiding repeated validation in hot CSR indexing, add/sub, and product paths.
+- Mixed dense/CSR binary products are documented as dense-output operations.
+
 ## [0.2.3] - 2026-05-23
 
 ### Added

@@ -865,6 +865,53 @@ def test_csr_product_preserves_csr_output_without_dense_materialization(
     assert_mv_allclose(actual, expected)
 
 
+def test_csr_product_broadcasts_multidimensional_batches_without_densifying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    algebra = Algebra.vga2d()
+    layout = MVLayout.sparse_pattern(algebra.spec, (1, 2), name="vectors")
+    lhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([1.0, 2.0, 3.0]),
+            np.array([0, 1, 0]),
+            np.array([0, 1, 2, 2, 3]),
+            batch_shape=(2, 2),
+            width=layout.size,
+        ),
+    )
+    rhs = MVArray(
+        algebra=algebra.spec,
+        layout=layout,
+        storage=CSRStorage(
+            np.array([4.0, -5.0]),
+            np.array([1, 0]),
+            np.array([0, 1, 2]),
+            batch_shape=(1, 2),
+            width=layout.size,
+        ),
+    )
+    expected = _naive_binary_product(
+        lhs.with_storage("dense"),
+        rhs.with_storage("dense"),
+        kind="geometric",
+    )
+
+    def fail_as_dense(self: CSRStorage) -> np.ndarray:
+        raise AssertionError("multidimensional CSR product should not densify")
+
+    monkeypatch.setattr(CSRStorage, "as_dense", fail_as_dense)
+
+    actual = geometric_product(lhs, rhs)
+
+    assert actual.storage_kind == "csr"
+    assert isinstance(actual.storage, CSRStorage)
+    assert actual.batch_shape == (2, 2)
+    monkeypatch.undo()
+    assert_mv_allclose(actual, expected)
+
+
 @pytest.mark.parametrize(
     ("kind", "operation"),
     [

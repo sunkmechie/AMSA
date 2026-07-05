@@ -99,7 +99,7 @@ def _execute_csr_product_ir(
             nnz += 1
         indptr[out_row + 1] = nnz
 
-    storage = CSRStorage(
+    storage = CSRStorage._from_validated_arrays(
         np.asarray(data_values, dtype=dtype),
         np.asarray(index_values, dtype=np.intp),
         indptr,
