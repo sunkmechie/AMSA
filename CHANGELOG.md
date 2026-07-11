@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   classify overview, versor actions
 - `examples/inspection/README.md`; fixed `examples/robotics/README.md`
 - `docs/cga.rst` covering CGA constructors, extraction, and classification
-- 3-pass CGA operations roadmap in `plans.md`
+- Initial CGA operations roadmap (superseded by `docs/roadmap.rst`)
 
 ### Changed
 - README : VGA/PGA/CGA quick start snippets, Supported Algebras

@@ -14,6 +14,7 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    layouts
    storage
    backends
+   autodiff
    operators
    cga
    inspection
@@ -21,6 +22,7 @@ It is built on a matrix-free core: blades are bit-pattern identifiers, layouts d
    examples
    probes
    references
+   roadmap
    changelog
 
 

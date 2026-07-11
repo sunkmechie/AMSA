@@ -2,8 +2,7 @@ Execution backends
 ==================
 
 AMSA supports pluggable execution backends for coefficient computation.
-Backends are selected by device type rather than library name, making the API
-more intuitive for users who think in terms of CPU/GPU execution.
+Backends are selected by device type (CPU, GPU, etc.) and storage type (dense, CSR, etc.).
 
 Device selection
 ----------------
@@ -61,7 +60,7 @@ Then select GPU execution:
 
 - JAX uses functional array updates (``.at[].set()``) instead of in-place mutations
 - The JAX backend currently supports dense storage only; CSR support is planned for a future release
-- JAX may truncate float64 to float32 by default. Enable float64 with the ``JAX_ENABLE_X64=1`` environment variable or ``jax.config.update("jax_enable_x64", True)`` in your code
+- AMSA preserves JAX's configured floating-point precision and does not mutate JAX global configuration. Enable float64 with the ``JAX_ENABLE_X64=1`` environment variable or ``jax.config.update("jax_enable_x64", True)`` before creating arrays when x64 is required
 - JIT compilation can be enabled on individual backend functions for performance, but is not enabled by default to maintain debugging tractability
 
 JAX traceability contract
@@ -156,8 +155,10 @@ Deferred traceability targets:
 - Python exceptions triggered from traced coefficient values
 - singular normalization branches inside ``jax.jit``
 - predicate helpers that intentionally return Python ``bool`` values
-- validation-backed public operations such as ``normalize()``, ``inverse()``,
-  and ``sandwich()`` until their value checks have a trace-safe validation model
+- validation-backed public operations such as ``normalize()`` and ``inverse()``
+  until their value checks have a trace-safe validation model. ``sandwich()`` is
+  supported for dense inputs because its composed product path has no
+  value-dependent validation branch
 
 Implementation rules for traceable paths:
 

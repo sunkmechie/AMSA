@@ -18,9 +18,9 @@ public products.
 Planned IR path
 ---------------
 
-The optimized path should move in phases:
+The optimized path move in phases:
 
-1. Keep ``DualMV`` as a correctness oracle for small tests and examples.
+1. Keep ``DualMV`` as ground truth for small tests and examples.
 2. Add derivative metadata beside public op/IR construction, not inside
    robotics or other domain adapters.
 3. Represent a forward-mode value as a primal/tangent pair of normal AMSA
@@ -39,8 +39,8 @@ The optimized path should move in phases:
 Robotics Boundary
 -----------------
 
-The standalone ``amsa-robo`` package (available separately) should not depend on IR
-internals.  It should consume public AMSA constructors, operations, and eventually
+The standalone ``amsa-robo`` package (available separately, unpublished) does not depend on IR
+internals.  It uses public AMSA constructors, operations, and eventually
 public autodiff helpers.  This keeps ``amsa-robo`` clean: robot loaders and solvers
 can depend on AMSA as a Clifford engine, while AMSA's core IR remains independent of
 robot file formats such as URDF, SRDF, and MJCF.
