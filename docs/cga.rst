@@ -10,7 +10,7 @@ The implementation keeps the core algebra diagonal and matrix-free:
 Algebra methods (primary API)
 -----------------------------
 
-CGA geometry constructors are available as methods on ``Algebra``. This is
+CGA geometry constructors are available as methods on ``Algebra``,
 consistent with how VGA and PGA constructors work
 (e.g. ``alg.vector(values)``, ``alg.bivector(values)``):
 
@@ -47,9 +47,8 @@ Extraction utilities
 ^^^^^^^^^^^^^^^^^^^^
 
 Extract Euclidean parameters from CGA multivectors.  ``extract_point``
-normalizes via ``-(X · n_inf)`` so it works correctly after versor actions.
-These helpers return NumPy arrays for reporting and interop; they are not a
-JAX-traceable API contract.
+normalizes via ``-(X · n_inf)`` . These helpers return NumPy arrays for reporting and interop; 
+they are not a JAX-traceable API contract.
 
 .. code-block:: python
 
@@ -200,9 +199,7 @@ scalar+bivector Euclidean motors:
    generator = amsa.motor_log(translator)
    assert amsa.motor_exp(generator).values.shape == translator.values.shape
 
-This is intentionally conservative: arbitrary CGA screw motors with grade-4
-coupling still require a dedicated audited logarithm before being documented as
-supported.
+arbitrary CGA screw motors with grade-4 coupling still require a dedicated audited logarithm implementation.
 
 CGA identities
 --------------
@@ -212,11 +209,4 @@ conformal points, ``-2 (A · B)`` gives squared Euclidean distance.
 
 Null basis identities: ``n_o^2 = 0``, ``n_inf^2 = 0``, ``n_o · n_inf = -1``.
 
-Operator status
----------------
 
-(The constructors use existing AMSA products and layouts. NumPy execution is
-covered by tests. Dense JAX parity follows the same operation layer where the
-underlying operation is already traceable, but CGA constructor and extraction
-helper traceability still needs a dedicated audit. There is no matrix
-representation or basis-change table in the CGA implementation.)

@@ -21,9 +21,9 @@ SequenceIR by combining adjacent operations into fused kernels.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
-from amsa.ir import SequenceIR, SequenceStepKind
+from amsa.ir import IRStep, SequenceIR, SequenceStepKind
 
 FusionKind = Literal[
     "scale_product",  # scale followed by binary product
@@ -56,6 +56,74 @@ FUSION_PATTERNS: tuple[FusionPattern, ...] = (
         step_kinds=("unary", "binary_product"),
     ),
 )
+
+
+def _freeze_metadata(value: Any) -> Any:
+    if isinstance(value, dict):
+        return tuple(sorted((key, _freeze_metadata(item)) for key, item in value.items()))
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze_metadata(item) for item in value)
+    if isinstance(value, set):
+        return tuple(sorted(_freeze_metadata(item) for item in value))
+    try:
+        hash(value)
+    except TypeError:
+        return repr(value)
+    return value
+
+
+def _cse_step_key(step: IRStep) -> tuple[Any, ...]:
+    return (
+        step.kind,
+        step.operands,
+        step.ir,
+        _freeze_metadata(step.metadata),
+    )
+
+
+def eliminate_common_subexpressions(ir: SequenceIR) -> SequenceIR:
+    """Remove duplicate pure steps from a ``SequenceIR``.
+
+    The pass is intentionally conservative: a step is common only when its kind,
+    remapped operands, lowered IR, and metadata are identical. Sequence steps are
+    pure coefficient operations, so later duplicate outputs can safely alias the
+    first output.
+    """
+    output_aliases: dict[str, str] = {}
+    seen: dict[tuple[Any, ...], str] = {}
+    new_steps: list[IRStep] = []
+
+    for step in ir.steps:
+        operands = tuple(output_aliases.get(operand, operand) for operand in step.operands)
+        remapped = IRStep(
+            kind=step.kind,
+            operands=operands,
+            ir=step.ir,
+            output=step.output,
+            metadata=step.metadata,
+            fusion=None,
+        )
+        key = _cse_step_key(remapped)
+        existing_output = seen.get(key)
+        if existing_output is not None:
+            output_aliases[step.output] = existing_output
+            continue
+
+        seen[key] = step.output
+        output_aliases[step.output] = step.output
+        new_steps.append(remapped)
+
+    return SequenceIR(
+        name=ir.name,
+        inputs=ir.inputs,
+        steps=tuple(new_steps),
+        result=output_aliases.get(ir.result, ir.result),
+    )
+
+
+def optimize_sequence_ir(ir: SequenceIR) -> SequenceIR:
+    """Apply conservative sequence optimizations used by eager backends."""
+    return apply_fusion_metadata(eliminate_common_subexpressions(ir))
 
 
 def analyze_fusion(ir: SequenceIR) -> dict[int, FusionKind]:
@@ -103,8 +171,6 @@ def apply_fusion_metadata(ir: SequenceIR) -> SequenceIR:
     Returns:
         A new SequenceIR with fusion metadata applied to fusible steps.
     """
-    from amsa.ir import IRStep
-
     fusion_opportunities = analyze_fusion(ir)
 
     # Rebuild steps with fusion metadata

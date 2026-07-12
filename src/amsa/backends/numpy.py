@@ -19,6 +19,7 @@ from typing import Any, cast
 
 import numpy as np
 
+from amsa.fusion import optimize_sequence_ir
 from amsa.ir import (
     ProductIR,
     SequenceIR,
@@ -30,6 +31,7 @@ from amsa.layouts import MVLayout
 from amsa.mv import MVArray
 from amsa.storage import (
     CSRStorage,
+    _broadcast_row_indices,
     add_storage,
     coefficient_magnitude_squared_storage,
     gather_storage_columns,
@@ -39,20 +41,6 @@ from amsa.storage import (
     scale_storage,
     sub_storage,
 )
-
-
-def _broadcast_csr_rows(storage: CSRStorage, batch_shape: tuple[int, ...]) -> np.ndarray:
-    rows = np.arange(storage.row_count, dtype=np.intp).reshape(storage.batch_shape)
-    return np.broadcast_to(rows, batch_shape).reshape(-1)
-
-
-def _csr_row_values(storage: CSRStorage, row: int) -> dict[int, Any]:
-    start = int(storage._payload.indptr[row])
-    stop = int(storage._payload.indptr[row + 1])
-    return {
-        int(storage._payload.indices[offset]): storage._payload.data[offset]
-        for offset in range(start, stop)
-    }
 
 
 def _execute_csr_product_ir(
@@ -66,8 +54,14 @@ def _execute_csr_product_ir(
     layout = output_layout_from_product_ir(ir, lhs.algebra)
     dtype = np.dtype(np.result_type(lhs.dtype, rhs.dtype))
     row_count = int(np.prod(batch_shape, dtype=np.intp))
-    lhs_rows = _broadcast_csr_rows(lhs.storage, batch_shape)
-    rhs_rows = _broadcast_csr_rows(rhs.storage, batch_shape)
+    lhs_rows = _broadcast_row_indices(lhs.storage.batch_shape, batch_shape)
+    rhs_rows = _broadcast_row_indices(rhs.storage.batch_shape, batch_shape)
+
+    terms_by_pair: dict[tuple[int, int], list[tuple[int, int]]] = {}
+    for term in ir.terms:
+        terms_by_pair.setdefault((term.lhs_col, term.rhs_col), []).append(
+            (term.out_col, term.coefficient)
+        )
 
     data_values: list[Any] = []
     index_values: list[int] = []
@@ -75,20 +69,26 @@ def _execute_csr_product_ir(
 
     nnz = 0
     for out_row, (lhs_row, rhs_row) in enumerate(zip(lhs_rows, rhs_rows, strict=True)):
-        lhs_values = _csr_row_values(lhs.storage, int(lhs_row))
-        rhs_values = _csr_row_values(rhs.storage, int(rhs_row))
+        lhs_start = int(lhs.storage._payload.indptr[lhs_row])
+        lhs_stop = int(lhs.storage._payload.indptr[lhs_row + 1])
+        rhs_start = int(rhs.storage._payload.indptr[rhs_row])
+        rhs_stop = int(rhs.storage._payload.indptr[rhs_row + 1])
         out_values: dict[int, Any] = {}
 
-        for term in ir.terms:
-            lhs_value = lhs_values.get(term.lhs_col)
-            if lhs_value is None:
-                continue
-            rhs_value = rhs_values.get(term.rhs_col)
-            if rhs_value is None:
-                continue
-            out_values[term.out_col] = out_values.get(
-                term.out_col, dtype.type(0)
-            ) + term.coefficient * lhs_value * rhs_value
+        for lhs_offset in range(lhs_start, lhs_stop):
+            lhs_col = int(lhs.storage._payload.indices[lhs_offset])
+            lhs_value = lhs.storage._payload.data[lhs_offset]
+            for rhs_offset in range(rhs_start, rhs_stop):
+                pair_terms = terms_by_pair.get(
+                    (lhs_col, int(rhs.storage._payload.indices[rhs_offset]))
+                )
+                if pair_terms is None:
+                    continue
+                product = lhs_value * rhs.storage._payload.data[rhs_offset]
+                for out_col, coefficient in pair_terms:
+                    out_values[out_col] = out_values.get(
+                        out_col, dtype.type(0)
+                    ) + coefficient * product
 
         for column in sorted(out_values):
             value = out_values[column]
@@ -99,7 +99,7 @@ def _execute_csr_product_ir(
             nnz += 1
         indptr[out_row + 1] = nnz
 
-    storage = CSRStorage(
+    storage = CSRStorage._from_validated_arrays(
         np.asarray(data_values, dtype=dtype),
         np.asarray(index_values, dtype=np.intp),
         indptr,
@@ -189,6 +189,7 @@ def execute_sequence_ir(
     sequence into a single kernel; the NumPy backend executes faithfully
     step-by-step, with optional fusion support for common patterns.
     """
+    ir = optimize_sequence_ir(ir)
     env: dict[str, Any] = dict(inputs)
 
     i = 0

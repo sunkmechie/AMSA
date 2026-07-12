@@ -26,6 +26,7 @@ except ImportError as err:
         "Install with: uv pip install amsa-ga[jax]"
     ) from err
 
+from amsa.fusion import optimize_sequence_ir
 from amsa.ir import (
     ProductIR,
     SequenceIR,
@@ -46,6 +47,30 @@ from amsa.storage import (
     scale_storage,
     storage_component,
 )
+
+
+def _jax_dtype(*dtypes: Any) -> Any:
+    """Resolve a dtype through the active JAX precision configuration."""
+    canonical = tuple(jax.dtypes.canonicalize_dtype(dtype) for dtype in dtypes)
+    return jax.dtypes.canonicalize_dtype(jnp.result_type(*canonical))
+
+
+
+
+
+def _require_dense_storage(*values: Any) -> None:
+    """Reject storage forms outside the JAX backend's current contract."""
+    if any(
+        isinstance(value, MVArray) and not isinstance(value.storage, DenseStorage)
+        for value in values
+    ):
+        raise TypeError(
+            "JAX execution supports dense MVArray storage only; convert CSR inputs "
+            "with with_storage('dense') before selecting the JAX backend."
+        )
+
+
+
 
 
 def _flatten_mvarray(mv: MVArray) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
@@ -76,7 +101,7 @@ def _gather_dense_columns(
     batch_shape: tuple[int, ...],
 ) -> jnp.ndarray:
     if not columns:
-        return jnp.zeros(batch_shape + (0,), dtype=storage.dtype)
+        return jnp.zeros(batch_shape + (0,), dtype=_jax_dtype(storage.dtype))
     gathered = storage._payload.array[..., list(columns)]
     return jnp.broadcast_to(gathered, batch_shape + (len(columns),))
 
@@ -106,7 +131,7 @@ def execute_product_ir(
     rhs_col_index = {col: i for i, col in enumerate(rhs_columns)}
 
     layout = output_layout_from_product_ir(ir, lhs.algebra)
-    dtype = jnp.result_type(lhs.dtype, rhs.dtype)
+    dtype = _jax_dtype(lhs.dtype, rhs.dtype)
     result = jnp.zeros(batch_shape + (layout.size,), dtype=dtype)
 
     for term in ir.terms:
@@ -133,7 +158,7 @@ def execute_unary_ir(
         columns = tuple(ir.permutation)
         if isinstance(mv.storage, DenseStorage):
             values = mv.storage._payload.array[..., list(columns)]
-            weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+            weights = jnp.asarray(ir.weights, dtype=_jax_dtype(mv.dtype))
             storage = DenseStorage(
                 _payload=NumPyPayload(array=cast(Any, values * weights))
             )
@@ -141,19 +166,19 @@ def execute_unary_ir(
         projected = project_storage(mv.storage, columns)
         # Apply per-column weights.
         transformed = reweight_storage(
-            projected, jnp.asarray(ir.weights, dtype=mv.dtype)
+            projected, jnp.asarray(ir.weights, dtype=_jax_dtype(mv.dtype))
         )
         return MVArray(algebra=mv.algebra, layout=layout, storage=transformed)
 
     # Pure weight case: input and output layouts are identical.
     if isinstance(mv.storage, DenseStorage):
-        weights = jnp.asarray(ir.weights, dtype=mv.dtype)
+        weights = jnp.asarray(ir.weights, dtype=_jax_dtype(mv.dtype))
         storage = DenseStorage(
             _payload=NumPyPayload(array=cast(Any, mv.storage._payload.array * weights))
         )
         return MVArray(algebra=mv.algebra, layout=layout, storage=storage)
     transformed = reweight_storage(
-        mv.storage, jnp.asarray(ir.weights, dtype=mv.dtype)
+        mv.storage, jnp.asarray(ir.weights, dtype=_jax_dtype(mv.dtype))
     )
     return MVArray(algebra=mv.algebra, layout=layout, storage=transformed)
 
@@ -163,6 +188,7 @@ def execute_sequence_ir(
     ir: SequenceIR,
 ) -> Any:
     """Execute a ``SequenceIR`` step-by-step using JAX operations."""
+    ir = optimize_sequence_ir(ir)
     env: dict[str, Any] = dict(inputs)
 
     for step in ir.steps:
@@ -299,8 +325,8 @@ def _component_values(mv: MVArray, blade: int) -> jnp.ndarray:
     try:
         column = mv.layout.blades.index(blade)
     except ValueError:
-        return jnp.zeros(mv.batch_shape, dtype=mv.dtype)
-    return jnp.asarray(storage_component(mv.storage, column), dtype=mv.dtype)
+        return jnp.zeros(mv.batch_shape, dtype=_jax_dtype(mv.dtype))
+    return jnp.asarray(storage_component(mv.storage, column), dtype=_jax_dtype(mv.dtype))
 
 
 def _elementwise(operands: tuple[jnp.ndarray, ...], metadata: dict[str, object]) -> jnp.ndarray:
@@ -333,7 +359,7 @@ def _predicate(operands: tuple[jnp.ndarray, ...], metadata: dict[str, object]) -
 
 
 def _coefficient_magnitude_squared(mv: MVArray) -> jnp.ndarray:
-    dtype = jnp.result_type(mv.dtype, jnp.float64)
+    dtype = _jax_dtype(mv.dtype)
     if mv.storage.width == 0:
         return jnp.zeros(mv.batch_shape, dtype=dtype)
     if not isinstance(mv.storage, DenseStorage):
@@ -344,7 +370,7 @@ def _coefficient_magnitude_squared(mv: MVArray) -> jnp.ndarray:
 
 
 def _exp_coefficients(scalar_values: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    values = jnp.asarray(scalar_values, dtype=jnp.result_type(scalar_values.dtype, jnp.float64))
+    values = jnp.asarray(scalar_values, dtype=_jax_dtype(scalar_values.dtype))
     positive_mask = values > 0.0
     negative_mask = values < 0.0
     zero_mask = jnp.isclose(values, 0.0)
@@ -369,7 +395,7 @@ def _motor_exp_coefficients(
     scalar_part: jnp.ndarray,
     pseudoscalar_part: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    dtype = jnp.result_type(scalar_part.dtype, pseudoscalar_part.dtype, jnp.float64)
+    dtype = _jax_dtype(scalar_part.dtype, pseudoscalar_part.dtype)
     scalar = jnp.asarray(scalar_part, dtype=dtype)
     pseudoscalar = jnp.asarray(pseudoscalar_part, dtype=dtype)
 
@@ -453,7 +479,7 @@ def _simple_bivector_log_coefficients(
     scalar_values: jnp.ndarray,
     square_values: jnp.ndarray,
 ) -> jnp.ndarray:
-    dtype = jnp.result_type(scalar_values.dtype, square_values.dtype, jnp.float64)
+    dtype = _jax_dtype(scalar_values.dtype, square_values.dtype)
     scalar = jnp.asarray(scalar_values, dtype=dtype)
     square = jnp.asarray(square_values, dtype=dtype)
     roots = jnp.sqrt(jnp.abs(square))
@@ -483,7 +509,7 @@ def _pga3d_motor_log_coefficients(
     pseudoscalar_values: jnp.ndarray,
     sine_values: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    dtype = jnp.result_type(scalar_values.dtype, pseudoscalar_values.dtype, sine_values.dtype)
+    dtype = _jax_dtype(scalar_values.dtype, pseudoscalar_values.dtype, sine_values.dtype)
     scalar = jnp.asarray(scalar_values, dtype=dtype)
     pseudoscalar = jnp.asarray(pseudoscalar_values, dtype=dtype)
     sine = jnp.asarray(sine_values, dtype=dtype)
@@ -536,7 +562,7 @@ def _mv_sub(lhs: MVArray, rhs: MVArray) -> MVArray:
 
 def _scalar_mv_from_array(reference: MVArray, values: jnp.ndarray) -> MVArray:
     scalar_layout = MVLayout.grade(reference.algebra, 0)
-    dtype = jnp.result_type(reference.dtype, values.dtype)
+    dtype = _jax_dtype(reference.dtype, values.dtype)
     payload = jnp.asarray(values, dtype=dtype)
     if payload.shape == ():
         payload = jnp.asarray([payload.item()], dtype=dtype)
@@ -550,7 +576,7 @@ def _single_blade_mv(reference: MVArray, blade: int) -> MVArray:
     layout = MVLayout.sparse_pattern(
         reference.algebra, (blade,), name=reference.algebra.blade_name(blade)
     )
-    values = jnp.ones(reference.batch_shape + (1,), dtype=reference.dtype)
+    values = jnp.ones(reference.batch_shape + (1,), dtype=_jax_dtype(reference.dtype))
     return MVArray(algebra=reference.algebra, layout=layout, values=values)
 
 
@@ -558,7 +584,7 @@ def _single_blade_mv_from_array(reference: MVArray, blade: int, values: jnp.ndar
     layout = MVLayout.sparse_pattern(
         reference.algebra, (blade,), name=reference.algebra.blade_name(blade)
     )
-    dtype = jnp.result_type(reference.dtype, values.dtype)
+    dtype = _jax_dtype(reference.dtype, values.dtype)
     payload = jnp.asarray(values, dtype=dtype)
     if payload.shape == ():
         payload = jnp.asarray([payload.item()], dtype=dtype)
@@ -575,10 +601,13 @@ class JAXBackend:
     """
 
     def execute_product(self, lhs: MVArray, rhs: MVArray, ir: ProductIR) -> MVArray:
+        _require_dense_storage(lhs, rhs)
         return execute_product_ir(lhs, rhs, ir)
 
     def execute_unary(self, mv: MVArray, ir: UnaryIR) -> MVArray:
+        _require_dense_storage(mv)
         return execute_unary_ir(mv, ir)
 
     def execute_sequence(self, inputs: dict[str, Any], ir: SequenceIR) -> Any:
+        _require_dense_storage(*inputs.values())
         return execute_sequence_ir(inputs, ir)

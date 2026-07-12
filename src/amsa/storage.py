@@ -383,7 +383,7 @@ class CSRStorage:
         return self._payload.as_dense()
 
     def copy(self) -> CSRStorage:
-        return CSRStorage(
+        return CSRStorage._from_validated_arrays(
             self._payload.data.copy(),
             self._payload.indices.copy(),
             self._payload.indptr.copy(),
@@ -391,6 +391,31 @@ class CSRStorage:
             width=self.width,
             dtype=self.dtype,
         )
+
+    @classmethod
+    def _from_validated_arrays(
+        cls,
+        data: NDArray[Any],
+        indices: NDArray[Any],
+        indptr: NDArray[Any],
+        *,
+        batch_shape: tuple[int, ...],
+        width: int,
+        dtype: np.dtype[Any] | type[Any],
+    ) -> CSRStorage:
+        storage = object.__new__(cls)
+        resolved_dtype = np.dtype(dtype)
+        payload = NumPyCSRPayload(
+            data=np.asarray(data, dtype=resolved_dtype),
+            indices=np.asarray(indices, dtype=np.intp),
+            indptr=np.asarray(indptr, dtype=np.intp),
+            _batch_shape=batch_shape,
+            _width=width,
+        )
+        object.__setattr__(storage, "_payload", payload)
+        object.__setattr__(storage, "_dtype", resolved_dtype)
+        object.__setattr__(storage, "kind", "csr")
+        return storage
 
     @classmethod
     def zeros(
@@ -402,7 +427,7 @@ class CSRStorage:
     ) -> CSRStorage:
         normalized_batch_shape = _normalize_batch_shape(batch_shape)
         row_count = int(prod(normalized_batch_shape))
-        return cls(
+        return cls._from_validated_arrays(
             np.array([], dtype=dtype),
             np.array([], dtype=np.intp),
             np.zeros(row_count + 1, dtype=np.intp),
@@ -439,7 +464,7 @@ def to_csr_storage(storage: MVStorage) -> CSRStorage:
             nnz += 1
         indptr[row_index + 1] = nnz
 
-    return CSRStorage(
+    return CSRStorage._from_validated_arrays(
         np.asarray(data_values, dtype=storage.dtype),
         np.asarray(index_values, dtype=np.intp),
         indptr,
@@ -586,7 +611,7 @@ def project_storage(storage: MVStorage, columns: tuple[int | None, ...]) -> MVSt
             nnz += 1
         indptr[row + 1] = nnz
 
-    return CSRStorage(
+    return CSRStorage._from_validated_arrays(
         np.asarray(data_values, dtype=storage.dtype),
         np.asarray(index_values, dtype=np.intp),
         indptr,
@@ -609,7 +634,7 @@ def scale_storage(storage: MVStorage, scalar: Any) -> MVStorage:
     if is_zero:
         return CSRStorage.zeros(storage.width, batch_shape=storage.batch_shape, dtype=result_dtype)
 
-    return CSRStorage(
+    return CSRStorage._from_validated_arrays(
         np.asarray(storage._payload.data, dtype=result_dtype) * scalar,
         storage._payload.indices.copy(),
         storage._payload.indptr.copy(),
@@ -638,7 +663,7 @@ def reweight_storage(storage: MVStorage, weights: ArrayLike) -> MVStorage:
     weighted_data = np.asarray(storage._payload.data, dtype=result_dtype) * resolved_weights[
         storage._payload.indices
     ]
-    return CSRStorage(
+    return CSRStorage._from_validated_arrays(
         weighted_data,
         storage._payload.indices.copy(),
         storage._payload.indptr.copy(),
@@ -676,7 +701,7 @@ def row_scale_storage(storage: MVStorage, factors: ArrayLike) -> MVStorage:
             continue
         data[start:stop] *= flat_factors[row]
 
-    return CSRStorage(
+    return CSRStorage._from_validated_arrays(
         data,
         storage._payload.indices.copy(),
         storage._payload.indptr.copy(),
@@ -737,38 +762,79 @@ def _add_dense_csr_storage(
 def _add_csr_storage(lhs: CSRStorage, rhs: CSRStorage, sign: Literal[1, -1]) -> CSRStorage:
     _, batch_shape = _check_binary_storage_compatible(lhs, rhs)
     result_dtype = np.dtype(np.result_type(lhs.dtype, rhs.dtype))
-    data_values: list[Any] = []
-    index_values: list[int] = []
-    indptr = np.zeros(int(prod(batch_shape)) + 1, dtype=np.intp)
+
+    if lhs.width == 0:
+        return CSRStorage.zeros(lhs.width, batch_shape=batch_shape, dtype=result_dtype)
+
+    row_count = int(prod(batch_shape))
     lhs_rows = _broadcast_row_indices(lhs.batch_shape, batch_shape)
     rhs_rows = _broadcast_row_indices(rhs.batch_shape, batch_shape)
 
-    nnz = 0
-    for row, (lhs_row, rhs_row) in enumerate(zip(lhs_rows, rhs_rows, strict=True)):
-        row_values: dict[int, Any] = {}
-        lhs_start = int(lhs._payload.indptr[lhs_row])
-        lhs_stop = int(lhs._payload.indptr[lhs_row + 1])
-        rhs_start = int(rhs._payload.indptr[rhs_row])
-        rhs_stop = int(rhs._payload.indptr[rhs_row + 1])
+    def broadcast_entries(
+        storage: CSRStorage,
+        rows: NDArray[np.intp],
+    ) -> tuple[NDArray[np.intp], NDArray[np.intp], NDArray[Any]]:
+        starts = storage._payload.indptr[rows]
+        lengths = storage._payload.indptr[rows + 1] - starts
+        total = int(np.sum(lengths))
+        if total == 0:
+            return (
+                np.empty(0, dtype=np.intp),
+                np.empty(0, dtype=np.intp),
+                np.empty(0, dtype=result_dtype),
+            )
 
-        for offset in range(lhs_start, lhs_stop):
-            row_values[int(lhs._payload.indices[offset])] = lhs._payload.data[offset]
-        for offset in range(rhs_start, rhs_stop):
-            column = int(rhs._payload.indices[offset])
-            rhs_value = rhs._payload.data[offset]
-            row_values[column] = row_values.get(column, result_dtype.type(0)) + sign * rhs_value
+        offsets = np.empty(rows.size + 1, dtype=np.intp)
+        offsets[0] = 0
+        np.cumsum(lengths, out=offsets[1:])
+        positions = (
+            np.repeat(starts, lengths)
+            + np.arange(total, dtype=np.intp)
+            - np.repeat(offsets[:-1], lengths)
+        )
+        out_rows = np.repeat(np.arange(rows.size, dtype=np.intp), lengths)
+        return (
+            out_rows,
+            storage._payload.indices[positions],
+            np.asarray(storage._payload.data[positions], dtype=result_dtype),
+        )
 
-        for column in sorted(row_values):
-            value = row_values[column]
-            if value == 0:
-                continue
-            index_values.append(column)
-            data_values.append(value)
-            nnz += 1
-        indptr[row + 1] = nnz
+    lhs_out_rows, lhs_columns, lhs_data = broadcast_entries(lhs, lhs_rows)
+    rhs_out_rows, rhs_columns, rhs_data = broadcast_entries(rhs, rhs_rows)
 
-    return CSRStorage(
-        np.asarray(data_values, dtype=result_dtype),
+    entry_rows = np.concatenate((lhs_out_rows, rhs_out_rows))
+    entry_columns = np.concatenate((lhs_columns, rhs_columns))
+    entry_data = np.concatenate((lhs_data, sign * rhs_data))
+
+    if entry_data.size == 0:
+        return CSRStorage.zeros(lhs.width, batch_shape=batch_shape, dtype=result_dtype)
+
+    keys = entry_rows * lhs.width + entry_columns
+    order = np.argsort(keys, kind="stable")
+    sorted_keys = keys[order]
+    sorted_data = entry_data[order]
+
+    unique_starts = np.concatenate(
+        (
+            np.array([0], dtype=np.intp),
+            np.flatnonzero(sorted_keys[1:] != sorted_keys[:-1]).astype(np.intp) + 1,
+        )
+    )
+    reduced_keys = sorted_keys[unique_starts]
+    reduced_data = np.add.reduceat(sorted_data, unique_starts)
+    nonzero = reduced_data != 0
+    reduced_keys = reduced_keys[nonzero]
+    reduced_data = reduced_data[nonzero]
+
+    index_values = reduced_keys % lhs.width
+    row_values = reduced_keys // lhs.width
+    indptr = np.zeros(row_count + 1, dtype=np.intp)
+    if row_values.size:
+        counts = np.bincount(row_values, minlength=row_count)
+        np.cumsum(counts, out=indptr[1:])
+
+    return CSRStorage._from_validated_arrays(
+        reduced_data,
         np.asarray(index_values, dtype=np.intp),
         indptr,
         batch_shape=batch_shape,
@@ -847,6 +913,27 @@ def index_csr_storage(storage: MVStorage, key: Any) -> MVStorage:
     if not isinstance(storage, CSRStorage):
         raise TypeError("index_csr_storage only supports CSRStorage.")
 
+    if isinstance(key, slice) and len(storage.batch_shape) == 1:
+        row_indices = np.arange(storage.row_count, dtype=np.intp)[key]
+        if row_indices.ndim == 0:
+            row_indices = row_indices.reshape(1)
+        if row_indices.size == 0:
+            return CSRStorage.zeros(storage.width, batch_shape=(0,), dtype=storage.dtype)
+        if row_indices.size == 1 or np.all(row_indices[1:] == row_indices[:-1] + 1):
+            first_row = int(row_indices[0])
+            last_row = int(row_indices[-1])
+            data_start = int(storage._payload.indptr[first_row])
+            data_stop = int(storage._payload.indptr[last_row + 1])
+            indptr = storage._payload.indptr[first_row : last_row + 2] - data_start
+            return CSRStorage._from_validated_arrays(
+                storage._payload.data[data_start:data_stop].copy(),
+                storage._payload.indices[data_start:data_stop].copy(),
+                indptr.copy(),
+                batch_shape=(int(row_indices.size),),
+                width=storage.width,
+                dtype=storage.dtype,
+            )
+
     row_grid = np.arange(storage.row_count, dtype=np.intp).reshape(storage.batch_shape)
     selected_rows = row_grid[key]
     selected_array = np.asarray(selected_rows)
@@ -857,23 +944,29 @@ def index_csr_storage(storage: MVStorage, key: Any) -> MVStorage:
         result_batch_shape = selected_array.shape
         flat_selected_rows = selected_array.reshape(-1)
 
-    data_values: list[Any] = []
-    index_values: list[int] = []
-    indptr = np.zeros(flat_selected_rows.size + 1, dtype=np.intp)
+    lengths = (
+        storage._payload.indptr[flat_selected_rows + 1]
+        - storage._payload.indptr[flat_selected_rows]
+    )
+    indptr = np.empty(flat_selected_rows.size + 1, dtype=np.intp)
+    indptr[0] = 0
+    np.cumsum(lengths, out=indptr[1:])
 
-    nnz = 0
-    for out_row, source_row in enumerate(flat_selected_rows):
-        start = int(storage._payload.indptr[int(source_row)])
-        stop = int(storage._payload.indptr[int(source_row) + 1])
-        if start != stop:
-            data_values.extend(storage._payload.data[start:stop])
-            index_values.extend(int(column) for column in storage._payload.indices[start:stop])
-            nnz += stop - start
-        indptr[out_row + 1] = nnz
+    nnz = int(indptr[-1])
+    if nnz:
+        starts = storage._payload.indptr[flat_selected_rows]
+        source_offsets = np.repeat(starts, lengths)
+        output_offsets = np.repeat(indptr[:-1], lengths)
+        positions = source_offsets + np.arange(nnz, dtype=np.intp) - output_offsets
+        data = storage._payload.data[positions]
+        indices = storage._payload.indices[positions]
+    else:
+        data = np.empty(0, dtype=storage.dtype)
+        indices = np.empty(0, dtype=np.intp)
 
-    return CSRStorage(
-        np.asarray(data_values, dtype=storage.dtype),
-        np.asarray(index_values, dtype=np.intp),
+    return CSRStorage._from_validated_arrays(
+        data,
+        indices,
         indptr,
         batch_shape=result_batch_shape,
         width=storage.width,

@@ -209,6 +209,48 @@ def test_mvarray_pytree_rejects_csr_storage_for_jax():
         jax.tree_util.tree_flatten(mv)
 
 
+def test_jax_backend_rejects_csr_execution() -> None:
+    """CSR inputs must not silently materialize when the JAX backend is selected."""
+    clear_backends()
+    register_backend("numpy", NumpyBackend())
+    register_backend("jax", JAXBackend())
+    init(use="gpu")
+
+    alg = amsa.Algebra.vga2d()
+    lhs = alg.multivector({"e1": 1.0}, backend="csr")
+    rhs = alg.multivector({"e2": 2.0}, backend="csr")
+
+    try:
+        with pytest.raises(TypeError, match="dense MVArray storage only"):
+            _ = lhs * rhs
+    finally:
+        init(use="cpu")
+
+
+def test_jax_backend_preserves_float32_without_requesting_float64() -> None:
+    """AMSA follows JAX's configured precision instead of forcing global x64 behavior."""
+    backend = JAXBackend()
+    ir = SequenceIR(
+        name="coefficient_norm_squared",
+        inputs=("mv",),
+        steps=(
+            IRStep(
+                kind="coefficient_norm_squared",
+                operands=("mv",),
+                ir=None,
+                output="result",
+            ),
+        ),
+        result="result",
+    )
+    alg = amsa.Algebra.vga2d()
+    mv = alg.vector(jnp.array([1.0, 2.0], dtype=jnp.float32))
+
+    result = backend.execute_sequence({"mv": mv}, ir)
+
+    assert result.dtype == jnp.float32
+
+
 def test_jax_jit_dense_add_sub_and_norm_squared():
     """Dense add/sub/norm-squared should trace after storage-local cleanup."""
     clear_backends()

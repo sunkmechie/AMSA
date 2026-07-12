@@ -44,7 +44,6 @@ SUPPORTED_DENSE_TRACE_TARGETS = frozenset(
         "grade projection",
         "sandwich",
         "norm_squared",
-        "normalize",
         "scalar-objective autodiff",
     }
 )
@@ -57,6 +56,8 @@ DEFERRED_TRACE_TARGETS = frozenset(
         "Python exceptions triggered from traced coefficient values",
         "singular normalization branches inside jax.jit",
         "predicate helpers that intentionally return Python bool values",
+        "normalize",
+        "inverse",
     }
 )
 
@@ -91,6 +92,8 @@ def test_deferred_trace_targets_are_explicitly_named() -> None:
         "value-dependent output shapes",
         "Python exceptions triggered from traced coefficient values",
         "singular normalization branches inside jax.jit",
+        "normalize",
+        "inverse",
     }
 
     assert required_deferred_targets <= DEFERRED_TRACE_TARGETS

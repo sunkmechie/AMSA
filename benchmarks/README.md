@@ -41,6 +41,29 @@ Use it when changing CSR indexing, broadcast add/sub, or product execution. Comp
 question, and against `dense baseline` rows to understand Python CSR overhead.
 Tests separately enforce whether the operation preserves CSR output.
 
+**Latest local run** (`batch_size=2048`, `number=200`, `repeat=7`):
+
+```
+getitem batch slice (csr native)                           best=   36.991 us  median=   38.634 us  mean=   40.293 us
+getitem batch slice (dense baseline)                       best=    6.168 us  median=    6.264 us  mean=    6.472 us
+getitem batch slice (old densify fallback)                 best= 1780.045 us  median= 1811.199 us  mean= 1852.459 us
+add broadcast csr+csr (csr native)                         best= 2054.191 us  median= 2061.761 us  mean= 2065.815 us
+add broadcast dense+dense baseline                         best=  101.862 us  median=  106.465 us  mean=  112.546 us
+add broadcast old densify fallback                         best= 1947.406 us  median= 1953.173 us  mean= 1959.644 us
+sub broadcast csr-csr (csr native)                         best= 2068.003 us  median= 2080.776 us  mean= 2084.456 us
+sub broadcast dense-dense baseline                         best=  102.185 us  median=  102.505 us  mean=  102.986 us
+sub broadcast old densify fallback                         best= 1953.170 us  median= 1969.485 us  mean= 1971.640 us
+geometric_product csr*csr (csr native)                     best= 3583.194 us  median= 3594.228 us  mean= 3616.022 us
+geometric_product dense*dense baseline                     best=  204.683 us  median=  205.528 us  mean=  205.619 us
+geometric_product old densify fallback                     best= 3891.324 us  median= 3912.322 us  mean= 3922.750 us
+```
+
+Pass 1 removed internal CSR revalidation from helper-produced CSR arrays and
+uses vectorized sparse-entry reduction for CSR/CSR add-sub. The run now shows
+large wins for CSR slicing, a small win for CSR/CSR product versus old dense
+fallback, and add-sub roughly tied with old fallback. Dense remains much faster
+for this small-layout benchmark.
+
 
 ### Dense JAX Traceability
 
